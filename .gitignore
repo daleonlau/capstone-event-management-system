@@ -1,0 +1,50 @@
+# Laravel specific
+/vendor
+/node_modules
+.env
+.phpunit.result.cache
+storage/*.key
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+!storage/framework/.gitkeep
+
+# IDE
+/.idea
+/.vscode
+*.sublime-*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Application files
+public/build
+public/hot
+public/storage
+*.log
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Testing
+phpunit.xml
+.phpunit.result.cache
+
+# Composer
+composer.phar
+vendor/
+
+# NPM
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Python AI service (if in same repo)
+ai-service/venv/
+ai-service/__pycache__/
+ai-service/.pytest_cache/
+ai-service/*.pyc

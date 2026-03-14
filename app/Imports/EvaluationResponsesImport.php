@@ -1,0 +1,135 @@
+<?php
+
+namespace App\Imports;
+
+use App\Models\EvaluationResponse;
+use App\Models\EventStudent;
+use App\Models\Student;
+use App\Models\Evaluation;
+use Maatwebsite\Excel\Concerns\ToModel;
+use Maatwebsite\Excel\Concerns\WithHeadingRow;
+use Maatwebsite\Excel\Concerns\WithValidation;
+use Maatwebsite\Excel\Concerns\WithBatchInserts;
+use Maatwebsite\Excel\Concerns\WithChunkReading;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
+
+class EvaluationResponsesImport implements ToModel, WithHeadingRow, WithValidation, WithBatchInserts, WithChunkReading
+{
+    protected $evaluation;
+    protected $eventId;
+    protected $successCount = 0;
+    protected $errorCount = 0;
+    protected $errors = [];
+
+    public function __construct(Evaluation $evaluation)
+    {
+        $this->evaluation = $evaluation;
+        $this->eventId = $evaluation->event_id;
+    }
+
+    public function rules(): array
+    {
+        $questions = $this->evaluation->questions()->where('question_type', 'likert')->get();
+        
+        $rules = [
+            'student_id' => ['required', 'string'],
+            'email' => ['required', 'email'],
+            'name' => ['nullable', 'string'],
+            'department' => ['required', 'string'],
+            'course' => ['required', 'string'],
+            'year_level' => ['required', 'string', Rule::in(['1st Year', '2nd Year', '3rd Year', '4th Year'])],
+        ];
+
+        foreach ($questions as $question) {
+            $rules[(string) $question->id] = ['required', 'integer', 'min:1', 'max:5'];
+        }
+
+        return $rules;
+    }
+
+    public function model(array $row)
+    {
+        
+        $student = Student::where('student_id', $row['student_id'])
+            ->where('user_id', $this->evaluation->organization_id)
+            ->first();
+
+        if (!$student) {
+            $this->errors[] = "Student ID {$row['student_id']} not found";
+            $this->errorCount++;
+            return null;
+        }
+
+        $existing = EvaluationResponse::where('evaluation_id', $this->evaluation->id)
+            ->where('student_id', $row['student_id'])
+            ->exists();
+
+        if ($existing) {
+            $this->errors[] = "Student {$row['student_id']} already submitted";
+            $this->errorCount++;
+            return null;
+        }
+
+        $likertResponses = [];
+        $questions = $this->evaluation->questions()->where('question_type', 'likert')->get();
+        
+        foreach ($questions as $question) {
+            if (isset($row[$question->id]) && is_numeric($row[$question->id])) {
+                $likertResponses[$question->id] = (int) $row[$question->id];
+            }
+        }
+
+        // Ensure student is in event_student
+        EventStudent::firstOrCreate(
+            [
+                'event_id' => $this->eventId,
+                'student_id' => $row['student_id']
+            ],
+            [
+                'user_id' => $this->evaluation->organization_id,
+                'status' => 'Pending',
+                'amount_paid' => 0
+            ]
+        );
+
+        $this->successCount++;
+
+        return new EvaluationResponse([
+            'evaluation_id' => $this->evaluation->id,
+            'event_id' => $this->eventId,
+            'student_id' => $row['student_id'],
+            'email' => $row['email'],
+            'name' => $row['name'] ?? ($student->firstname . ' ' . $student->lastname),
+            'department' => $row['department'],
+            'course' => $row['course'],
+            'year_level' => $row['year_level'],
+            'likert_responses' => $likertResponses,
+            'comment_responses' => [],
+        ]);
+    }
+
+    public function headingRow(): int
+    {
+        return 1;
+    }
+
+    public function batchSize(): int
+    {
+        return 100;
+    }
+
+    public function chunkSize(): int
+    {
+        return 100;
+    }
+
+    public function getStats(): array
+    {
+        return [
+            'success' => $this->successCount,
+            'errors' => $this->errorCount,
+            'error_details' => $this->errors
+        ];
+    }
+}
