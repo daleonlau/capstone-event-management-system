@@ -1,0 +1,9 @@
+{
+  "training_date": "2026-03-01T16:12:32.720307",
+  "n_features": 23,
+  "regressor_type": "RandomForestRegressor",
+  "classifier_type": "RandomForestClassifier",
+  "n_estimators": 100,
+  "max_depth_regressor": 10,
+  "max_depth_classifier": 8
+}
