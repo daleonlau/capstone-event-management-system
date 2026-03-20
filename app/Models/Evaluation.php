@@ -12,6 +12,8 @@ class Evaluation extends Model
         'event_id',
         'organization_id',
         'title',
+        'form_type',
+        'form_customizations',
         'form_number',
         'revision',
         'date_effectivity',
@@ -26,6 +28,7 @@ class Evaluation extends Model
     protected $casts = [
         'available_from' => 'datetime',
         'available_until' => 'datetime',
+        'form_customizations' => 'array',
     ];
 
     public function event(): BelongsTo
@@ -35,7 +38,7 @@ class Evaluation extends Model
 
     public function organization(): BelongsTo
     {
-        return $this->belongsTo(Organization::class);
+        return $this->belongsTo(User::class, 'organization_id');
     }
 
     public function categories(): HasMany
@@ -53,9 +56,14 @@ class Evaluation extends Model
         return $this->hasMany(EvaluationResponse::class);
     }
 
+    public function evaluationRequest()
+    {
+        return $this->hasOne(EvaluationRequest::class);
+    }
+
     public function canGenerateQR(): bool
     {
-        return $this->event->status === 'Finished' && $this->status === 'draft';
+        return $this->status === 'draft';
     }
 
     public function isActive(): bool

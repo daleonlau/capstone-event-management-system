@@ -18,7 +18,7 @@ use Inertia\Inertia;
 class EvaluationController extends Controller
 {
     /**
-     * Show evaluation form to students
+     * Show evaluation form with verification section
      */
     public function form($evaluationId)
     {
@@ -56,6 +56,9 @@ class EvaluationController extends Controller
 
             $yearLevels = $event->year_levels ?? [];
 
+            // Get basic info from form_customizations
+            $basicInfo = $evaluation->form_customizations ?? [];
+
             return Inertia::render('Public/Evaluations/Form', [
                 'evaluation' => [
                     'id' => $evaluation->id,
@@ -63,11 +66,11 @@ class EvaluationController extends Controller
                     'form_number' => $evaluation->form_number,
                     'revision' => $evaluation->revision,
                     'date_effectivity' => $evaluation->date_effectivity,
+                    'form_type' => $evaluation->form_type,
+                    'customizations' => $basicInfo,
                     'event' => [
                         'id' => $evaluation->event->id,
                         'event_name' => $evaluation->event->event_name,
-                        'event_date_start' => $evaluation->event->event_date_start,
-                        'venue' => 'CSUCC Gymnasium',
                     ],
                     'categories' => $evaluation->categories->map(function ($cat) {
                         return [
@@ -107,6 +110,101 @@ class EvaluationController extends Controller
     }
 
     /**
+     * Verify student eligibility via AJAX
+     */
+    public function verifyStudent(Request $request, $evaluationId)
+    {
+        try {
+            Log::info('=== VERIFY STUDENT CALLED ===', [
+                'evaluation_id' => $evaluationId,
+                'student_id' => $request->student_id
+            ]);
+
+            $request->validate([
+                'student_id' => 'required|string',
+            ]);
+
+            $evaluation = Evaluation::with('event')
+                ->where('id', $evaluationId)
+                ->where('status', 'active')
+                ->firstOrFail();
+
+            $event = $evaluation->event;
+
+            // Check if student exists in event_student table
+            $isEligible = EventStudent::where('event_id', $event->id)
+                ->where('student_id', $request->student_id)
+                ->exists();
+
+            Log::info('EventStudent check', [
+                'exists' => $isEligible,
+                'event_id' => $event->id,
+                'student_id' => $request->student_id
+            ]);
+
+            if (!$isEligible) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Student ID not found in event participants. Please check your ID or contact your organization.'
+                ], 422);
+            }
+
+            // Check if already submitted
+            $existing = EvaluationResponse::where('evaluation_id', $evaluation->id)
+                ->where('student_id', $request->student_id)
+                ->exists();
+
+            if ($existing) {
+                return response()->json([
+                    'success' => false,
+                    'already_submitted' => true,
+                    'message' => 'You have already submitted an evaluation for this event.'
+                ], 422);
+            }
+
+            // Get student details from students table
+            $student = Student::where('student_id', $request->student_id)
+                ->where('user_id', $event->user_id)
+                ->first();
+
+            if (!$student) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Student record not found. Please contact your organization.'
+                ], 422);
+            }
+
+            // Return student data
+            return response()->json([
+                'success' => true,
+                'student' => [
+                    'student_id' => $student->student_id,
+                    'email' => $student->email,
+                    'name' => $student->firstname . ' ' . $student->lastname,
+                    'department' => $student->department,
+                    'course' => $student->course,
+                    'year_level' => $student->yearlevel,
+                ]
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Student verification failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Verification failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Store evaluation responses
      */
     public function store(Request $request, $evaluationId)
@@ -122,27 +220,35 @@ class EvaluationController extends Controller
                 ->where('status', 'active')
                 ->firstOrFail();
 
-            // Validate request
+            // Validate request with all profile fields
             $request->validate([
                 'student_id' => 'required|string',
                 'email' => 'required|email',
                 'name' => 'nullable|string',
+                'age' => 'nullable|string',
+                'sex' => 'nullable|string',
+                'agency_office' => 'nullable|string',
+                'position' => 'nullable|string',
+                'respondent_type' => 'nullable|string',
+                'title_prefix' => 'nullable|string',
                 'department' => 'required|string',
                 'course' => 'required|string',
                 'year_level' => 'required|string',
+                'speaker_topic' => 'nullable|string',
+                'speaker_name' => 'nullable|string',
                 'likert_responses' => 'required|array',
                 'comment_responses' => 'nullable|array',
             ]);
 
-            // Check if student is eligible for this event
+            // Verify student is eligible for this event
             $isEligible = EventStudent::where('event_id', $evaluation->event_id)
                 ->where('student_id', $request->student_id)
                 ->exists();
 
             if (!$isEligible) {
-                return response()->json([
-                    'error' => 'You are not part of this event. Only students who are registered for this event can submit an evaluation.'
-                ], 403);
+                return back()->withErrors([
+                    'student_id' => 'Student ID not found in event participants. Please check your ID or contact your organization.'
+                ])->withInput();
             }
 
             // Check if already submitted
@@ -151,11 +257,18 @@ class EvaluationController extends Controller
                 ->exists();
 
             if ($existing) {
-                return Inertia::render('Public/Evaluations/AlreadySubmitted', [
-                    'evaluation' => [
-                        'event_name' => $evaluation->event->event_name,
-                    ]
-                ]);
+                return redirect()->route('evaluations.already-submitted', $evaluation->id);
+            }
+
+            // Get student record for verification
+            $student = Student::where('student_id', $request->student_id)
+                ->where('user_id', $evaluation->event->user_id)
+                ->first();
+
+            if (!$student) {
+                return back()->withErrors([
+                    'student_id' => 'Student record not found. Please contact your organization.'
+                ])->withInput();
             }
 
             DB::beginTransaction();
@@ -166,10 +279,18 @@ class EvaluationController extends Controller
                 'event_id' => $evaluation->event_id,
                 'student_id' => $request->student_id,
                 'email' => $request->email,
-                'name' => $request->name,
+                'name' => $request->name ?? ($student->firstname . ' ' . $student->lastname),
+                'age' => $request->age,
+                'sex' => $request->sex,
+                'agency_office' => $request->agency_office,
+                'position' => $request->position,
+                'respondent_type' => $request->respondent_type,
+                'title_prefix' => $request->title_prefix,
                 'department' => $request->department,
                 'course' => $request->course,
                 'year_level' => $request->year_level,
+                'speaker_topic' => $request->speaker_topic,
+                'speaker_name' => $request->speaker_name,
                 'likert_responses' => $request->likert_responses,
                 'comment_responses' => $request->comment_responses ?? [],
             ]);
@@ -200,119 +321,24 @@ class EvaluationController extends Controller
     }
 
     /**
+     * Show already submitted page
+     */
+    public function alreadySubmitted($evaluationId)
+    {
+        $evaluation = Evaluation::with('event')->findOrFail($evaluationId);
+        
+        return Inertia::render('Public/Evaluations/AlreadySubmitted', [
+            'evaluation' => [
+                'event_name' => $evaluation->event->event_name,
+            ]
+        ]);
+    }
+
+    /**
      * Show thank you page
      */
     public function thankyou()
     {
         return Inertia::render('Public/Evaluations/ThankYou');
-    }
-
-    /**
-     * Verify student eligibility - MUST RETURN JSON
-     */
-    public function verifyStudent(Request $request)
-    {
-        try {
-            Log::info('=== VERIFY STUDENT CALLED ===', [
-                'all_data' => $request->all(),
-                'event_id' => $request->event_id,
-                'student_id' => $request->student_id,
-                'url' => request()->fullUrl()
-            ]);
-
-            $request->validate([
-                'event_id' => 'required|exists:events,id',
-                'student_id' => 'required|string',
-            ]);
-
-            $event = Event::find($request->event_id);
-            
-            if (!$event) {
-                return response()->json([
-                    'valid' => false,
-                    'message' => 'Event not found.'
-                ]);
-            }
-
-            // Check if student exists in event_student table
-            $isEligible = EventStudent::where('event_id', $event->id)
-                ->where('student_id', $request->student_id)
-                ->exists();
-
-            Log::info('EventStudent check', [
-                'exists' => $isEligible,
-                'event_id' => $event->id,
-                'student_id' => $request->student_id
-            ]);
-
-            if (!$isEligible) {
-                // Debug: Show what records exist for this event
-                $records = EventStudent::where('event_id', $event->id)->get();
-                Log::warning('Student not found in event_student', [
-                    'count' => $records->count(),
-                    'records' => $records->map(fn($r) => [
-                        'student_id' => $r->student_id,
-                        'status' => $r->status
-                    ])->toArray()
-                ]);
-
-                return response()->json([
-                    'valid' => false,
-                    'message' => 'Student ID not found in event participants.'
-                ]);
-            }
-
-            // Get student details from students table
-            $student = Student::where('student_id', $request->student_id)
-                ->where('user_id', $event->user_id)
-                ->first();
-
-            return response()->json([
-                'valid' => true,
-                'student' => $student ? [
-                    'name' => $student->firstname . ' ' . $student->lastname,
-                    'email' => $student->email,
-                ] : null,
-            ]);
-
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            Log::error('Validation failed', ['errors' => $e->errors()]);
-            return response()->json([
-                'valid' => false,
-                'message' => 'Validation failed: ' . json_encode($e->errors())
-            ], 422);
-        } catch (\Exception $e) {
-            Log::error('Student verification failed', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-            return response()->json([
-                'valid' => false,
-                'message' => 'Verification failed: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Debug endpoint to check event_student records (remove in production)
-     */
-    public function debugEventStudents($eventId)
-    {
-        try {
-            $records = EventStudent::where('event_id', $eventId)->get();
-            
-            return response()->json([
-                'event_id' => $eventId,
-                'count' => $records->count(),
-                'students' => $records->map(fn($r) => [
-                    'student_id' => $r->student_id,
-                    'status' => $r->status,
-                    'amount_paid' => $r->amount_paid,
-                    'created_at' => $r->created_at
-                ])
-            ]);
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
-        }
     }
 }

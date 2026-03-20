@@ -1,5 +1,4 @@
 <?php
-// database/migrations/[timestamp]_create_evaluation_categories_table.php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -7,12 +6,12 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    public function up()
+    public function up(): void
     {
         Schema::create('evaluation_categories', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('evaluation_id');
-            $table->string('category_name'); // e.g., "I. Information Dissemination"
+            $table->string('category_name');
             $table->integer('order')->default(0);
             $table->timestamps();
 
@@ -20,7 +19,7 @@ return new class extends Migration
         });
     }
 
-    public function down()
+    public function down(): void
     {
         Schema::dropIfExists('evaluation_categories');
     }

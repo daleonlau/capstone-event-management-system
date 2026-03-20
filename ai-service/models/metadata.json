@@ -1,9 +1,32 @@
 {
-  "training_date": "2026-03-01T16:12:32.720307",
-  "n_features": 23,
-  "regressor_type": "RandomForestRegressor",
-  "classifier_type": "RandomForestClassifier",
-  "n_estimators": 100,
-  "max_depth_regressor": 10,
-  "max_depth_classifier": 8
+  "best_model": "LogisticRegression",
+  "best_accuracy": 0.6666666666666666,
+  "logistic_regression_accuracy": 0.6666666666666666,
+  "classes": [
+    "negative",
+    "neutral",
+    "positive"
+  ],
+  "vectorizer_params": {
+    "max_features": 2000,
+    "ngram_range": [
+      1,
+      2
+    ]
+  },
+  "model_comparison": {
+    "Logistic Regression": {
+      "accuracy": 0.6666666666666666,
+      "model_type": "LogisticRegression"
+    },
+    "Naive Bayes": {
+      "accuracy": 0.3333333333333333,
+      "model_type": "MultinomialNB"
+    },
+    "SVM (Linear)": {
+      "accuracy": 0.6666666666666666,
+      "model_type": "SVC"
+    }
+  },
+  "training_date": "2026-03-16T08:12:49.003778"
 }

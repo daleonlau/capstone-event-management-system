@@ -13,11 +13,19 @@ class EvaluationResponse extends Model
         'student_id',
         'email',
         'name',
+        'age',
+        'sex',
+        'agency_office',
+        'position',
+        'respondent_type',
+        'title_prefix',
         'department',
         'course',
         'year_level',
         'likert_responses',
         'comment_responses',
+        'speaker_topic',
+        'speaker_name',
     ];
 
     protected $casts = [

@@ -18,13 +18,62 @@
         </button>
       </div>
   
+      <!-- Eligibility Information Card -->
+      <div v-if="eligibilityInfo" class="bg-emerald-50 rounded-xl p-4 mb-4 border border-emerald-200">
+        <h4 class="text-sm font-semibold text-emerald-800 mb-2 flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Eligible Participants for this Evaluation
+        </h4>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+          <div class="bg-white rounded-lg p-2">
+            <span class="font-medium text-emerald-700">🏛️ Departments:</span>
+            <div class="mt-1 flex flex-wrap gap-1">
+              <span v-for="dept in eligibilityInfo.departments" :key="dept" 
+                    class="inline-block px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded text-xs">
+                {{ dept }}
+              </span>
+              <span v-if="!eligibilityInfo.departments || eligibilityInfo.departments.length === 0" 
+                    class="text-emerald-600 text-xs">All Departments</span>
+            </div>
+          </div>
+          <div class="bg-white rounded-lg p-2">
+            <span class="font-medium text-emerald-700">📚 Courses:</span>
+            <div class="mt-1 flex flex-wrap gap-1">
+              <span v-for="course in eligibilityInfo.courses" :key="course" 
+                    class="inline-block px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded text-xs">
+                {{ course }}
+              </span>
+              <span v-if="!eligibilityInfo.courses || eligibilityInfo.courses.length === 0" 
+                    class="text-emerald-600 text-xs">All Courses</span>
+            </div>
+          </div>
+          <div class="bg-white rounded-lg p-2">
+            <span class="font-medium text-emerald-700">🎓 Year Levels:</span>
+            <div class="mt-1 flex flex-wrap gap-1">
+              <span v-for="year in eligibilityInfo.yearLevels" :key="year" 
+                    class="inline-block px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded text-xs">
+                {{ year }}
+              </span>
+              <span v-if="!eligibilityInfo.yearLevels || eligibilityInfo.yearLevels.length === 0" 
+                    class="text-emerald-600 text-xs">All Year Levels</span>
+            </div>
+          </div>
+        </div>
+        <div class="mt-3 text-xs text-emerald-700 bg-white/50 rounded-lg p-2">
+          <p class="font-medium">⚠️ Important:</p>
+          <p>Only students matching the above criteria can access and submit this evaluation. When uploading CSV, ensure Department, Course, and Year Level match these values.</p>
+        </div>
+      </div>
+  
       <div class="text-sm text-gray-600 mb-4">
-        <p>Upload a CSV file with student responses to quickly reach the 75% threshold. The CSV must match the template format.</p>
-        <ul class="list-disc list-inside mt-2 text-xs text-gray-500">
-          <li>First row must be column headers</li>
-          <li>Student ID must exist in the system</li>
-          <li>Ratings must be 1-5</li>
-          <li>Email and department are required</li>
+        <p>Upload a CSV file with student responses. The template includes all necessary columns with clear question text for easy reference.</p>
+        <ul class="list-disc list-inside mt-2 text-xs text-gray-500 space-y-1">
+          <li>First row: Column headers with question text (do not modify)</li>
+          <li>Second row: Sample data (you can replace or delete)</li>
+          <li>Ratings must be numbers 1-5 (1=Very Dissatisfied, 5=Very Satisfied)</li>
+          <li>Department, Course, and Year Level must match the eligible values shown above</li>
         </ul>
       </div>
   
@@ -69,6 +118,31 @@
         </div>
       </div>
   
+      <!-- Preview Section -->
+      <div v-if="previewData.length > 0" class="mt-4">
+        <h4 class="text-sm font-semibold text-gray-700 mb-2">Preview (First 5 rows)</h4>
+        <div class="overflow-x-auto max-h-64 overflow-y-auto border rounded-lg">
+          <table class="min-w-full text-xs border-collapse">
+            <thead class="sticky top-0 bg-gray-100">
+              <tr>
+                <th v-for="(header, idx) in previewHeaders" :key="idx" 
+                    class="border px-2 py-1 text-left font-medium text-gray-600 whitespace-nowrap bg-gray-100"
+                    :title="header">
+                  {{ truncateText(header, 25) }}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(row, rowIdx) in previewData" :key="rowIdx" class="hover:bg-gray-50">
+                <td v-for="(cell, cellIdx) in row" :key="cellIdx" class="border px-2 py-1 text-gray-700 whitespace-nowrap">
+                  {{ truncateText(cell, 30) }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+  
       <!-- Results -->
       <div v-if="results" class="mt-4 p-4 rounded-lg" :class="results.success > 0 ? 'bg-green-50' : 'bg-yellow-50'">
         <div class="flex items-center gap-2 mb-2">
@@ -106,7 +180,7 @@
   </template>
   
   <script setup>
-  import { ref } from 'vue';
+  import { ref, onMounted } from 'vue';
   import axios from 'axios';
   
   const props = defineProps({
@@ -124,11 +198,31 @@
   const uploadProgress = ref(0);
   const results = ref(null);
   const error = ref(null);
+  const previewData = ref([]);
+  const previewHeaders = ref([]);
+  const eligibilityInfo = ref(null);
+  
+  // Fetch eligibility info on mount
+  onMounted(async () => {
+    try {
+      const response = await axios.get(`/admin/evaluations/${props.evaluationId}/eligibility-info`);
+      eligibilityInfo.value = response.data;
+    } catch (err) {
+      console.error('Failed to fetch eligibility info:', err);
+    }
+  });
+  
+  function truncateText(text, maxLength) {
+    if (!text) return '';
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength) + '...';
+  }
   
   function handleFileSelect(event) {
     const file = event.target.files[0];
     if (file) {
       selectedFile.value = file;
+      previewCSV(file);
       uploadFile(file);
     }
   }
@@ -138,23 +232,49 @@
     const file = event.dataTransfer.files[0];
     if (file) {
       selectedFile.value = file;
+      previewCSV(file);
       uploadFile(file);
     }
   }
   
+  function previewCSV(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target.result;
+      const lines = content.split('\n');
+      
+      // Get headers from first line
+      if (lines.length > 0) {
+        previewHeaders.value = lines[0].split(',').map(h => h.replace(/['"]/g, '').trim());
+      }
+      
+      // Get first 5 data rows (skip header)
+      const dataRows = [];
+      for (let i = 1; i < Math.min(lines.length, 6); i++) {
+        if (lines[i].trim()) {
+          const row = lines[i].split(',').map(cell => cell.replace(/['"]/g, '').trim());
+          dataRows.push(row);
+        }
+      }
+      previewData.value = dataRows;
+    };
+    reader.readAsText(file, 'UTF-8');
+  }
+  
   async function downloadTemplate() {
     try {
-      const response = await axios.get(`/president/evaluations/${props.evaluationId}/download-template`, {
+      const response = await axios.get(`/admin/evaluations/${props.evaluationId}/download-template`, {
         responseType: 'blob'
       });
       
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'text/csv' }));
       const link = document.createElement('a');
       link.href = url;
       link.setAttribute('download', `evaluation_${props.evaluationId}_template.csv`);
       document.body.appendChild(link);
       link.click();
       link.remove();
+      window.URL.revokeObjectURL(url);
     } catch (err) {
       error.value = 'Failed to download template';
     }
@@ -170,7 +290,7 @@
     formData.append('csv_file', file);
   
     try {
-      const response = await axios.post(`/president/evaluations/${props.evaluationId}/bulk-upload`, formData, {
+      const response = await axios.post(`/admin/evaluations/${props.evaluationId}/bulk-upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         },
@@ -182,9 +302,12 @@
       results.value = response.data;
       emit('upload-complete', response.data);
       
-      // Clear file input
       selectedFile.value = null;
-      document.querySelector('input[type="file"]').value = '';
+      previewData.value = [];
+      previewHeaders.value = [];
+      if (document.querySelector('input[type="file"]')) {
+        document.querySelector('input[type="file"]').value = '';
+      }
       
     } catch (err) {
       if (err.response?.data?.details) {

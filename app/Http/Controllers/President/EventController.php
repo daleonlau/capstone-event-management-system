@@ -8,6 +8,7 @@ use App\Models\EventType;
 use App\Models\OrganizationSetting;
 use App\Models\Course;
 use App\Models\Department;
+use App\Models\EvaluationRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
@@ -30,9 +31,6 @@ class EventController extends Controller
         });
     }
 
-    /**
-     * Display a listing of events.
-     */
     public function index()
     {
         $events = Event::where('user_id', $this->organizationId)
@@ -63,9 +61,6 @@ class EventController extends Controller
         ]);
     }
 
-    /**
-     * Show the form for creating a new event.
-     */
     public function create()
     {
         $settings = OrganizationSetting::where('organization_id', $this->organizationId)->first();
@@ -86,9 +81,6 @@ class EventController extends Controller
         ]);
     }
 
-    /**
-     * Store a newly created event (NO DOCUMENT REQUIRED).
-     */
     public function store(Request $request)
     {
         $request->validate([
@@ -132,9 +124,6 @@ class EventController extends Controller
             ->with('success', 'Event created successfully. Please upload the signed document when ready.');
     }
 
-    /**
-     * Display the specified event.
-     */
     public function show(Event $event)
     {
         if ($event->user_id !== $this->organizationId) {
@@ -146,7 +135,6 @@ class EventController extends Controller
         $departments = Department::all();
         $courses = Course::all();
 
-        // Calculate stats
         $totalStudents = \App\Models\EventStudent::where('event_id', $event->id)->count();
         $paidCount = \App\Models\EventStudent::where('event_id', $event->id)
             ->where('status', 'Paid')
@@ -161,8 +149,10 @@ class EventController extends Controller
             'pending' => $pendingCount,
             'evaluations' => $event->evaluations()->count(),
             'evaluation_id' => $event->evaluations()->first()?->id,
-            'can_be_finished' => $event->canBeFinished(), // Check if can be marked as finished
+            'can_be_finished' => $event->canBeFinished(),
         ];
+
+        $evaluationRequest = EvaluationRequest::where('event_id', $event->id)->first();
 
         return Inertia::render('President/Events/Show', [
             'event' => [
@@ -187,12 +177,12 @@ class EventController extends Controller
             'departments' => $departments,
             'courses' => $courses,
             'stats' => $stats,
+            'hasEvaluationRequest' => !is_null($evaluationRequest),
+            'evaluationRequestStatus' => $evaluationRequest?->status,
+            'evaluationRequest' => $evaluationRequest,
         ]);
     }
 
-    /**
-     * Show the form for editing the specified event.
-     */
     public function edit(Event $event)
     {
         if ($event->user_id !== $this->organizationId) {
@@ -218,9 +208,6 @@ class EventController extends Controller
         ]);
     }
 
-    /**
-     * Update the specified event.
-     */
     public function update(Request $request, Event $event)
     {
         if ($event->user_id !== $this->organizationId) {
@@ -271,9 +258,6 @@ class EventController extends Controller
             ->with('success', 'Event updated successfully.');
     }
 
-    /**
-     * Upload signed document for an event.
-     */
     public function uploadDocument(Request $request, Event $event)
     {
         if ($event->user_id !== $this->organizationId) {
@@ -303,16 +287,12 @@ class EventController extends Controller
         return back()->with('success', 'Document uploaded successfully. Event is now pending adviser approval.');
     }
 
-    /**
-     * Mark event as finished
-     */
     public function markAsFinished(Event $event)
     {
         if ($event->user_id !== $this->organizationId) {
             abort(403);
         }
 
-        // Check if event can be marked as finished
         if (!$event->canBeFinished()) {
             return back()->with('error', 'Event cannot be marked as finished. It must be approved first.');
         }
@@ -324,12 +304,48 @@ class EventController extends Controller
             'event_name' => $event->event_name
         ]);
 
-        return back()->with('success', 'Event marked as finished successfully. You can now create evaluations and generate QR codes.');
+        return back()->with('success', 'Event marked as finished successfully. You can now request evaluation services.');
     }
 
-    /**
-     * Remove the specified event.
-     */
+    public function requestEvaluation(Request $request, Event $event)
+    {
+        if ($event->user_id !== $this->organizationId) {
+            abort(403);
+        }
+
+        if (!$event->canRequestEvaluation()) {
+            return back()->with('error', 'This event cannot request evaluation service.');
+        }
+
+        $request->validate([
+            'title' => 'required|string|max:255',
+            'activity_date' => 'required|date',
+            'venue' => 'required|string|max:255',
+            'speaker_name' => 'required|string|max:255',
+            'topics' => 'required|array|min:1',
+            'topics.*' => 'required|string',
+            'has_food' => 'boolean',
+            'notes' => 'nullable|string',
+        ]);
+
+        EvaluationRequest::create([
+            'event_id' => $event->id,
+            'organization_id' => $this->organizationId,
+            'requested_by' => Auth::guard('org_user')->id(),
+            'title' => $request->title,
+            'activity_date' => $request->activity_date,
+            'venue' => $request->venue,
+            'speaker_name' => $request->speaker_name,
+            'topics' => $request->topics,
+            'has_food' => $request->has_food ?? false,
+            'notes' => $request->notes,
+            'status' => 'pending',
+        ]);
+
+        return redirect()->route('president.events.show', $event->id)
+            ->with('success', 'Evaluation service request submitted successfully.');
+    }
+
     public function destroy(Event $event)
     {
         if ($event->user_id !== $this->organizationId) {

@@ -6,16 +6,18 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    public function up()
+    public function up(): void
     {
         Schema::create('evaluations', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('event_id');
             $table->unsignedBigInteger('organization_id');
             $table->string('title')->default('EVENT EVALUATION FORM');
-            $table->string('form_number')->default('F-EEF-018d');
-            $table->string('revision')->default('Rev. 0');
-            $table->string('date_effectivity')->default('04-28-2025');
+            $table->enum('form_type', ['type1', 'type2', 'type3', 'type4', 'type5'])->nullable();
+            $table->json('form_customizations')->nullable();
+            $table->string('form_number')->nullable();
+            $table->string('revision')->nullable();
+            $table->string('date_effectivity')->nullable();
             $table->enum('status', ['draft', 'active', 'closed'])->default('draft');
             $table->dateTime('available_from')->nullable();
             $table->dateTime('available_until')->nullable();
@@ -24,17 +26,12 @@ return new class extends Migration
             $table->integer('total_responses')->default(0);
             $table->timestamps();
 
-            // Fix the foreign key - reference the correct table
-            // If organizations are stored in 'users' table:
             $table->foreign('event_id')->references('id')->on('events')->onDelete('cascade');
             $table->foreign('organization_id')->references('id')->on('users')->onDelete('cascade');
-            
-            // OR if you have a separate organizations table, create it first
-            // $table->foreign('organization_id')->references('id')->on('organizations')->onDelete('cascade');
         });
     }
 
-    public function down()
+    public function down(): void
     {
         Schema::dropIfExists('evaluations');
     }

@@ -59,22 +59,6 @@ class AIAnalysisService
     }
     
     /**
-     * Check if AI service is available
-     */
-    public function isAvailable(): bool
-    {
-        try {
-            $response = Http::timeout(5)->get("{$this->apiUrl}/");
-            $available = $response->successful();
-            Log::info('🔍 AI service availability check', ['available' => $available]);
-            return $available;
-        } catch (\Exception $e) {
-            Log::warning('⚠️ AI service unavailable', ['error' => $e->getMessage()]);
-            return false;
-        }
-    }
-    
-    /**
      * Analyze a single evaluation
      */
     public function analyzeEvaluation(Evaluation $evaluation, bool $force = false): ?array
@@ -101,19 +85,18 @@ class AIAnalysisService
                 return null;
             }
             
-            // Add metadata - FIXED: Calculate eligible students here
+            // Add metadata
             $event = $evaluation->event;
-            // Calculate total eligible students for this event
-$totalEligible = EventStudent::where('event_id', $evaluation->event_id)->count();
-$responseRate = $totalEligible > 0 
-    ? round(($evaluation->total_responses / $totalEligible) * 100, 1) // Multiply by 100 for percentage
-    : 0;
-
-Log::info('📊 Response rate calculation', [
-    'total_eligible' => $totalEligible,
-    'total_responses' => $evaluation->total_responses,
-    'response_rate_percentage' => $responseRate . '%'
-]);
+            $totalEligible = EventStudent::where('event_id', $event->id)->count();
+            $evaluationData['total_respondents'] = $evaluation->total_responses;
+            $evaluationData['response_rate'] = $totalEligible > 0 
+                ? round($evaluation->total_responses / $totalEligible, 2) 
+                : 0;
+            
+            Log::info('📤 Sending to AI service', [
+                'url' => "{$this->apiUrl}/analyze",
+                'data' => $evaluationData
+            ]);
             
             $response = Http::timeout($this->timeout)
                 ->post("{$this->apiUrl}/analyze", $evaluationData);
@@ -121,7 +104,7 @@ Log::info('📊 Response rate calculation', [
             if ($response->successful()) {
                 $insights = $response->json();
                 
-                Log::info('✅ Python response received', [
+                Log::info('✅ AI service response received', [
                     'insights' => $insights
                 ]);
                 
@@ -134,7 +117,7 @@ Log::info('📊 Response rate calculation', [
                 
                 return $insights;
             } else {
-                Log::error('❌ Python service error', [
+                Log::error('❌ AI service error', [
                     'status' => $response->status(),
                     'body' => $response->body()
                 ]);
@@ -154,14 +137,13 @@ Log::info('📊 Response rate calculation', [
     }
     
     /**
-     * Prepare evaluation data - DYNAMIC MAPPING
+     * Prepare evaluation data - DYNAMIC MAPPING with comments
      */
     protected function prepareEvaluationData(Evaluation $evaluation): ?array
     {
         $responses = EvaluationResponse::where('evaluation_id', $evaluation->id)->get();
         
         if ($responses->isEmpty()) {
-            Log::warning('No responses found', ['evaluation_id' => $evaluation->id]);
             return null;
         }
         
@@ -260,7 +242,8 @@ Log::info('📊 Response rate calculation', [
         ];
         
         $responseCount = 0;
-        $mappingLog = [];
+        $positiveComments = [];
+        $suggestionComments = [];
         
         foreach ($responses as $response) {
             $likert = $response->likert_responses;
@@ -273,6 +256,7 @@ Log::info('📊 Response rate calculation', [
                 continue;
             }
             
+            // Process ratings
             foreach ($likert as $questionId => $rating) {
                 $questionId = (int)$questionId;
                 $rating = (float)$rating;
@@ -290,7 +274,6 @@ Log::info('📊 Response rate calculation', [
                 foreach ($keywordToFeature as $keyword => $feature) {
                     if (strpos($questionText, strtolower($keyword)) !== false) {
                         $matchedFeature = $feature;
-                        $mappingLog[] = "Q{$questionId} ('{$question->question_text}') → {$feature}";
                         break;
                     }
                 }
@@ -300,13 +283,31 @@ Log::info('📊 Response rate calculation', [
                 }
             }
             
+            // Process comments
+            $comments = $response->comment_responses;
+            if (is_string($comments)) {
+                $comments = json_decode($comments, true);
+            }
+            
+            if (is_array($comments)) {
+                foreach ($comments as $comment) {
+                    if (!empty($comment)) {
+                        // Categorize based on comment type
+                        if (strpos(strtolower($comment), 'suggest') !== false || 
+                            strpos(strtolower($comment), 'recommend') !== false ||
+                            strpos(strtolower($comment), 'improve') !== false) {
+                            $suggestionComments[] = $comment;
+                        } else {
+                            $positiveComments[] = $comment;
+                        }
+                    }
+                }
+            }
+            
             $responseCount++;
         }
         
-        Log::info('📋 Mapping details', ['mappings' => $mappingLog]);
-        
         if ($responseCount === 0) {
-            Log::error('❌ No responses could be processed');
             return null;
         }
         
@@ -322,10 +323,15 @@ Log::info('📊 Response rate calculation', [
         $aggregated['year_level'] = $this->mapYearLevel($firstResponse->year_level ?? '1st Year');
         $aggregated['respondent_type'] = 0;
         
-        Log::info('✅ FINAL DATA TO PYTHON', [
+        // Add comments for sentiment analysis
+        $aggregated['positive_comments'] = $positiveComments;
+        $aggregated['suggestion_comments'] = $suggestionComments;
+        
+        Log::info('✅ FINAL DATA TO AI SERVICE', [
             'evaluation_id' => $evaluation->id,
             'response_count' => $responseCount,
-            'averages' => $aggregated
+            'positive_comments' => count($positiveComments),
+            'suggestion_comments' => count($suggestionComments)
         ]);
         
         return $aggregated;
@@ -346,112 +352,73 @@ Log::info('📊 Response rate calculation', [
     }
     
     /**
-     * Store AI insights in database - FIXED VERSION
+     * Store AI insights in database
      */
     protected function storeInsights(Evaluation $evaluation, array $insights): void
     {
-        Log::info('📝 Attempting to store insights', [
-            'evaluation_id' => $evaluation->id,
-            'insights_summary' => substr($insights['summary'] ?? '', 0, 50)
+        Log::info('📝 Storing insights in database', [
+            'evaluation_id' => $evaluation->id
         ]);
         
         try {
-            // FIX: Calculate total eligible students and response rate here
-            $totalEligible = EventStudent::where('event_id', $evaluation->event_id)->count();
-            $responseRate = $totalEligible > 0 
-                ? round($evaluation->total_responses / $totalEligible, 2) 
-                : 0;
+            $result = AIAnalysis::updateOrCreate(
+                ['evaluation_id' => $evaluation->id],
+                [
+                    'summary' => $insights['summary'] ?? '',
+                    'strengths' => json_encode($insights['strengths'] ?? []),
+                    'weaknesses' => json_encode($insights['weaknesses'] ?? []),
+                    'recommendations' => json_encode($insights['recommendations'] ?? []),
+                    'feature_importance' => json_encode($insights['feature_importance'] ?? []),
+                    'sentiment_analysis' => json_encode($insights['sentiment_analysis'] ?? []),
+                    'what_if_analysis' => json_encode($insights['what_if_analysis'] ?? []),
+                    'predicted_satisfaction' => $insights['predicted_satisfaction'] ?? 0,
+                    'success_probability' => $insights['success_probability'] ?? 0,
+                    'category_breakdown' => json_encode($insights['category_breakdown'] ?? []),
+                    'response_rate' => $insights['response_rate'] ?? 0,
+                    'total_respondents' => $insights['total_respondents'] ?? 0,
+                    'analyzed_at' => now(),
+                ]
+            );
             
-            Log::info('📊 Response rate calculation', [
-                'total_eligible' => $totalEligible,
-                'total_responses' => $evaluation->total_responses,
-                'response_rate' => $responseRate
-            ]);
-            
-            // Prepare data for storage
-            $data = [
+            Log::info('✅ Insights stored successfully', [
                 'evaluation_id' => $evaluation->id,
-                'summary' => $insights['summary'] ?? 'No summary provided',
-                'strengths' => json_encode($insights['strengths'] ?? []),
-                'weaknesses' => json_encode($insights['weaknesses'] ?? []),
-                'recommendations' => json_encode($insights['recommendations'] ?? []),
-                'predicted_satisfaction' => $insights['predicted_satisfaction'] ?? 0,
-                'success_probability' => $insights['success_probability'] ?? 0,
-                'category_breakdown' => json_encode($insights['category_breakdown'] ?? []),
-                'response_rate' => $responseRate, // Use calculated value, not from insights
-                'total_respondents' => $evaluation->total_responses, // Use actual count
-                'analyzed_at' => now(),
-            ];
-            
-            Log::info('📦 Data prepared for storage', ['data' => $data]);
-            
-            // Check if record already exists
-            $existing = AIAnalysis::where('evaluation_id', $evaluation->id)->first();
-            
-            if ($existing) {
-                Log::info('🔄 Updating existing record', ['id' => $existing->id]);
-                $existing->update($data);
-                Log::info('✅ Existing record updated');
-            } else {
-                Log::info('➕ Creating new record');
-                $result = AIAnalysis::create($data);
-                Log::info('✅ New record created', ['id' => $result->id]);
-            }
-            
-            // Verify it was saved
-            $verify = AIAnalysis::where('evaluation_id', $evaluation->id)->first();
-            if ($verify) {
-                Log::info('✅ Verification successful', [
-                    'evaluation_id' => $evaluation->id,
-                    'analysis_id' => $verify->id,
-                    'response_rate' => $verify->response_rate
-                ]);
-            } else {
-                Log::error('❌ Verification FAILED - record not found after save');
-            }
+                'analysis_id' => $result->id
+            ]);
             
         } catch (\Exception $e) {
             Log::error('❌ Failed to store insights', [
                 'error' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
                 'trace' => $e->getTraceAsString()
             ]);
-            
-            // Try direct DB insert as fallback
-            try {
-                Log::info('🔄 Attempting direct DB insert...');
-                
-                $totalEligible = EventStudent::where('event_id', $evaluation->event_id)->count();
-                $responseRate = $totalEligible > 0 
-                    ? round($evaluation->total_responses / $totalEligible, 2) 
-                    : 0;
-                
-                DB::table('ai_analyses')->updateOrInsert(
-                    ['evaluation_id' => $evaluation->id],
-                    [
-                        'evaluation_id' => $evaluation->id,
-                        'summary' => $insights['summary'] ?? '',
-                        'strengths' => json_encode($insights['strengths'] ?? []),
-                        'weaknesses' => json_encode($insights['weaknesses'] ?? []),
-                        'recommendations' => json_encode($insights['recommendations'] ?? []),
-                        'predicted_satisfaction' => $insights['predicted_satisfaction'] ?? 0,
-                        'success_probability' => $insights['success_probability'] ?? 0,
-                        'category_breakdown' => json_encode($insights['category_breakdown'] ?? []),
-                        'response_rate' => $responseRate,
-                        'total_respondents' => $evaluation->total_responses,
-                        'analyzed_at' => now(),
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ]
-                );
-                Log::info('✅ Direct DB insert successful');
-            } catch (\Exception $e2) {
-                Log::error('❌ Direct DB insert failed', [
-                    'error' => $e2->getMessage()
-                ]);
-            }
         }
+    }
+    
+    /**
+     * Get insights for an evaluation
+     */
+    public function getInsights(Evaluation $evaluation): ?array
+    {
+        $analysis = AIAnalysis::where('evaluation_id', $evaluation->id)->first();
+        
+        if (!$analysis) {
+            return null;
+        }
+        
+        return [
+            'summary' => $analysis->summary,
+            'strengths' => json_decode($analysis->strengths, true),
+            'weaknesses' => json_decode($analysis->weaknesses, true),
+            'recommendations' => json_decode($analysis->recommendations, true),
+            'feature_importance' => json_decode($analysis->feature_importance, true),
+            'sentiment_analysis' => json_decode($analysis->sentiment_analysis, true),
+            'what_if_analysis' => json_decode($analysis->what_if_analysis, true),
+            'predicted_satisfaction' => $analysis->predicted_satisfaction,
+            'success_probability' => $analysis->success_probability,
+            'category_breakdown' => json_decode($analysis->category_breakdown, true),
+            'response_rate' => $analysis->response_rate,
+            'total_respondents' => $analysis->total_respondents,
+            'analyzed_at' => $analysis->analyzed_at,
+        ];
     }
     
     /**

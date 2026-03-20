@@ -1,5 +1,4 @@
 <?php
-// database/migrations/[timestamp]_create_evaluation_questions_table.php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -7,13 +6,13 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    public function up()
+    public function up(): void
     {
         Schema::create('evaluation_questions', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('evaluation_id');
-            $table->unsignedBigInteger('category_id')->nullable(); // null for comment sections
-            $table->string('question_text'); // e.g., "a. Timeliness of sending invites"
+            $table->unsignedBigInteger('category_id')->nullable();
+            $table->text('question_text');
             $table->enum('question_type', ['likert', 'comment'])->default('likert');
             $table->integer('order')->default(0);
             $table->boolean('is_required')->default(true);
@@ -24,7 +23,7 @@ return new class extends Migration
         });
     }
 
-    public function down()
+    public function down(): void
     {
         Schema::dropIfExists('evaluation_questions');
     }

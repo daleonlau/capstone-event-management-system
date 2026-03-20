@@ -20,7 +20,6 @@
             </svg>
             Edit
           </Link>
-          <!-- Mark as Finished Button -->
           <button 
             v-if="stats.can_be_finished"
             @click="confirmMarkFinished"
@@ -105,7 +104,39 @@
           </div>
           <div class="ml-3">
             <p class="text-sm text-purple-700">
-              <span class="font-medium">Event Finished!</span> This event has been marked as finished. You can now create evaluations and generate QR codes.
+              <span class="font-medium">Event Finished!</span> This event has been marked as finished. You can now request evaluation services.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Request Evaluation Button -->
+      <div v-if="event.approval_status === 'approved' && !hasEvaluationRequest && event.status !== 'Finished'" class="mt-4">
+        <button 
+          @click="openRequestModal"
+          class="w-full md:w-auto px-6 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition flex items-center justify-center gap-2"
+        >
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          Request Evaluation Service
+        </button>
+      </div>
+
+      <!-- Evaluation Request Status -->
+      <div v-if="hasEvaluationRequest" class="bg-blue-50 border-l-4 border-blue-500 rounded-xl p-4">
+        <div class="flex">
+          <div class="flex-shrink-0">
+            <svg class="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div class="ml-3">
+            <p class="text-sm text-blue-700">
+              <span class="font-medium">Evaluation Request Status:</span> 
+              <span v-if="evaluationRequestStatus === 'pending'">Your request is pending review by QUAMS.</span>
+              <span v-else-if="evaluationRequestStatus === 'processing'">QUAMS is now creating your evaluation form.</span>
+              <span v-else-if="evaluationRequestStatus === 'completed'">Evaluation form is ready! You can view results in the Evaluations section.</span>
             </p>
           </div>
         </div>
@@ -147,53 +178,6 @@
             <div class="bg-gray-50 rounded-xl p-4">
               <p class="text-sm text-gray-500">Event Fee</p>
               <p class="text-lg font-semibold text-gray-800">{{ event.payment === 'Payment' ? `₱${event.event_fee}` : 'Free' }}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Evaluation Section - Show when event is finished -->
-      <div v-if="event.status === 'Finished'" class="bg-white rounded-2xl shadow-lg p-6">
-        <h2 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-          <svg class="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          Event Evaluation
-        </h2>
-        
-        <div class="bg-gradient-to-r from-purple-50 to-purple-100 rounded-xl p-6">
-          <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <h3 class="font-medium text-gray-800 mb-1">Student Feedback Form</h3>
-              <p class="text-sm text-gray-600">
-                {{ stats.evaluations > 0 
-                  ? 'Evaluation form has been created for this event.' 
-                  : 'Create an evaluation form to gather feedback from students.' }}
-              </p>
-            </div>
-            
-            <div class="flex gap-3">
-              <Link
-                v-if="stats.evaluations > 0"
-                :href="`/president/evaluations/${stats.evaluation_id}`"
-                class="px-4 py-2 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition flex items-center gap-2"
-              >
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-                View Results
-              </Link>
-              
-              <Link
-                v-if="stats.evaluations === 0"
-                :href="`/president/evaluations/create?event_id=${event.id}`"
-                class="px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition flex items-center gap-2"
-              >
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                </svg>
-                Create Evaluation
-              </Link>
             </div>
           </div>
         </div>
@@ -369,6 +353,78 @@
         </div>
       </div>
 
+      <!-- Request Evaluation Modal -->
+      <Teleport to="body">
+        <div v-if="showRequestModal" class="fixed inset-0 z-50 overflow-y-auto">
+          <div class="fixed inset-0 bg-black/40 backdrop-blur-sm" @click="showRequestModal = false"></div>
+          <div class="flex min-h-full items-center justify-center p-4">
+            <div class="relative w-full max-w-2xl transform overflow-hidden rounded-2xl bg-white shadow-2xl transition-all">
+              <div class="bg-gradient-to-r from-purple-600 to-purple-700 px-6 py-4">
+                <div class="flex items-center justify-between">
+                  <h3 class="text-xl font-semibold text-white">Request Evaluation Service</h3>
+                  <button @click="showRequestModal = false" class="text-white/80 hover:text-white">
+                    <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <form @submit.prevent="submitRequest" class="p-6 space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Title of the Activity *</label>
+                  <input v-model="requestForm.title" type="text" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500" required />
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Date *</label>
+                    <input v-model="requestForm.activity_date" type="date" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500" required />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Venue *</label>
+                    <input v-model="requestForm.venue" type="text" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500" required />
+                  </div>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Name of the Speaker *</label>
+                  <input v-model="requestForm.speaker_name" type="text" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500" required />
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Topic/s *</label>
+                  <div v-for="(topic, index) in requestForm.topics" :key="index" class="flex gap-2 mb-2">
+                    <input v-model="requestForm.topics[index]" type="text" class="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500" required />
+                    <button type="button" @click="removeTopic(index)" v-if="requestForm.topics.length > 1" class="px-3 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200">Remove</button>
+                  </div>
+                  <button type="button" @click="addTopic" class="text-sm text-purple-600 hover:text-purple-700 mt-1">+ Add Topic</button>
+                </div>
+
+                <div>
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" v-model="requestForm.has_food" class="w-4 h-4 text-purple-600 rounded" />
+                    <span class="text-sm text-gray-700">Is there food?</span>
+                  </label>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Additional Notes (Optional)</label>
+                  <textarea v-model="requestForm.notes" rows="3" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500"></textarea>
+                </div>
+
+                <div class="flex justify-end gap-3 pt-4">
+                  <button type="button" @click="showRequestModal = false" class="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button>
+                  <button type="submit" class="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700" :disabled="requestForm.processing">
+                    {{ requestForm.processing ? 'Submitting...' : 'Submit Request' }}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </Teleport>
+
       <!-- Mark as Finished Confirmation Modal -->
       <Teleport to="body">
         <div v-if="showFinishedModal" class="fixed inset-0 z-50 overflow-y-auto">
@@ -386,18 +442,12 @@
                   Are you sure you want to mark <span class="font-semibold">{{ event.event_name }}</span> as finished?
                 </p>
                 <p class="text-xs text-gray-400 mb-6">
-                  Note: Collections can still continue after marking as finished. This will make the event available for evaluation creation and QR code generation.
+                  Note: Collections can still continue after marking as finished. This will make the event available for evaluation service requests.
                 </p>
                 <div class="flex justify-end gap-3">
-                  <button @click="showFinishedModal = false" 
-                          class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
-                    Cancel
-                  </button>
-                  <button @click="markAsFinished" 
-                          class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
-                          :disabled="finishedProcessing">
-                    <span v-if="finishedProcessing">Processing...</span>
-                    <span v-else>Mark as Finished</span>
+                  <button @click="showFinishedModal = false" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Cancel</button>
+                  <button @click="markAsFinished" class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700" :disabled="finishedProcessing">
+                    {{ finishedProcessing ? 'Processing...' : 'Mark as Finished' }}
                   </button>
                 </div>
               </div>
@@ -431,6 +481,18 @@ const props = defineProps({
   stats: {
     type: Object,
     default: () => ({})
+  },
+  hasEvaluationRequest: {
+    type: Boolean,
+    default: false
+  },
+  evaluationRequestStatus: {
+    type: String,
+    default: ''
+  },
+  evaluationRequest: {
+    type: Object,
+    default: null
   }
 });
 
@@ -441,6 +503,17 @@ const uploadForm = useForm({
 const documentFileName = ref('');
 const showFinishedModal = ref(false);
 const finishedProcessing = ref(false);
+const showRequestModal = ref(false);
+
+const requestForm = useForm({
+  title: '',
+  activity_date: '',
+  venue: '',
+  speaker_name: '',
+  topics: [''],
+  has_food: false,
+  notes: ''
+});
 
 function handleDocumentFile(e) {
   const file = e.target.files[0];
@@ -499,6 +572,29 @@ async function markAsFinished() {
   } finally {
     finishedProcessing.value = false;
   }
+}
+
+function addTopic() {
+  requestForm.topics.push('');
+}
+
+function removeTopic(index) {
+  requestForm.topics.splice(index, 1);
+}
+
+function openRequestModal() {
+  requestForm.reset();
+  requestForm.topics = [''];
+  showRequestModal.value = true;
+}
+
+function submitRequest() {
+  requestForm.post(`/president/events/${props.event.id}/request-evaluation`, {
+    onSuccess: () => {
+      showRequestModal.value = false;
+      router.reload();
+    }
+  });
 }
 
 function getDepartmentName(deptId) {
