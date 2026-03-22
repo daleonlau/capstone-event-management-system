@@ -250,9 +250,9 @@ class EvaluationController extends Controller
         $evaluation->load(['event', 'categories.questions', 'questions' => function ($q) {
             $q->where('question_type', 'comment');
         }]);
-
+    
         $evaluationRequest = EvaluationRequest::where('evaluation_id', $evaluation->id)->first();
-
+    
         $responses = EvaluationResponse::where('evaluation_id', $evaluation->id)->get();
         
         $stats = [];
@@ -287,7 +287,7 @@ class EvaluationController extends Controller
                 ];
             }
         }
-
+    
         $comments = [];
         $commentQuestions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
             ->where('question_type', 'comment')
@@ -306,9 +306,16 @@ class EvaluationController extends Controller
                 'responses' => $commentResponses
             ];
         }
-
+    
+        // Get AI insights with sentiment analysis data
         $aiInsights = AIAnalysis::where('evaluation_id', $evaluation->id)->first();
-
+        
+        // Parse sentiment analysis data
+        $sentimentData = [];
+        if ($aiInsights && $aiInsights->sentiment_analysis) {
+            $sentimentData = json_decode($aiInsights->sentiment_analysis, true);
+        }
+    
         return Inertia::render('Admin/Evaluations/Show', [
             'evaluation' => [
                 'id' => $evaluation->id,
@@ -355,15 +362,29 @@ class EvaluationController extends Controller
                 'strengths' => json_decode($aiInsights->strengths, true),
                 'weaknesses' => json_decode($aiInsights->weaknesses, true),
                 'recommendations' => json_decode($aiInsights->recommendations, true),
+                'feature_importance' => json_decode($aiInsights->feature_importance, true),
                 'predicted_satisfaction' => $aiInsights->predicted_satisfaction,
                 'success_probability' => $aiInsights->success_probability,
                 'category_breakdown' => json_decode($aiInsights->category_breakdown, true),
+                'response_rate' => $aiInsights->response_rate,
+                'total_respondents' => $aiInsights->total_respondents,
                 'analyzed_at' => $aiInsights->analyzed_at,
+                // Add sentiment data
+                'sentiment_score' => $sentimentData['sentiment_score'] ?? 0,
+                'positive_percentage' => $sentimentData['positive_percentage'] ?? 0,
+                'negative_percentage' => $sentimentData['negative_percentage'] ?? 0,
+                'neutral_percentage' => $sentimentData['neutral_percentage'] ?? 0,
+                'total_comments' => $sentimentData['total_comments'] ?? 0,
+                'common_themes' => $sentimentData['common_themes'] ?? [],
+                'positive_comments' => $sentimentData['positive_comments'] ?? [],
+                'negative_comments' => $sentimentData['negative_comments'] ?? [],
+                'neutral_comments' => $sentimentData['neutral_comments'] ?? [],
+                'what_if_optimistic' => json_decode($aiInsights->what_if_analysis, true)['optimistic'] ?? [],
+                'what_if_targeted' => json_decode($aiInsights->what_if_analysis, true)['targeted'] ?? [],
             ] : null,
             'canGenerateQR' => $evaluation->status === 'draft',
         ]);
     }
-
     public function edit(Evaluation $evaluation)
     {
         if ($evaluation->status !== 'draft') {
@@ -611,13 +632,50 @@ class EvaluationController extends Controller
         if ($evaluation->status !== 'closed') {
             return response()->json(['error' => 'Evaluation must be closed to generate insights.'], 400);
         }
-
+    
         try {
             $aiService = resolve(AIAnalysisService::class);
             $insights = $aiService->analyzeEvaluation($evaluation, true);
             
             if ($insights) {
-                return response()->json(['success' => true, 'message' => 'AI insights generated successfully!']);
+                // Fetch the newly created analysis to return full data
+                $analysis = AIAnalysis::where('evaluation_id', $evaluation->id)->first();
+                
+                // Get sentiment analysis data
+                $sentimentData = [];
+                if ($analysis && $analysis->sentiment_analysis) {
+                    $sentimentData = json_decode($analysis->sentiment_analysis, true);
+                }
+                
+                return response()->json([
+                    'success' => true, 
+                    'message' => 'AI insights generated successfully!',
+                    'data' => [
+                        'summary' => $analysis->summary,
+                        'strengths' => json_decode($analysis->strengths, true),
+                        'weaknesses' => json_decode($analysis->weaknesses, true),
+                        'recommendations' => json_decode($analysis->recommendations, true),
+                        'predicted_satisfaction' => $analysis->predicted_satisfaction,
+                        'success_probability' => $analysis->success_probability,
+                        'category_breakdown' => json_decode($analysis->category_breakdown, true),
+                        'feature_importance' => json_decode($analysis->feature_importance, true),
+                        'response_rate' => $analysis->response_rate,
+                        'total_respondents' => $analysis->total_respondents,
+                        'analyzed_at' => $analysis->analyzed_at,
+                        'sentiment_analysis' => [
+                            'positive_percentage' => $sentimentData['positive_percentage'] ?? 0,
+                            'negative_percentage' => $sentimentData['negative_percentage'] ?? 0,
+                            'neutral_percentage' => $sentimentData['neutral_percentage'] ?? 0,
+                            'total_comments' => $sentimentData['total_comments'] ?? 0,
+                            'positive_comments' => $sentimentData['positive_comments'] ?? [],
+                            'negative_comments' => $sentimentData['negative_comments'] ?? [],
+                            'neutral_comments' => $sentimentData['neutral_comments'] ?? [],
+                            'common_themes' => $sentimentData['common_themes'] ?? [],
+                        ],
+                        'what_if_optimistic' => json_decode($analysis->what_if_analysis, true)['optimistic'] ?? [],
+                        'what_if_targeted' => json_decode($analysis->what_if_analysis, true)['targeted'] ?? [],
+                    ]
+                ]);
             } else {
                 return response()->json(['error' => 'Failed to generate insights.'], 500);
             }
@@ -627,25 +685,46 @@ class EvaluationController extends Controller
     }
 
     public function getAIInsights(Evaluation $evaluation)
-    {
-        $analysis = AIAnalysis::where('evaluation_id', $evaluation->id)->first();
-        
-        if (!$analysis) {
-            return response()->json(null, 404);
-        }
-        
-        return response()->json([
-            'summary' => $analysis->summary,
-            'strengths' => json_decode($analysis->strengths, true),
-            'weaknesses' => json_decode($analysis->weaknesses, true),
-            'recommendations' => json_decode($analysis->recommendations, true),
-            'predicted_satisfaction' => $analysis->predicted_satisfaction,
-            'success_probability' => $analysis->success_probability,
-            'category_breakdown' => json_decode($analysis->category_breakdown, true),
-            'analyzed_at' => $analysis->analyzed_at,
-        ]);
+{
+    $analysis = AIAnalysis::where('evaluation_id', $evaluation->id)->first();
+    
+    if (!$analysis) {
+        return response()->json(null, 404);
     }
-
+    
+    // Get sentiment analysis data
+    $sentimentData = [];
+    if ($analysis->sentiment_analysis) {
+        $sentimentData = json_decode($analysis->sentiment_analysis, true);
+    }
+    
+    return response()->json([
+        'summary' => $analysis->summary,
+        'strengths' => json_decode($analysis->strengths, true),
+        'weaknesses' => json_decode($analysis->weaknesses, true),
+        'recommendations' => json_decode($analysis->recommendations, true),
+        'predicted_satisfaction' => $analysis->predicted_satisfaction,
+        'success_probability' => $analysis->success_probability,
+        'category_breakdown' => json_decode($analysis->category_breakdown, true),
+        'feature_importance' => json_decode($analysis->feature_importance, true),
+        'response_rate' => $analysis->response_rate,
+        'total_respondents' => $analysis->total_respondents,
+        'analyzed_at' => $analysis->analyzed_at,
+        // Add sentiment analysis data
+        'sentiment_analysis' => [
+            'positive_percentage' => $sentimentData['positive_percentage'] ?? 0,
+            'negative_percentage' => $sentimentData['negative_percentage'] ?? 0,
+            'neutral_percentage' => $sentimentData['neutral_percentage'] ?? 0,
+            'total_comments' => $sentimentData['total_comments'] ?? 0,
+            'positive_comments' => $sentimentData['positive_comments'] ?? [],
+            'negative_comments' => $sentimentData['negative_comments'] ?? [],
+            'neutral_comments' => $sentimentData['neutral_comments'] ?? [],
+            'common_themes' => $sentimentData['common_themes'] ?? [],
+        ],
+        'what_if_optimistic' => json_decode($analysis->what_if_analysis, true)['optimistic'] ?? [],
+        'what_if_targeted' => json_decode($analysis->what_if_analysis, true)['targeted'] ?? [],
+    ]);
+}
     public function bulkUpload(Request $request, Evaluation $evaluation)
     {
         if ($evaluation->status !== 'active') {
@@ -1237,4 +1316,99 @@ private function getFormTypeName($formType)
         'form_type' => $this->getFormTypeName($evaluation->form_type),
     ]);
 }
+
+/**
+ * Get raw student responses for export/view
+ */
+/**
+ * Get raw student responses for export/view
+ */
+public function getRawResponses(Evaluation $evaluation)
+{
+    try {
+        $responses = EvaluationResponse::where('evaluation_id', $evaluation->id)
+            ->orderBy('created_at', 'desc')
+            ->get();
+        
+        if ($responses->isEmpty()) {
+            return response()->json([]);
+        }
+        
+        // Get all questions for headers
+        $likertQuestions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
+            ->where('question_type', 'likert')
+            ->orderBy('order')
+            ->get();
+        
+        $commentQuestions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
+            ->where('question_type', 'comment')
+            ->orderBy('order')
+            ->get();
+        
+        $formattedResponses = [];
+        
+        foreach ($responses as $response) {
+            $row = [];
+            
+            // Personal Information - Use the name field directly from the response
+            $row['Student ID'] = $response->student_id ?? 'N/A';
+            $row['Student Name'] = $response->name ?? 'N/A';
+            $row['Email'] = $response->email ?? 'N/A';
+            $row['Age'] = $response->age ?? 'N/A';
+            $row['Sex'] = $response->sex ?? 'N/A';
+            $row['Department'] = $response->department ?? 'N/A';
+            $row['Course'] = $response->course ?? 'N/A';
+            $row['Year Level'] = $response->year_level ?? 'N/A';
+            $row['Title Prefix'] = $response->title_prefix ?? 'N/A';
+            $row['Respondent Type'] = $response->respondent_type ?? 'N/A';
+            $row['Agency/Office'] = $response->agency_office ?? 'N/A';
+            $row['Position'] = $response->position ?? 'N/A';
+            
+            // Add speaker fields if present
+            if (isset($response->speaker_topic) && $response->speaker_topic) {
+                $row['Speaker Topic'] = $response->speaker_topic;
+            }
+            if (isset($response->speaker_name) && $response->speaker_name) {
+                $row['Speaker Name'] = $response->speaker_name;
+            }
+            
+            // Likert Responses
+            $likertResponses = is_string($response->likert_responses) 
+                ? json_decode($response->likert_responses, true) 
+                : ($response->likert_responses ?? []);
+            
+            foreach ($likertQuestions as $question) {
+                $questionText = $question->question_text;
+                $row[$questionText] = $likertResponses[$question->id] ?? '—';
+            }
+            
+            // Comment Responses
+            $commentResponses = is_string($response->comment_responses) 
+                ? json_decode($response->comment_responses, true) 
+                : ($response->comment_responses ?? []);
+            
+            foreach ($commentQuestions as $question) {
+                $questionText = $question->question_text;
+                $row[$questionText] = $commentResponses[$question->id] ?? '—';
+            }
+            
+            // Submission metadata
+            $row['Submitted At'] = $response->created_at ? $response->created_at->format('Y-m-d H:i:s') : 'N/A';
+            
+            $formattedResponses[] = $row;
+        }
+        
+        return response()->json($formattedResponses);
+        
+    } catch (\Exception $e) {
+        Log::error('Failed to fetch raw responses', [
+            'evaluation_id' => $evaluation->id,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return response()->json(['error' => 'Failed to fetch responses: ' . $e->getMessage()], 500);
+    }
+}
+
 }

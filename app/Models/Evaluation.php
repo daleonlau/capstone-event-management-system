@@ -23,6 +23,9 @@ class Evaluation extends Model
         'qr_code_path',
         'qr_code_url',
         'total_responses',
+        'report_generated_at',
+        'report_sent_at',
+        'report_path',
     ];
 
     protected $casts = [

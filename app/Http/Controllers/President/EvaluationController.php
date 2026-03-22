@@ -113,11 +113,54 @@ class EvaluationController extends Controller
 
         $aiInsights = \App\Models\AIAnalysis::where('evaluation_id', $evaluation->id)->first();
 
+        // Calculate category breakdown and feature importance from AI insights if available
+        $categoryBreakdown = [];
+        $featureImportance = [];
+        $sentimentAnalysis = [];
+        $whatIfTargeted = [];
+        $whatIfOptimistic = [];
+
+        if ($aiInsights) {
+            // Get category scores from the AI analysis
+            $categoryBreakdown = json_decode($aiInsights->category_breakdown, true) ?? [];
+            
+            // Get feature importance
+            $featureImportance = json_decode($aiInsights->feature_importance, true) ?? [];
+            
+            // Get sentiment analysis data
+            $sentimentAnalysis = json_decode($aiInsights->sentiment_analysis, true) ?? [];
+            
+            // Get what-if analysis data
+            $whatIfData = json_decode($aiInsights->what_if_analysis, true) ?? [];
+            $whatIfTargeted = $whatIfData['targeted'] ?? [];
+            $whatIfOptimistic = $whatIfData['optimistic'] ?? [];
+            
+            // If category breakdown is empty, calculate it from the category scores
+            if (empty($categoryBreakdown) && $evaluation->categories) {
+                $categoryScores = [];
+                foreach ($evaluation->categories as $category) {
+                    $totalScore = 0;
+                    $questionCount = 0;
+                    foreach ($category->questions as $question) {
+                        if (isset($stats[$question->id]['average'])) {
+                            $totalScore += $stats[$question->id]['average'];
+                            $questionCount++;
+                        }
+                    }
+                    if ($questionCount > 0) {
+                        $categoryScores[$category->category_name] = round($totalScore / $questionCount, 2);
+                    }
+                }
+                $categoryBreakdown = $categoryScores;
+            }
+        }
+
         return Inertia::render('President/Evaluations/Show', [
             'evaluation' => [
                 'id' => $evaluation->id,
                 'title' => $evaluation->title,
                 'status' => $evaluation->status,
+                'qr_code_url' => $evaluation->qr_code_url ?? route('evaluations.form', $evaluation->id),
                 'event' => [
                     'id' => $evaluation->event->id,
                     'event_name' => $evaluation->event->event_name,
@@ -152,7 +195,14 @@ class EvaluationController extends Controller
                 'recommendations' => json_decode($aiInsights->recommendations, true),
                 'predicted_satisfaction' => $aiInsights->predicted_satisfaction,
                 'success_probability' => $aiInsights->success_probability,
+                'response_rate' => $aiInsights->response_rate,
+                'total_respondents' => $aiInsights->total_respondents,
                 'analyzed_at' => $aiInsights->analyzed_at,
+                'category_breakdown' => $categoryBreakdown,
+                'feature_importance' => $featureImportance,
+                'sentiment_analysis' => $sentimentAnalysis,
+                'what_if_targeted' => $whatIfTargeted,
+                'what_if_optimistic' => $whatIfOptimistic,
             ] : null,
         ]);
     }

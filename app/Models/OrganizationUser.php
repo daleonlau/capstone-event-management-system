@@ -35,6 +35,14 @@ class OrganizationUser extends Authenticatable
         return $this->belongsTo(User::class, 'organization_id');
     }
 
+    /**
+     * Get the organization name directly
+     */
+    public function getOrganizationNameAttribute()
+    {
+        return $this->organization ? $this->organization->name : 'N/A';
+    }
+
     public function eventApprovals()
     {
         return $this->hasMany(EventApproval::class, 'approved_by');

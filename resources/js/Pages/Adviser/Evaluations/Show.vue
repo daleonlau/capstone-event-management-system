@@ -245,7 +245,7 @@
               </div>
             </div>
 
-            <!-- Sentiment Analysis Dashboard with Pagination -->
+            <!-- Sentiment Analysis Dashboard -->
             <div class="bg-white rounded-2xl shadow-lg p-6">
               <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
                 <span class="w-8 h-8 bg-pink-100 rounded-lg flex items-center justify-center">
@@ -296,7 +296,7 @@
                 </div>
               </div>
 
-              <!-- Positive Comments with Pagination -->
+              <!-- Positive Comments List -->
               <div v-if="getSentimentData().positive_comments?.length > 0" class="mb-6">
                 <h4 class="font-semibold text-green-700 mb-3 flex items-center gap-2">
                   <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -304,36 +304,18 @@
                   </svg>
                   ✅ Positive Comments ({{ getSentimentData().positive_comments.length }})
                 </h4>
-                <div class="space-y-2">
-                  <div v-for="(comment, idx) in paginatedPositiveComments" :key="idx"
+                <div class="max-h-64 overflow-y-auto space-y-2">
+                  <div v-for="(comment, idx) in getSentimentData().positive_comments.slice(0, 20)" :key="idx"
                        class="p-3 bg-green-50 rounded-lg border border-green-200">
                     <p class="text-green-800">“{{ comment }}”</p>
                   </div>
-                </div>
-                
-                <!-- Pagination Controls for Positive Comments -->
-                <div v-if="positiveTotalPages > 1" class="flex justify-center items-center gap-2 mt-4">
-                  <button 
-                    @click="positiveCurrentPage--"
-                    :disabled="positiveCurrentPage === 1"
-                    class="px-3 py-1 text-sm bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                  >
-                    Previous
-                  </button>
-                  <span class="text-sm text-gray-600">
-                    Page {{ positiveCurrentPage }} of {{ positiveTotalPages }}
-                  </span>
-                  <button 
-                    @click="positiveCurrentPage++"
-                    :disabled="positiveCurrentPage === positiveTotalPages"
-                    class="px-3 py-1 text-sm bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                  >
-                    Next
-                  </button>
+                  <p v-if="getSentimentData().positive_comments.length > 20" class="text-xs text-gray-500 text-center">
+                    +{{ getSentimentData().positive_comments.length - 20 }} more positive comments
+                  </p>
                 </div>
               </div>
 
-              <!-- Negative Comments with Pagination -->
+              <!-- Negative Comments List -->
               <div v-if="getSentimentData().negative_comments?.length > 0" class="mb-6">
                 <h4 class="font-semibold text-red-700 mb-3 flex items-center gap-2">
                   <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -341,36 +323,18 @@
                   </svg>
                   ❌ Negative Comments ({{ getSentimentData().negative_comments.length }})
                 </h4>
-                <div class="space-y-2">
-                  <div v-for="(comment, idx) in paginatedNegativeComments" :key="idx"
+                <div class="max-h-64 overflow-y-auto space-y-2">
+                  <div v-for="(comment, idx) in getSentimentData().negative_comments.slice(0, 20)" :key="idx"
                        class="p-3 bg-red-50 rounded-lg border border-red-200">
                     <p class="text-red-800">“{{ comment }}”</p>
                   </div>
-                </div>
-                
-                <!-- Pagination Controls for Negative Comments -->
-                <div v-if="negativeTotalPages > 1" class="flex justify-center items-center gap-2 mt-4">
-                  <button 
-                    @click="negativeCurrentPage--"
-                    :disabled="negativeCurrentPage === 1"
-                    class="px-3 py-1 text-sm bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                  >
-                    Previous
-                  </button>
-                  <span class="text-sm text-gray-600">
-                    Page {{ negativeCurrentPage }} of {{ negativeTotalPages }}
-                  </span>
-                  <button 
-                    @click="negativeCurrentPage++"
-                    :disabled="negativeCurrentPage === negativeTotalPages"
-                    class="px-3 py-1 text-sm bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                  >
-                    Next
-                  </button>
+                  <p v-if="getSentimentData().negative_comments.length > 20" class="text-xs text-gray-500 text-center">
+                    +{{ getSentimentData().negative_comments.length - 20 }} more negative comments
+                  </p>
                 </div>
               </div>
 
-              <!-- Neutral Comments with Pagination -->
+              <!-- Neutral Comments List -->
               <div v-if="getSentimentData().neutral_comments?.length > 0">
                 <h4 class="font-semibold text-gray-700 mb-3 flex items-center gap-2">
                   <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -378,32 +342,14 @@
                   </svg>
                   😐 Neutral Comments ({{ getSentimentData().neutral_comments.length }})
                 </h4>
-                <div class="space-y-2">
-                  <div v-for="(comment, idx) in paginatedNeutralComments" :key="idx"
+                <div class="max-h-48 overflow-y-auto space-y-2">
+                  <div v-for="(comment, idx) in getSentimentData().neutral_comments.slice(0, 10)" :key="idx"
                        class="p-3 bg-gray-50 rounded-lg border border-gray-200">
                     <p class="text-gray-700">“{{ comment }}”</p>
                   </div>
-                </div>
-                
-                <!-- Pagination Controls for Neutral Comments -->
-                <div v-if="neutralTotalPages > 1" class="flex justify-center items-center gap-2 mt-4">
-                  <button 
-                    @click="neutralCurrentPage--"
-                    :disabled="neutralCurrentPage === 1"
-                    class="px-3 py-1 text-sm bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                  >
-                    Previous
-                  </button>
-                  <span class="text-sm text-gray-600">
-                    Page {{ neutralCurrentPage }} of {{ neutralTotalPages }}
-                  </span>
-                  <button 
-                    @click="neutralCurrentPage++"
-                    :disabled="neutralCurrentPage === neutralTotalPages"
-                    class="px-3 py-1 text-sm bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                  >
-                    Next
-                  </button>
+                  <p v-if="getSentimentData().neutral_comments.length > 10" class="text-xs text-gray-500 text-center">
+                    +{{ getSentimentData().neutral_comments.length - 10 }} more neutral comments
+                  </p>
                 </div>
               </div>
 
@@ -721,44 +667,10 @@ const props = defineProps({
   }
 });
 
-// Pagination state for comments
-const COMMENTS_PER_PAGE = 10;
-
-const positiveCommentsList = ref([]);
-const negativeCommentsList = ref([]);
-const neutralCommentsList = ref([]);
-
-const positiveCurrentPage = ref(1);
-const negativeCurrentPage = ref(1);
-const neutralCurrentPage = ref(1);
-
-// Computed paginated comments
-const paginatedPositiveComments = computed(() => {
-  const start = (positiveCurrentPage.value - 1) * COMMENTS_PER_PAGE;
-  const end = start + COMMENTS_PER_PAGE;
-  return positiveCommentsList.value.slice(start, end);
-});
-
-const paginatedNegativeComments = computed(() => {
-  const start = (negativeCurrentPage.value - 1) * COMMENTS_PER_PAGE;
-  const end = start + COMMENTS_PER_PAGE;
-  return negativeCommentsList.value.slice(start, end);
-});
-
-const paginatedNeutralComments = computed(() => {
-  const start = (neutralCurrentPage.value - 1) * COMMENTS_PER_PAGE;
-  const end = start + COMMENTS_PER_PAGE;
-  return neutralCommentsList.value.slice(start, end);
-});
-
-const positiveTotalPages = computed(() => Math.ceil(positiveCommentsList.value.length / COMMENTS_PER_PAGE));
-const negativeTotalPages = computed(() => Math.ceil(negativeCommentsList.value.length / COMMENTS_PER_PAGE));
-const neutralTotalPages = computed(() => Math.ceil(neutralCommentsList.value.length / COMMENTS_PER_PAGE));
-
 const backUrl = computed(() => {
   const userRole = usePage().props.auth?.user?.role;
-  if (userRole === 'president') {
-    return '/president/evaluations';
+  if (userRole === 'adviser') {
+    return '/adviser/evaluations';
   }
   return '/president/evaluations';
 });
@@ -778,29 +690,6 @@ const totalQuestions = computed(() => {
   }
   return count;
 });
-
-// Initialize comment lists from AI insights
-watch(() => props.aiInsights, (newInsights) => {
-  if (newInsights?.sentiment_analysis) {
-    positiveCommentsList.value = newInsights.sentiment_analysis.positive_comments || [];
-    negativeCommentsList.value = newInsights.sentiment_analysis.negative_comments || [];
-    neutralCommentsList.value = newInsights.sentiment_analysis.neutral_comments || [];
-    
-    // Reset pagination when data changes
-    positiveCurrentPage.value = 1;
-    negativeCurrentPage.value = 1;
-    neutralCurrentPage.value = 1;
-  } else if (newInsights) {
-    // Fallback for older data structure
-    positiveCommentsList.value = newInsights.positive_comments || [];
-    negativeCommentsList.value = newInsights.negative_comments || [];
-    neutralCommentsList.value = newInsights.neutral_comments || [];
-    
-    positiveCurrentPage.value = 1;
-    negativeCurrentPage.value = 1;
-    neutralCurrentPage.value = 1;
-  }
-}, { immediate: true });
 
 function formatDate(date) {
   if (!date) return '';

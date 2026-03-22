@@ -78,7 +78,7 @@
                 class="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition flex items-center gap-2"
               >
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636" />
                 </svg>
                 Close Evaluation
               </button>
@@ -131,7 +131,7 @@
               </h2>
             </div>
             <div class="p-6">
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div class="grid grid-cols-1 md:grid-cols-6 gap-6">
                 <div>
                   <p class="text-sm text-gray-500">Title of Event</p>
                   <p class="font-medium text-gray-800">{{ evaluation.customizations.original_title || evaluation.event.event_name }}</p>
@@ -144,8 +144,8 @@
                   <p class="text-sm text-gray-500">Venue</p>
                   <p class="font-medium text-gray-800">{{ evaluation.customizations.venue || 'Not specified' }}</p>
                 </div>
-              </div>
-              <div v-if="evaluation.customizations.speaker_name" class="mt-4">
+
+                <div v-if="evaluation.customizations.speaker_name" class="mt-4">
                 <p class="text-sm text-gray-500">Resource Speaker</p>
                 <p class="font-medium text-gray-800">{{ evaluation.customizations.speaker_name }}</p>
               </div>
@@ -162,6 +162,8 @@
                 <p class="text-sm text-gray-500">Food Service</p>
                 <p class="font-medium text-gray-800">{{ evaluation.customizations.has_food ? 'With Food' : 'No Food' }}</p>
               </div>
+              </div>
+              
             </div>
           </div>
   
@@ -246,6 +248,11 @@
                         class="px-4 py-2 border-b-2 font-medium transition">
                   AI Insights
                 </button>
+                <button @click="activeTab = 'rawdata'" 
+                        :class="activeTab === 'rawdata' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-500'"
+                        class="px-4 py-2 border-b-2 font-medium transition">
+                  Raw Data
+                </button>
               </nav>
             </div>
             
@@ -315,137 +322,23 @@
               
               <!-- AI Insights View -->
               <div v-if="activeTab === 'insights'">
-                <div v-if="aiInsights" class="space-y-6">
-                  <!-- Executive Summary -->
-                  <div class="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-2xl shadow-lg p-6 text-white">
-                    <div class="flex items-center gap-3 mb-3">
-                      <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                      </svg>
-                      <h2 class="text-xl font-bold">AI-Generated Event Insights</h2>
-                    </div>
-                    <p class="text-lg">{{ aiInsights.summary }}</p>
-                    <p class="text-sm text-purple-200 mt-2">
-                      Analyzed: {{ formatDate(aiInsights.analyzed_at) }}
-                    </p>
-                  </div>
+                <AIInsights 
+                  :evaluation-id="evaluation.id" 
+                  :total-responses="evaluation.responses_count"
+                  :stats="stats"
+                  :comments="comments"
+                  ref="aiInsightsComponent"
+                  @insights-loaded="handleInsightsLoaded"
+                />
+              </div>
   
-                  <!-- Key Metrics -->
-                  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div class="bg-white rounded-xl shadow-lg p-4">
-                      <p class="text-sm text-gray-500 mb-1">Predicted Satisfaction</p>
-                      <div class="flex items-end gap-2">
-                        <span class="text-3xl font-bold" :class="getSatisfactionColor(aiInsights.predicted_satisfaction)">
-                          {{ aiInsights.predicted_satisfaction }}
-                        </span>
-                        <span class="text-gray-400">/5.0</span>
-                      </div>
-                    </div>
-                    <div class="bg-white rounded-xl shadow-lg p-4">
-                      <p class="text-sm text-gray-500 mb-1">Success Probability</p>
-                      <div class="flex items-end gap-2">
-                        <span class="text-3xl font-bold text-blue-600">{{ (aiInsights.success_probability * 100).toFixed(0) }}%</span>
-                      </div>
-                    </div>
-                    <div class="bg-white rounded-xl shadow-lg p-4">
-                      <p class="text-sm text-gray-500 mb-1">Response Rate</p>
-                      <div class="flex items-end gap-2">
-                        <span class="text-3xl font-bold" :class="getResponseRateColor(aiInsights.response_rate)">
-                          {{ (aiInsights.response_rate * 100).toFixed(1) }}%
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-  
-                  <!-- Category Breakdown -->
-                  <div v-if="aiInsights.category_breakdown" class="bg-white rounded-2xl shadow-lg p-6">
-                    <h3 class="text-lg font-semibold text-gray-800 mb-4">📊 Category Performance</h3>
-                    <div class="space-y-3">
-                      <div v-for="(score, category) in aiInsights.category_breakdown" :key="category"
-                           class="flex items-center gap-3">
-                        <span class="w-48 text-sm text-gray-600">{{ formatCategoryName(category) }}</span>
-                        <div class="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                          <div class="h-full rounded-full transition-all"
-                               :class="getScoreBarColor(score)"
-                               :style="{ width: (score / 5 * 100) + '%' }">
-                          </div>
-                        </div>
-                        <span class="text-sm font-medium" :class="getScoreColor(score)">
-                          {{ score.toFixed(1) }}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-  
-                  <!-- Strengths & Weaknesses -->
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div class="bg-white rounded-2xl shadow-lg p-6">
-                      <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                        <span class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                          <svg class="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                          </svg>
-                        </span>
-                        ✅ Event Strengths
-                      </h3>
-                      <ul class="space-y-2">
-                        <li v-for="(strength, index) in aiInsights.strengths" :key="index" 
-                            class="flex items-start gap-2 text-green-700">
-                          <span class="text-green-600">●</span>
-                          <span>{{ strength }}</span>
-                        </li>
-                        <li v-if="!aiInsights.strengths?.length" class="text-gray-400 italic">No specific strengths identified</li>
-                      </ul>
-                    </div>
-  
-                    <div class="bg-white rounded-2xl shadow-lg p-6">
-                      <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                        <span class="w-8 h-8 bg-yellow-100 rounded-lg flex items-center justify-center">
-                          <svg class="w-5 h-5 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                          </svg>
-                        </span>
-                        ⚠️ Areas for Improvement
-                      </h3>
-                      <ul class="space-y-2">
-                        <li v-for="(weakness, index) in aiInsights.weaknesses" :key="index" 
-                            class="flex items-start gap-2 text-yellow-700">
-                          <span class="text-yellow-600">●</span>
-                          <span>{{ weakness }}</span>
-                        </li>
-                        <li v-if="!aiInsights.weaknesses?.length" class="text-gray-400 italic">No areas for improvement identified</li>
-                      </ul>
-                    </div>
-                  </div>
-  
-                  <!-- Recommendations -->
-                  <div class="bg-white rounded-2xl shadow-lg p-6">
-                    <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                      <span class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                        <svg class="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                        </svg>
-                      </span>
-                      💡 AI Recommendations
-                    </h3>
-                    <ul class="space-y-3">
-                      <li v-for="(rec, index) in aiInsights.recommendations" :key="index" 
-                          class="p-3 bg-blue-50 rounded-lg text-blue-800">
-                        {{ rec }}
-                      </li>
-                      <li v-if="!aiInsights.recommendations?.length" class="text-gray-400 italic">No recommendations available</li>
-                    </ul>
-                  </div>
-                </div>
-  
-                <div v-else class="bg-white rounded-2xl shadow-lg p-12 text-center">
-                  <svg class="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                  </svg>
-                  <h3 class="text-lg font-medium text-gray-900 mb-2">No AI Insights Yet</h3>
-                  <p class="text-gray-500">Click "Generate AI Insights" to analyze the responses.</p>
-                  <p class="text-sm text-gray-400 mt-2">AI analysis requires at least 75% response rate or can be forced.</p>
-                </div>
+              <!-- Raw Data View -->
+              <div v-if="activeTab === 'rawdata'">
+                <RawData 
+                  :evaluation-id="evaluation.id"
+                  :evaluation="evaluation"
+                  ref="rawDataComponent"
+                />
               </div>
             </div>
           </div>
@@ -502,6 +395,8 @@
   import { Link, router } from '@inertiajs/vue3';
   import AdminLayout from '@/Layouts/AdminLayout.vue';
   import BulkUpload from './BulkUpload.vue';
+  import AIInsights from './AIINsights.vue';
+  import RawData from './RawData.vue';
   import axios from 'axios';
   
   const props = defineProps({
@@ -532,6 +427,8 @@
   const showDeleteModal = ref(false);
   const generatingInsights = ref(false);
   const toast = ref({ show: false, message: '', type: 'success', bgClass: '' });
+  const aiInsightsComponent = ref(null);
+  const rawDataComponent = ref(null);
   
   const totalQuestions = computed(() => {
     let count = 0;
@@ -554,45 +451,6 @@
     return types[formType] || formType;
   }
   
-  function formatCategoryName(categoryKey) {
-    const names = {
-      info_timeliness: 'Information Timeliness',
-      info_adequacy: 'Information Adequacy',
-      design_program: 'Program Design',
-      design_relevance: 'Content Relevance',
-      design_pacing: 'Event Pacing',
-      outcomes_attendance: 'Attendance',
-      outcomes_participation: 'Participation',
-      outcomes_interaction: 'Interaction',
-      outcomes_teamwork: 'Teamwork',
-      outcomes_timeliness: 'Timeliness and Orderliness',
-      outcomes_awarding: 'Execution of Awarding',
-      secretariat_sensitivity: 'Secretariat Sensitivity',
-      secretariat_management: 'Secretariat Management',
-      secretariat_communication: 'Communication',
-      facilities_appearance: 'Facilities Appearance',
-      facilities_cleanliness: 'Cleanliness and Orderliness',
-      facilities_equipment: 'Equipment Quality',
-      facilities_temperature: 'Room Temperature and Ventilation',
-      facilities_av_equipment: 'Audio-Visual Equipment',
-      facilities_suitability: 'Venue Suitability',
-      food_quality: 'Food Quality',
-      food_presentation: 'Food Presentation',
-      food_timeliness: 'Food Timeliness',
-      food_service: 'Food Service',
-      food_sufficiency: 'Food Sufficiency',
-      food_quantity: 'Food Quantity',
-      speaker_methods: 'Speaker Methods',
-      speaker_mastery: 'Speaker Mastery',
-      speaker_engagement: 'Speaker Engagement',
-      speaker_relevance: 'Speaker Relevance',
-      traffic_management: 'Traffic Management',
-      traffic_signs: 'Signs and Instructions',
-      traffic_safety: 'Traffic Safety'
-    };
-    return names[categoryKey] || categoryKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-  }
-  
   function formatDate(date) {
     if (!date) return '';
     return new Date(date).toLocaleDateString('en-US', {
@@ -602,28 +460,6 @@
       hour: '2-digit',
       minute: '2-digit'
     });
-  }
-  
-  function getSatisfactionColor(score) {
-    if (score >= 4) return 'text-green-600';
-    if (score >= 3) return 'text-yellow-600';
-    return 'text-red-600';
-  }
-  
-  function getResponseRateColor(rate) {
-    return rate >= 0.75 ? 'text-green-600' : 'text-yellow-600';
-  }
-  
-  function getScoreColor(score) {
-    if (score >= 4) return 'text-green-600';
-    if (score >= 3) return 'text-yellow-600';
-    return 'text-red-600';
-  }
-  
-  function getScoreBarColor(score) {
-    if (score >= 4) return 'bg-green-500';
-    if (score >= 3) return 'bg-yellow-500';
-    return 'bg-red-500';
   }
   
   function showToast(message, type = 'success') {
@@ -646,6 +482,10 @@
   function handleUploadComplete(data) {
     showToast('✅ CSV uploaded successfully! Responses count updated.', 'success');
     setTimeout(() => router.reload(), 2000);
+  }
+  
+  function handleInsightsLoaded(insights) {
+    console.log('AI Insights loaded:', insights);
   }
   
   async function activateAndGenerateQR() {
@@ -719,6 +559,9 @@
       const response = await axios.post(`/admin/evaluations/${props.evaluation.id}/generate-insights`);
       if (response.data.success) {
         showToast('✅ AI insights generated successfully!', 'success');
+        if (aiInsightsComponent.value) {
+          await aiInsightsComponent.value.generateInsights();
+        }
         setTimeout(() => router.reload(), 1500);
       } else {
         showToast(response.data.error || 'Failed to generate insights', 'error');

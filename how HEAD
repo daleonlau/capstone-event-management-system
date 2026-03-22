@@ -1,0 +1,59 @@
+[33mcommit b83606654b59988ff0dc7fface1a83e88e300a9d[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m
+Author: daleonlau <laurencedaleon64@gmail.com>
+Date:   Fri Mar 20 22:12:57 2026 +0800
+
+    updated first gikan mis quams nya taman nani sya sa before ko mag update sa ai service
+
+ ai-service/app/__pycache__/main.cpython-313.pyc    |  Bin [31m11934[m -> [32m28850[m bytes
+ ai-service/app/main.py                             |  755 [32m+++++++++[m[31m---[m
+ ai-service/models/feature_columns.json             |    1 [31m-[m
+ ai-service/models/feature_importance.csv           |   24 [31m-[m
+ ai-service/models/label_encoder.pkl                |  Bin [31m0[m -> [32m505[m bytes
+ ai-service/models/logistic_model.pkl               |  Bin [31m0[m -> [32m927[m bytes
+ ai-service/models/metadata.json                    |   37 [32m+[m[31m-[m
+ ai-service/models/rf_classifier.pkl                |  Bin [31m1107209[m -> [32m0[m bytes
+ ai-service/models/rf_regressor.pkl                 |  Bin [31m2348257[m -> [32m0[m bytes
+ ai-service/models/sentiment_model.pkl              |  Bin [31m0[m -> [32m927[m bytes
+ ai-service/models/vectorizer.pkl                   |  Bin [31m0[m -> [32m931[m bytes
+ ai-service/requirements.txt                        |   17 [32m+[m[31m-[m
+ ai-service/sample_dataset.csv                      |   15 [32m+[m
+ ai-service/train_model.py                          |  220 [31m----[m
+ ai-service/train_sentiment_model.py                |  314 [32m+++++[m
+ .../Controllers/Admin/EvaluationController.php     | 1240 [32m++++++++++++++++++++[m
+ .../Controllers/President/EvaluationController.php |  963 [32m++[m[31m-------------[m
+ app/Http/Controllers/President/EventController.php |   78 [32m+[m[31m-[m
+ .../Controllers/Public/EvaluationController.php    |  268 [32m+++[m[31m--[m
+ app/Http/kernel.php                                |    1 [31m-[m
+ app/Imports/EvaluationResponsesImport.php          |  316 [32m++++[m[31m-[m
+ app/Models/AIAnalysis.php                          |    8 [32m+[m[31m-[m
+ app/Models/Evaluation.php                          |   12 [32m+[m[31m-[m
+ app/Models/EvaluationRequest.php                   |   61 [32m+[m
+ app/Models/EvaluationResponse.php                  |    8 [32m+[m
+ app/Models/Event.php                               |   77 [32m+[m[31m-[m
+ app/Services/AIAnalysisService.php                 |  227 [32m++[m[31m--[m
+ .../2026_02_28_072026_create_evaluations_table.php |   17 [32m+[m[31m-[m
+ ...8_072028_create_evaluation_categories_table.php |    7 [32m+[m[31m-[m
+ ...28_072102_create_evaluation_questions_table.php |    9 [32m+[m[31m-[m
+ ...28_072137_create_evaluation_responses_table.php |   26 [32m+[m[31m-[m
+ ..._235800_add_analytics_fields_to_ai_analyses.php |   24 [32m+[m
+ ..._20_080330_create_evaluation_requests_table.php |   34 [32m+[m
+ package-lock.json                                  |    2 [32m+[m[31m-[m
+ resources/js/Layouts/AdminLayout.vue               |   14 [32m+[m
+ .../js/Pages/Admin/Evaluations/AIINsights.vue      |  485 [32m++++++++[m
+ .../Evaluations/BulkUpload.vue                     |  147 [32m++[m[31m-[m
+ resources/js/Pages/Admin/Evaluations/Create.vue    |  696 [32m+++++++++++[m
+ .../Create.vue => Admin/Evaluations/Edit.vue}      |  292 [32m++[m[31m---[m
+ resources/js/Pages/Admin/Evaluations/Index.vue     |  563 [32m+++++++++[m
+ resources/js/Pages/Admin/Evaluations/QRCode.vue    |  226 [32m++++[m
+ resources/js/Pages/Admin/Evaluations/Show.vue      |  761 [32m++++++++++++[m
+ resources/js/Pages/Adviser/Approvals/Index.vue     |  652 [32m+++++[m[31m-----[m
+ .../js/Pages/President/Evaluations/AIInsights.vue  |  238 [31m----[m
+ resources/js/Pages/President/Evaluations/Edit.vue  |  400 [31m-------[m
+ resources/js/Pages/President/Evaluations/Index.vue |  364 [32m+++[m[31m---[m
+ .../js/Pages/President/Evaluations/QRCode.vue      |  205 [31m----[m
+ resources/js/Pages/President/Evaluations/Show.vue  |  605 [32m+++[m[31m-------[m
+ resources/js/Pages/President/Events/Show.vue       |  214 [32m+++[m[31m-[m
+ resources/js/Pages/Public/Evaluations/Form.vue     |  738 [32m+++++++[m[31m-----[m
+ resources/js/Pages/Public/Evaluations/Verify.vue   |  138 [32m+++[m
+ routes/web.php                                     |   89 [32m+[m[31m-[m
+ 52 files changed, 7426 insertions(+), 4162 deletions(-)

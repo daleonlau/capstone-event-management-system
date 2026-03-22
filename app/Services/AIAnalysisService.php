@@ -7,23 +7,20 @@ use Illuminate\Support\Facades\Log;
 use App\Models\Evaluation;
 use App\Models\EvaluationResponse;
 use App\Models\EvaluationQuestion;
-use App\Models\EvaluationCategory;
 use App\Models\EventStudent;
 use App\Models\AIAnalysis;
-use Illuminate\Support\Facades\DB;
 
 class AIAnalysisService
 {
     protected string $apiUrl;
     protected int $timeout;
     
-    // Threshold for analysis (75%)
     const RESPONSE_THRESHOLD = 0.75;
     
     public function __construct()
     {
         $this->apiUrl = env('AI_SERVICE_URL', 'http://127.0.0.1:8001');
-        $this->timeout = env('AI_SERVICE_TIMEOUT', 30);
+        $this->timeout = env('AI_SERVICE_TIMEOUT', 60);
         
         Log::info('🔧 AIAnalysisService initialized', [
             'api_url' => $this->apiUrl,
@@ -31,44 +28,25 @@ class AIAnalysisService
         ]);
     }
     
-    /**
-     * Check if evaluation meets response threshold for analysis
-     */
     public function meetsThreshold(Evaluation $evaluation): bool
     {
-        // Get total eligible students for this event
         $event = $evaluation->event;
         $totalEligible = EventStudent::where('event_id', $event->id)->count();
-        
-        if ($totalEligible === 0) {
-            return false;
-        }
+        if ($totalEligible === 0) return false;
         
         $responseRate = $evaluation->total_responses / $totalEligible;
-        
-        Log::info('📊 Response rate check', [
-            'evaluation_id' => $evaluation->id,
-            'total_responses' => $evaluation->total_responses,
-            'total_eligible' => $totalEligible,
-            'response_rate' => $responseRate,
-            'threshold' => self::RESPONSE_THRESHOLD,
-            'meets_threshold' => $responseRate >= self::RESPONSE_THRESHOLD
-        ]);
-        
         return $responseRate >= self::RESPONSE_THRESHOLD;
     }
     
-    /**
-     * Analyze a single evaluation
-     */
     public function analyzeEvaluation(Evaluation $evaluation, bool $force = false): ?array
     {
         Log::info('========== 🚀 AI ANALYSIS STARTED ==========', [
             'evaluation_id' => $evaluation->id,
+            'form_type' => $evaluation->form_type,
+            'total_responses' => $evaluation->total_responses,
             'force' => $force
         ]);
         
-        // Check threshold unless forced
         if (!$force && !$this->meetsThreshold($evaluation)) {
             Log::info('⏸️ Evaluation does not meet response threshold', [
                 'evaluation_id' => $evaluation->id
@@ -77,7 +55,6 @@ class AIAnalysisService
         }
         
         try {
-            // Prepare evaluation data
             $evaluationData = $this->prepareEvaluationData($evaluation);
             
             if (!$evaluationData) {
@@ -85,35 +62,44 @@ class AIAnalysisService
                 return null;
             }
             
-            // Add metadata
             $event = $evaluation->event;
             $totalEligible = EventStudent::where('event_id', $event->id)->count();
-            $evaluationData['total_respondents'] = $evaluation->total_responses;
-            $evaluationData['response_rate'] = $totalEligible > 0 
-                ? round($evaluation->total_responses / $totalEligible, 2) 
-                : 0;
             
-            Log::info('📤 Sending to AI service', [
-                'url' => "{$this->apiUrl}/analyze",
-                'data' => $evaluationData
+            $payload = [
+                'data' => $evaluationData['features'],
+                'year_level' => 1,
+                'respondent_type' => 0,
+                'positive_comments' => $evaluationData['positive_comments'],
+                'suggestion_comments' => $evaluationData['suggestion_comments'],
+                'total_respondents' => $evaluation->total_responses,
+                'response_rate' => $totalEligible > 0 ? round($evaluation->total_responses / $totalEligible, 2) : 0,
+            ];
+            
+            Log::info('📤 SENDING TO AI SERVICE', [
+                'evaluation_id' => $evaluation->id,
+                'features_count' => count($evaluationData['features']),
+                'positive_comments_count' => count($evaluationData['positive_comments']),
+                'suggestion_comments_count' => count($evaluationData['suggestion_comments']),
+                'sample_positive' => array_slice($evaluationData['positive_comments'], 0, 2),
+                'sample_suggestion' => array_slice($evaluationData['suggestion_comments'], 0, 2)
             ]);
             
-            $response = Http::timeout($this->timeout)
-                ->post("{$this->apiUrl}/analyze", $evaluationData);
+            $response = Http::timeout($this->timeout)->post("{$this->apiUrl}/analyze", $payload);
             
             if ($response->successful()) {
                 $insights = $response->json();
                 
-                Log::info('✅ AI service response received', [
-                    'insights' => $insights
+                Log::info('✅ AI SERVICE RESPONSE RECEIVED', [
+                    'evaluation_id' => $evaluation->id,
+                    'satisfaction' => $insights['predicted_satisfaction'] ?? 'N/A',
+                    'positive_percentage' => $insights['positive_percentage'] ?? 'N/A',
+                    'negative_percentage' => $insights['negative_percentage'] ?? 'N/A',
+                    'positive_comments_count' => count($insights['positive_comments'] ?? []),
+                    'negative_comments_count' => count($insights['negative_comments'] ?? []),
+                    'neutral_comments_count' => count($insights['neutral_comments'] ?? [])
                 ]);
                 
                 $this->storeInsights($evaluation, $insights);
-                
-                Log::info('========== ✅ AI ANALYSIS COMPLETED ==========', [
-                    'evaluation_id' => $evaluation->id,
-                    'satisfaction' => $insights['predicted_satisfaction'] ?? 'N/A'
-                ]);
                 
                 return $insights;
             } else {
@@ -132,24 +118,24 @@ class AIAnalysisService
             ]);
         }
         
-        Log::info('========== ❌ AI ANALYSIS FAILED ==========');
         return null;
     }
     
-    /**
-     * Prepare evaluation data - DYNAMIC MAPPING with comments
-     */
     protected function prepareEvaluationData(Evaluation $evaluation): ?array
     {
+        Log::info('📊 PREPARING EVALUATION DATA', ['evaluation_id' => $evaluation->id]);
+        
         $responses = EvaluationResponse::where('evaluation_id', $evaluation->id)->get();
         
         if ($responses->isEmpty()) {
+            Log::warning('No responses found', ['evaluation_id' => $evaluation->id]);
             return null;
         }
         
-        // Get all questions with their categories for this evaluation
-        $questions = EvaluationQuestion::with('category')
-            ->where('evaluation_id', $evaluation->id)
+        Log::info('📊 Found responses', ['count' => $responses->count()]);
+        
+        $questions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
+            ->where('question_type', 'likert')
             ->get()
             ->keyBy('id');
         
@@ -158,89 +144,10 @@ class AIAnalysisService
             return null;
         }
         
-        // Initialize ALL possible features with zeros
-        $aggregated = [
-            // Information Dissemination
-            'info_timeliness' => 0,
-            'info_adequacy' => 0,
-            
-            // Design of Activity
-            'design_program' => 0,
-            'design_relevance' => 0,
-            'design_pacing' => 0,
-            
-            // Outcomes
-            'outcomes_attendance' => 0,
-            'outcomes_participation' => 0,
-            'outcomes_interaction' => 0,
-            'outcomes_teamwork' => 0,
-            
-            // Secretariat
-            'secretariat_sensitivity' => 0,
-            'secretariat_management' => 0,
-            'secretariat_communication' => 0,
-            
-            // Facilities
-            'facilities_appearance' => 0,
-            'facilities_cleanliness' => 0,
-            'facilities_equipment' => 0,
-            
-            // Food
-            'food_quality' => 0,
-            'food_presentation' => 0,
-            'food_timeliness' => 0,
-            'food_service' => 0,
-            'food_sufficiency' => 0,
-            'food_quantity' => 0,
-        ];
+        Log::info('📊 Found questions', ['count' => $questions->count()]);
         
-        // Define keyword mapping for dynamic detection
-        $keywordToFeature = [
-            // Information Dissemination
-            'timeliness' => 'info_timeliness',
-            'sending invites' => 'info_timeliness',
-            'adequacy' => 'info_adequacy',
-            'information dissemination' => 'info_adequacy',
-            
-            // Design of Activity
-            'program' => 'design_program',
-            'order of activities' => 'design_program',
-            'relevance' => 'design_relevance',
-            'time allotment' => 'design_pacing',
-            'pacing' => 'design_pacing',
-            
-            // Outcomes
-            'attendance' => 'outcomes_attendance',
-            'participation' => 'outcomes_participation',
-            'interaction' => 'outcomes_interaction',
-            'teamwork' => 'outcomes_teamwork',
-            
-            // Secretariat
-            'sensitivity' => 'secretariat_sensitivity',
-            'assistance' => 'secretariat_sensitivity',
-            'management' => 'secretariat_management',
-            'provision of information' => 'secretariat_communication',
-            'feedback' => 'secretariat_communication',
-            
-            // Facilities
-            'appearance' => 'facilities_appearance',
-            'venue' => 'facilities_appearance',
-            'cleanliness' => 'facilities_cleanliness',
-            'orderliness' => 'facilities_cleanliness',
-            'equipment' => 'facilities_equipment',
-            'functionality' => 'facilities_equipment',
-            
-            // Food
-            'quality of food' => 'food_quality',
-            'food and beverages' => 'food_presentation',
-            'presentation' => 'food_presentation',
-            'timelines' => 'food_timeliness',
-            'delivery' => 'food_timeliness',
-            'service provided' => 'food_service',
-            'sufficiency' => 'food_sufficiency',
-            'quantity' => 'food_quantity',
-        ];
-        
+        $features = [];
+        $featureCounts = [];
         $responseCount = 0;
         $positiveComments = [];
         $suggestionComments = [];
@@ -256,34 +163,26 @@ class AIAnalysisService
                 continue;
             }
             
-            // Process ratings
             foreach ($likert as $questionId => $rating) {
                 $questionId = (int)$questionId;
                 $rating = (float)$rating;
                 
-                $question = $questions->get($questionId);
-                
-                if (!$question) {
+                if (!$questions->has($questionId)) {
                     continue;
                 }
                 
-                $questionText = strtolower($question->question_text);
+                $key = "q_{$questionId}";
                 
-                // Find matching feature based on keywords
-                $matchedFeature = null;
-                foreach ($keywordToFeature as $keyword => $feature) {
-                    if (strpos($questionText, strtolower($keyword)) !== false) {
-                        $matchedFeature = $feature;
-                        break;
-                    }
+                if (!isset($features[$key])) {
+                    $features[$key] = 0;
+                    $featureCounts[$key] = 0;
                 }
                 
-                if ($matchedFeature && isset($aggregated[$matchedFeature])) {
-                    $aggregated[$matchedFeature] += $rating;
-                }
+                $features[$key] += $rating;
+                $featureCounts[$key]++;
             }
             
-            // Process comments
+            // Extract comments
             $comments = $response->comment_responses;
             if (is_string($comments)) {
                 $comments = json_decode($comments, true);
@@ -291,11 +190,12 @@ class AIAnalysisService
             
             if (is_array($comments)) {
                 foreach ($comments as $comment) {
-                    if (!empty($comment)) {
-                        // Categorize based on comment type
-                        if (strpos(strtolower($comment), 'suggest') !== false || 
-                            strpos(strtolower($comment), 'recommend') !== false ||
-                            strpos(strtolower($comment), 'improve') !== false) {
+                    if (!empty($comment) && is_string($comment)) {
+                        $commentLower = strtolower($comment);
+                        if (strpos($commentLower, 'suggest') !== false || 
+                            strpos($commentLower, 'recommend') !== false ||
+                            strpos($commentLower, 'improve') !== false ||
+                            strpos($commentLower, 'better') !== false) {
                             $suggestionComments[] = $comment;
                         } else {
                             $positiveComments[] = $comment;
@@ -308,101 +208,112 @@ class AIAnalysisService
         }
         
         if ($responseCount === 0) {
+            Log::warning('No valid responses processed', ['evaluation_id' => $evaluation->id]);
             return null;
         }
         
         // Calculate averages
-        foreach ($aggregated as $key => $value) {
-            if ($value > 0) {
-                $aggregated[$key] = round($value / $responseCount, 2);
+        foreach ($features as $key => $value) {
+            if ($featureCounts[$key] > 0) {
+                $features[$key] = round($value / $featureCounts[$key], 2);
             }
         }
         
-        // Add demographics
-        $firstResponse = $responses->first();
-        $aggregated['year_level'] = $this->mapYearLevel($firstResponse->year_level ?? '1st Year');
-        $aggregated['respondent_type'] = 0;
-        
-        // Add comments for sentiment analysis
-        $aggregated['positive_comments'] = $positiveComments;
-        $aggregated['suggestion_comments'] = $suggestionComments;
-        
-        Log::info('✅ FINAL DATA TO AI SERVICE', [
+        Log::info('📊 COMMENTS EXTRACTED', [
             'evaluation_id' => $evaluation->id,
-            'response_count' => $responseCount,
-            'positive_comments' => count($positiveComments),
-            'suggestion_comments' => count($suggestionComments)
+            'positive_comments_count' => count($positiveComments),
+            'suggestion_comments_count' => count($suggestionComments),
+            'sample_positive' => array_slice($positiveComments, 0, 2),
+            'sample_suggestion' => array_slice($suggestionComments, 0, 2)
         ]);
         
-        return $aggregated;
+        return [
+            'features' => $features,
+            'form_type' => $evaluation->form_type,
+            'year_level' => 1,
+            'positive_comments' => $positiveComments,
+            'suggestion_comments' => $suggestionComments,
+        ];
     }
     
-    /**
-     * Map year level string to integer
-     */
-    protected function mapYearLevel(string $yearLevel): int
-    {
-        return match ($yearLevel) {
-            '1st Year' => 1,
-            '2nd Year' => 2,
-            '3rd Year' => 3,
-            '4th Year' => 4,
-            default => 1,
-        };
-    }
-    
-    /**
-     * Store AI insights in database
-     */
     protected function storeInsights(Evaluation $evaluation, array $insights): void
-    {
-        Log::info('📝 Storing insights in database', [
-            'evaluation_id' => $evaluation->id
+{
+    Log::info('📝 STORING INSIGHTS IN DATABASE', [
+        'evaluation_id' => $evaluation->id,
+        'has_positive_comments' => isset($insights['positive_comments']),
+        'positive_comments_count' => count($insights['positive_comments'] ?? []),
+        'negative_comments_count' => count($insights['negative_comments'] ?? []),
+        'neutral_comments_count' => count($insights['neutral_comments'] ?? [])
+    ]);
+    
+    try {
+        // Prepare sentiment analysis with all comment lists
+        $sentimentAnalysis = [
+            'sentiment_score' => $insights['sentiment_score'] ?? 0,
+            'positive_percentage' => $insights['positive_percentage'] ?? 0,
+            'negative_percentage' => $insights['negative_percentage'] ?? 0,
+            'neutral_percentage' => $insights['neutral_percentage'] ?? 0,
+            'total_comments' => $insights['total_comments'] ?? 0,
+            'common_themes' => $insights['common_themes'] ?? [],
+            'positive_comments' => $insights['positive_comments'] ?? [],
+            'negative_comments' => $insights['negative_comments'] ?? [],
+            'neutral_comments' => $insights['neutral_comments'] ?? []
+        ];
+        
+        // Prepare low scoring questions
+        $lowScoringQuestions = $insights['low_scoring_questions'] ?? [];
+        
+        // Prepare year level analysis
+        $yearLevelAnalysis = $insights['year_level_analysis'] ?? [];
+        
+        // Prepare what-if analysis
+        $whatIfAnalysis = [
+            'optimistic' => $insights['what_if_optimistic'] ?? [],
+            'targeted' => $insights['what_if_targeted'] ?? []
+        ];
+        
+        $result = AIAnalysis::updateOrCreate(
+            ['evaluation_id' => $evaluation->id],
+            [
+                'summary' => $insights['summary'] ?? '',
+                'strengths' => json_encode($insights['strengths'] ?? [], JSON_UNESCAPED_UNICODE),
+                'weaknesses' => json_encode($insights['weaknesses'] ?? [], JSON_UNESCAPED_UNICODE),
+                'recommendations' => json_encode($insights['recommendations'] ?? [], JSON_UNESCAPED_UNICODE),
+                'feature_importance' => json_encode($insights['feature_importance'] ?? [], JSON_UNESCAPED_UNICODE),
+                'sentiment_analysis' => json_encode($sentimentAnalysis, JSON_UNESCAPED_UNICODE),
+                'what_if_analysis' => json_encode($whatIfAnalysis, JSON_UNESCAPED_UNICODE),
+                'predicted_satisfaction' => $insights['predicted_satisfaction'] ?? 0,
+                'success_probability' => $insights['success_probability'] ?? 0,
+                'category_breakdown' => json_encode($insights['category_breakdown'] ?? [], JSON_UNESCAPED_UNICODE),
+                'response_rate' => $insights['response_rate'] ?? 0,
+                'total_respondents' => $insights['total_respondents'] ?? 0,
+                'low_scoring_questions' => json_encode($lowScoringQuestions, JSON_UNESCAPED_UNICODE),
+                'year_level_analysis' => json_encode($yearLevelAnalysis, JSON_UNESCAPED_UNICODE),
+                'analyzed_at' => now(),
+            ]
+        );
+        
+        Log::info('✅ INSIGHTS STORED SUCCESSFULLY', [
+            'evaluation_id' => $evaluation->id,
+            'analysis_id' => $result->id,
+            'stored_positive_count' => count($sentimentAnalysis['positive_comments']),
+            'stored_negative_count' => count($sentimentAnalysis['negative_comments']),
+            'stored_neutral_count' => count($sentimentAnalysis['neutral_comments'])
         ]);
         
-        try {
-            $result = AIAnalysis::updateOrCreate(
-                ['evaluation_id' => $evaluation->id],
-                [
-                    'summary' => $insights['summary'] ?? '',
-                    'strengths' => json_encode($insights['strengths'] ?? []),
-                    'weaknesses' => json_encode($insights['weaknesses'] ?? []),
-                    'recommendations' => json_encode($insights['recommendations'] ?? []),
-                    'feature_importance' => json_encode($insights['feature_importance'] ?? []),
-                    'sentiment_analysis' => json_encode($insights['sentiment_analysis'] ?? []),
-                    'what_if_analysis' => json_encode($insights['what_if_analysis'] ?? []),
-                    'predicted_satisfaction' => $insights['predicted_satisfaction'] ?? 0,
-                    'success_probability' => $insights['success_probability'] ?? 0,
-                    'category_breakdown' => json_encode($insights['category_breakdown'] ?? []),
-                    'response_rate' => $insights['response_rate'] ?? 0,
-                    'total_respondents' => $insights['total_respondents'] ?? 0,
-                    'analyzed_at' => now(),
-                ]
-            );
-            
-            Log::info('✅ Insights stored successfully', [
-                'evaluation_id' => $evaluation->id,
-                'analysis_id' => $result->id
-            ]);
-            
-        } catch (\Exception $e) {
-            Log::error('❌ Failed to store insights', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-        }
+    } catch (\Exception $e) {
+        Log::error('❌ FAILED TO STORE INSIGHTS', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
     }
-    
-    /**
-     * Get insights for an evaluation
-     */
+}
     public function getInsights(Evaluation $evaluation): ?array
     {
         $analysis = AIAnalysis::where('evaluation_id', $evaluation->id)->first();
+        if (!$analysis) return null;
         
-        if (!$analysis) {
-            return null;
-        }
+        $sentimentAnalysis = json_decode($analysis->sentiment_analysis, true);
         
         return [
             'summary' => $analysis->summary,
@@ -410,7 +321,7 @@ class AIAnalysisService
             'weaknesses' => json_decode($analysis->weaknesses, true),
             'recommendations' => json_decode($analysis->recommendations, true),
             'feature_importance' => json_decode($analysis->feature_importance, true),
-            'sentiment_analysis' => json_decode($analysis->sentiment_analysis, true),
+            'sentiment_analysis' => $sentimentAnalysis,
             'what_if_analysis' => json_decode($analysis->what_if_analysis, true),
             'predicted_satisfaction' => $analysis->predicted_satisfaction,
             'success_probability' => $analysis->success_probability,
@@ -418,12 +329,23 @@ class AIAnalysisService
             'response_rate' => $analysis->response_rate,
             'total_respondents' => $analysis->total_respondents,
             'analyzed_at' => $analysis->analyzed_at,
+            // Add these missing fields
+            'sentiment_score' => $sentimentAnalysis['sentiment_score'] ?? 0,
+            'positive_percentage' => $sentimentAnalysis['positive_percentage'] ?? 0,
+            'negative_percentage' => $sentimentAnalysis['negative_percentage'] ?? 0,
+            'neutral_percentage' => $sentimentAnalysis['neutral_percentage'] ?? 0,
+            'total_comments' => $sentimentAnalysis['total_comments'] ?? 0,
+            'common_themes' => $sentimentAnalysis['common_themes'] ?? [],
+            'positive_comments' => $sentimentAnalysis['positive_comments'] ?? [],
+            'negative_comments' => $sentimentAnalysis['negative_comments'] ?? [],
+            'neutral_comments' => $sentimentAnalysis['neutral_comments'] ?? [],
+            'low_scoring_questions' => $analysis->low_scoring_questions ? json_decode($analysis->low_scoring_questions, true) : [],
+            'year_level_analysis' => $analysis->year_level_analysis ? json_decode($analysis->year_level_analysis, true) : [],
+            'what_if_optimistic' => json_decode($analysis->what_if_analysis, true)['optimistic'] ?? [],
+            'what_if_targeted' => json_decode($analysis->what_if_analysis, true)['targeted'] ?? [],
         ];
     }
     
-    /**
-     * Check if analysis can be generated (meets threshold)
-     */
     public function canGenerateInsights(Evaluation $evaluation): bool
     {
         return $this->meetsThreshold($evaluation);

@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Event extends Model
 {
@@ -35,6 +36,19 @@ class Event extends Model
         'event_date_end' => 'date',
     ];
 
+    /**
+     * Get the organization that owns this event
+     * The user_id field references the organization ID
+     */
+    public function organization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class, 'user_id', 'id');
+    }
+
+    /**
+     * Get the creator/user who created this event
+     * This is different from organization - creator could be a specific user
+     */
     public function creator()
     {
         return $this->belongsTo(User::class, 'user_id');

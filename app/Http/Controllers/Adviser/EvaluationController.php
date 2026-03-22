@@ -16,7 +16,7 @@ class EvaluationController extends Controller
     {
         $this->middleware(function ($request, $next) {
             $user = Auth::guard('org_user')->user();
-            if (!$user) {
+            if (!$user || $user->role !== 'adviser') {
                 return redirect()->route('login');
             }
             $this->organizationId = $user->organization_id;
@@ -24,118 +24,186 @@ class EvaluationController extends Controller
         });
     }
 
-    /**
-     * Display a listing of finished events with evaluations.
-     */
     public function index()
     {
-        $events = Event::where('user_id', $this->organizationId)
-            ->where('status', 'Finished')
-            ->withCount('evaluations')
-            ->with('eventType')
+        $evaluations = Evaluation::with(['event', 'event.eventType'])
+            ->where('organization_id', $this->organizationId)
             ->orderBy('created_at', 'desc')
             ->get()
-            ->map(function ($event) {
-                // Calculate average rating
-                $avgRating = Evaluation::where('event_id', $event->id)
-                    ->get()
-                    ->pluck('answers')
-                    ->flatten()
-                    ->avg();
-                
-                $event->average_rating = $avgRating ? round($avgRating, 2) : null;
-                return $event;
+            ->map(function ($evaluation) {
+                return [
+                    'id' => $evaluation->id,
+                    'title' => $evaluation->title,
+                    'event_name' => $evaluation->event->event_name,
+                    'event_status' => $evaluation->event->status,
+                    'status' => $evaluation->status,
+                    'responses_count' => $evaluation->total_responses,
+                    'created_at' => $evaluation->created_at->format('Y-m-d'),
+                ];
             });
 
         return Inertia::render('Adviser/Evaluations/Index', [
-            'events' => $events
+            'evaluations' => $evaluations
         ]);
     }
 
-    /**
-     * Display evaluation results for a specific event.
-     */
-    public function results(Event $event)
+    public function show(Evaluation $evaluation)
     {
-        // Check if event belongs to this organization
-        if ($event->user_id !== $this->organizationId) {
+        if ($evaluation->organization_id !== $this->organizationId) {
             abort(403);
         }
 
-        $evaluations = $event->evaluations()->get();
+        $evaluation->load(['event', 'categories.questions', 'questions' => function ($q) {
+            $q->where('question_type', 'comment');
+        }]);
+
+        $responses = \App\Models\EvaluationResponse::where('evaluation_id', $evaluation->id)->get();
         
-        if ($evaluations->isEmpty()) {
-            return Inertia::render('Adviser/Evaluations/Results', [
-                'event' => $event,
-                'evaluationData' => [],
-                'summary' => [
-                    'total_responses' => 0,
-                    'overall_average' => 0,
-                    'highest_question' => null,
-                    'lowest_question' => null,
-                ]
-            ]);
-        }
-
-        // Standard evaluation questions
-        $questions = [
-            "The objectives of the event were clearly defined.",
-            "The event was well organized and executed.",
-            "The speakers or facilitators were engaging and knowledgeable.",
-            "The event activities were relevant and enjoyable.",
-            "Overall, the event met my expectations.",
-        ];
-
-        // Process answers by question
-        $answersByQuestion = [];
-        foreach ($evaluations as $eval) {
-            $answers = is_string($eval->answers) ? json_decode($eval->answers, true) : $eval->answers;
-            foreach ($answers as $qIndex => $answer) {
-                if (!isset($answersByQuestion[$qIndex])) {
-                    $answersByQuestion[$qIndex] = [];
+        $stats = [];
+        $likertQuestions = \App\Models\EvaluationQuestion::where('evaluation_id', $evaluation->id)
+            ->where('question_type', 'likert')
+            ->get();
+        
+        foreach ($likertQuestions as $question) {
+            $ratings = [];
+            foreach ($responses as $response) {
+                $responses_array = $response->likert_responses ?? [];
+                if (isset($responses_array[$question->id])) {
+                    $ratings[] = $responses_array[$question->id];
                 }
-                $answersByQuestion[$qIndex][] = $answer;
+            }
+            
+            $total = count($ratings);
+            if ($total > 0) {
+                $distribution = [];
+                for ($i = 1; $i <= 5; $i++) {
+                    $count = count(array_filter($ratings, fn($r) => $r == $i));
+                    $distribution[$i] = [
+                        'count' => $count,
+                        'percentage' => round(($count / $total) * 100, 2)
+                    ];
+                }
+                
+                $stats[$question->id] = [
+                    'average' => round(array_sum($ratings) / $total, 2),
+                    'distribution' => $distribution,
+                    'total' => $total
+                ];
             }
         }
 
-        $evaluationData = [];
-        $totalAverage = 0;
-
-        foreach ($answersByQuestion as $qIndex => $answers) {
-            $average = array_sum($answers) / count($answers);
-            $totalAverage += $average;
+        $comments = [];
+        $commentQuestions = \App\Models\EvaluationQuestion::where('evaluation_id', $evaluation->id)
+            ->where('question_type', 'comment')
+            ->get();
             
-            // Calculate distribution of ratings (1-5 stars)
-            $distribution = array_count_values($answers);
-            
-            $evaluationData[] = [
-                'question_number' => $qIndex + 1,
-                'question' => $questions[$qIndex] ?? "Question " . ($qIndex + 1),
-                'average' => round($average, 2),
-                'distribution' => [
-                    1 => $distribution[1] ?? 0,
-                    2 => $distribution[2] ?? 0,
-                    3 => $distribution[3] ?? 0,
-                    4 => $distribution[4] ?? 0,
-                    5 => $distribution[5] ?? 0,
-                ]
+        foreach ($commentQuestions as $question) {
+            $commentResponses = [];
+            foreach ($responses as $response) {
+                $comments_array = $response->comment_responses ?? [];
+                if (isset($comments_array[$question->id]) && !empty($comments_array[$question->id])) {
+                    $commentResponses[] = $comments_array[$question->id];
+                }
+            }
+            $comments[$question->id] = [
+                'question' => $question->question_text,
+                'responses' => $commentResponses
             ];
         }
 
-        // Find highest and lowest rated questions
-        $sorted = collect($evaluationData)->sortByDesc('average')->values();
-        
-        $summary = [
-            'total_responses' => $evaluations->count(),
-            'overall_average' => $totalAverage > 0 ? round($totalAverage / count($evaluationData), 2) : 0,
-            'highest_question' => $sorted->first()['question'] ?? null,
-            'lowest_question' => $sorted->last()['question'] ?? null,
-        ];
+        $aiInsights = \App\Models\AIAnalysis::where('evaluation_id', $evaluation->id)->first();
 
-        return Inertia::render('Adviser/Evaluations/Results', [
-            'event' => $event,
-            'evaluationData' => $evaluationData,
-            'summary' => $summary
+        // Calculate category breakdown and feature importance from AI insights if available
+        $categoryBreakdown = [];
+        $featureImportance = [];
+        $sentimentAnalysis = [];
+        $whatIfTargeted = [];
+        $whatIfOptimistic = [];
+
+        if ($aiInsights) {
+            // Get category scores from the AI analysis
+            $categoryBreakdown = json_decode($aiInsights->category_breakdown, true) ?? [];
+            
+            // Get feature importance
+            $featureImportance = json_decode($aiInsights->feature_importance, true) ?? [];
+            
+            // Get sentiment analysis data
+            $sentimentAnalysis = json_decode($aiInsights->sentiment_analysis, true) ?? [];
+            
+            // Get what-if analysis data
+            $whatIfData = json_decode($aiInsights->what_if_analysis, true) ?? [];
+            $whatIfTargeted = $whatIfData['targeted'] ?? [];
+            $whatIfOptimistic = $whatIfData['optimistic'] ?? [];
+            
+            // If category breakdown is empty, calculate it from the category scores
+            if (empty($categoryBreakdown) && $evaluation->categories) {
+                $categoryScores = [];
+                foreach ($evaluation->categories as $category) {
+                    $totalScore = 0;
+                    $questionCount = 0;
+                    foreach ($category->questions as $question) {
+                        if (isset($stats[$question->id]['average'])) {
+                            $totalScore += $stats[$question->id]['average'];
+                            $questionCount++;
+                        }
+                    }
+                    if ($questionCount > 0) {
+                        $categoryScores[$category->category_name] = round($totalScore / $questionCount, 2);
+                    }
+                }
+                $categoryBreakdown = $categoryScores;
+            }
+        }
+
+        return Inertia::render('Adviser/Evaluations/Show', [
+            'evaluation' => [
+                'id' => $evaluation->id,
+                'title' => $evaluation->title,
+                'status' => $evaluation->status,
+                'qr_code_url' => $evaluation->qr_code_url ?? route('evaluations.form', $evaluation->id),
+                'event' => [
+                    'id' => $evaluation->event->id,
+                    'event_name' => $evaluation->event->event_name,
+                ],
+                'categories' => $evaluation->categories->map(function ($cat) {
+                    return [
+                        'id' => $cat->id,
+                        'name' => $cat->category_name,
+                        'questions' => $cat->questions->map(function ($q) {
+                            return [
+                                'id' => $q->id,
+                                'text' => $q->question_text,
+                            ];
+                        }),
+                    ];
+                }),
+                'comments' => $evaluation->questions->where('question_type', 'comment')->map(function ($q) {
+                    return [
+                        'id' => $q->id,
+                        'text' => $q->question_text,
+                    ];
+                })->values(),
+                'responses_count' => $evaluation->total_responses,
+                'created_at' => $evaluation->created_at->format('Y-m-d H:i'),
+            ],
+            'stats' => $stats,
+            'comments' => $comments,
+            'aiInsights' => $aiInsights ? [
+                'summary' => $aiInsights->summary,
+                'strengths' => json_decode($aiInsights->strengths, true),
+                'weaknesses' => json_decode($aiInsights->weaknesses, true),
+                'recommendations' => json_decode($aiInsights->recommendations, true),
+                'predicted_satisfaction' => $aiInsights->predicted_satisfaction,
+                'success_probability' => $aiInsights->success_probability,
+                'response_rate' => $aiInsights->response_rate,
+                'total_respondents' => $aiInsights->total_respondents,
+                'analyzed_at' => $aiInsights->analyzed_at,
+                'category_breakdown' => $categoryBreakdown,
+                'feature_importance' => $featureImportance,
+                'sentiment_analysis' => $sentimentAnalysis,
+                'what_if_targeted' => $whatIfTargeted,
+                'what_if_optimistic' => $whatIfOptimistic,
+            ] : null,
         ]);
     }
 }

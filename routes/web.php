@@ -5,7 +5,8 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Admin\AdminController;
 use App\Http\Controllers\Admin\OrganizationRegistrationController;
 use App\Http\Controllers\Admin\EvaluationController as AdminEvaluationController;
-use App\Http\Controllers\Treasurer\ReportController;
+use App\Http\Controllers\Admin\ReportController as AdminReportController;
+use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 
 // President Controllers
 use App\Http\Controllers\President\DashboardController as PresidentDashboardController;
@@ -26,6 +27,7 @@ use App\Http\Controllers\Adviser\EventController as AdviserEventController;
 use App\Http\Controllers\Treasurer\DashboardController as TreasurerDashboardController;
 use App\Http\Controllers\Treasurer\CollectionController as TreasurerCollectionController;
 use App\Http\Controllers\Treasurer\ProfileController as TreasurerProfileController;
+use App\Http\Controllers\Treasurer\ReportController as TreasurerReportController;
 
 // Public Evaluation Controllers
 use App\Http\Controllers\Public\EvaluationController as PublicEvaluationController;
@@ -60,13 +62,15 @@ Route::prefix('evaluations')->name('evaluations.')->group(function () {
     Route::get('/{evaluation}/already-submitted', [PublicEvaluationController::class, 'alreadySubmitted'])->name('already-submitted');
     Route::get('/thankyou', [PublicEvaluationController::class, 'thankyou'])->name('thankyou');
 });
+
 /*
 |--------------------------------------------------------------------------
 | ADMIN ROUTES (QUAMS)
 |--------------------------------------------------------------------------
 */
 Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(function () {
-    Route::get('/dashboard', [AdminController::class, 'dashboard'])->name('dashboard');
+    // Dashboard - CORRECTED (remove /admin prefix since we're already in admin group)
+    Route::get('/dashboard', [AdminDashboardController::class, 'index'])->name('dashboard');
     
     // Evaluation Management
     Route::get('/evaluations/pending-requests', [AdminEvaluationController::class, 'getPendingRequests'])->name('evaluations.pending-requests');
@@ -82,10 +86,21 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::post('/evaluations/{evaluation}/reopen', [AdminEvaluationController::class, 'reopen'])->name('evaluations.reopen');
     Route::post('/evaluations/{evaluation}/generate-insights', [AdminEvaluationController::class, 'generateInsights'])->name('evaluations.generate-insights');
     Route::get('/evaluations/{evaluation}/ai-insights', [AdminEvaluationController::class, 'getAIInsights'])->name('evaluations.ai-insights');
+    Route::get('/evaluations/{evaluation}/raw-responses', [AdminEvaluationController::class, 'getRawResponses'])->name('evaluations.raw-responses');
     Route::post('/evaluations/{evaluation}/bulk-upload', [AdminEvaluationController::class, 'bulkUpload'])->name('evaluations.bulk-upload');
     Route::get('/evaluations/{evaluation}/download-template', [AdminEvaluationController::class, 'downloadCsvTemplate'])->name('evaluations.download-template');
     Route::delete('/evaluations/{evaluation}', [AdminEvaluationController::class, 'destroy'])->name('evaluations.destroy');
     Route::get('/evaluations/{evaluation}/eligibility-info', [AdminEvaluationController::class, 'getEligibilityInfo'])->name('evaluations.eligibility-info');
+    
+    // Reports Management
+    Route::prefix('reports')->name('reports.')->group(function () {
+        Route::get('/', [AdminReportController::class, 'index'])->name('index');
+        Route::post('/{evaluation}/generate', [AdminReportController::class, 'generateReport'])->name('generate');
+        Route::post('/{evaluation}/regenerate', [AdminReportController::class, 'regenerateReport'])->name('regenerate');
+        Route::get('/{evaluation}/view', [AdminReportController::class, 'viewReport'])->name('view');
+        Route::get('/{evaluation}/download', [AdminReportController::class, 'downloadReport'])->name('download');
+        Route::post('/{evaluation}/send', [AdminReportController::class, 'sendReport'])->name('send');
+    });
     
     // Organizations Management
     Route::get('/organizations', [AdminController::class, 'indexOrganizations'])->name('organizations.index');
@@ -98,7 +113,6 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('/profile', [AdminController::class, 'profile'])->name('profile');
     Route::put('/profile', [AdminController::class, 'updateProfile'])->name('profile.update');
 });
-
 /*
 |--------------------------------------------------------------------------
 | PRESIDENT ROUTES
@@ -156,7 +170,7 @@ Route::middleware(['org_user:adviser'])->prefix('adviser')->name('adviser.')->gr
     
     Route::prefix('evaluations')->name('evaluations.')->group(function () {
         Route::get('/', [AdviserEvaluationController::class, 'index'])->name('index');
-        Route::get('/{event}/results', [AdviserEvaluationController::class, 'results'])->name('results');
+        Route::get('/{evaluation}', [AdviserEvaluationController::class, 'show'])->name('show');
     });
     
     Route::get('/profile', [AdviserProfileController::class, 'edit'])->name('profile');
@@ -169,22 +183,37 @@ Route::middleware(['org_user:adviser'])->prefix('adviser')->name('adviser.')->gr
 |--------------------------------------------------------------------------
 */
 Route::middleware(['org_user:treasurer'])->prefix('treasurer')->name('treasurer.')->group(function () {
+    // Dashboard
     Route::get('/dashboard', [TreasurerDashboardController::class, 'index'])->name('dashboard');
     
+    // Collection Management
     Route::get('/collections', [TreasurerCollectionController::class, 'index'])->name('collections.index');
     Route::get('/collections/{event}', [TreasurerCollectionController::class, 'show'])->name('collections.show');
     Route::post('/collections/{event}/{student}/pay', [TreasurerCollectionController::class, 'pay'])->name('collections.pay');
     Route::post('/collections/{event}/bulk-pay', [TreasurerCollectionController::class, 'bulkPay'])->name('collections.bulk-pay');
     Route::get('/collections/{event}/summary', [TreasurerCollectionController::class, 'summary'])->name('collections.summary');
     
+    // Receipt Management
     Route::get('/receipts/{eventId}/{studentId}/download', [TreasurerCollectionController::class, 'downloadReceipt'])->name('receipts.download');
     Route::get('/receipts/{eventId}/{studentId}/view', [TreasurerCollectionController::class, 'viewReceipt'])->name('receipts.view');
     Route::post('/receipts/{eventId}/{studentId}/resend', [TreasurerCollectionController::class, 'resendReceiptEmail'])->name('receipts.resend');
     
-    Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
-    Route::post('/reports/collection', [ReportController::class, 'collectionReport'])->name('reports.collection');
-    Route::post('/reports/summary', [ReportController::class, 'summaryReport'])->name('reports.summary');
+    // Report Management - Updated with Generate, Regenerate, View, Download
+    Route::get('/reports', [TreasurerReportController::class, 'index'])->name('reports.index');
     
+    // Collection Report Routes (Single Event Reports)
+    Route::post('/collection-reports/{eventId}/generate', [TreasurerReportController::class, 'generate'])->name('collection-reports.generate');
+    Route::post('/collection-reports/{eventId}/regenerate', [TreasurerReportController::class, 'regenerate'])->name('collection-reports.regenerate');
+    Route::get('/collection-reports/{eventId}/view', [TreasurerReportController::class, 'view'])->name('collection-reports.view');
+    Route::get('/collection-reports/{eventId}/download', [TreasurerReportController::class, 'download'])->name('collection-reports.download');
+    
+    // Summary Report Route (Multiple Events)
+    Route::post('/reports/summary', [TreasurerReportController::class, 'summaryReport'])->name('reports.summary');
+    
+    // Legacy Report Route (for backward compatibility)
+    Route::post('/reports/collection', [TreasurerReportController::class, 'collectionReport'])->name('reports.collection');
+    
+    // Profile
     Route::get('/profile', [TreasurerProfileController::class, 'edit'])->name('profile');
     Route::put('/profile', [TreasurerProfileController::class, 'update'])->name('profile.update');
 });
