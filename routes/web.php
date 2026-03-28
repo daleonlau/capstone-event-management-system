@@ -32,6 +32,7 @@ use App\Http\Controllers\Treasurer\ReportController as TreasurerReportController
 
 // Public Evaluation Controllers
 use App\Http\Controllers\Public\EvaluationController as PublicEvaluationController;
+use Illuminate\Support\Facades\Artisan;
 
 /*
 |--------------------------------------------------------------------------
@@ -285,3 +286,13 @@ Route::get('/debug-session', function() {
         'auth_web' => auth()->user(),
     ]);
 })->middleware('auth');
+
+
+Route::get('/run-migrations', function() {
+    try {
+        Artisan::call('migrate', ['--force' => true]);
+        return "Migrations completed: " . Artisan::output();
+    } catch (\Exception $e) {
+        return "Error: " . $e->getMessage();
+    }
+});
