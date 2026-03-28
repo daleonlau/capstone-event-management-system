@@ -320,3 +320,14 @@ Route::get('/seed-data', function() {
         return "❌ Error: " . $e->getMessage();
     }
 });
+
+Route::get('/force-migrate', function() {
+    try {
+        \DB::statement('SET FOREIGN_KEY_CHECKS=0');
+        \Artisan::call('migrate --force');
+        \DB::statement('SET FOREIGN_KEY_CHECKS=1');
+        return "✅ Force migrations completed!<br><pre>" . \Artisan::output() . "</pre>";
+    } catch (\Exception $e) {
+        return "❌ Error: " . $e->getMessage();
+    }
+});
