@@ -14,6 +14,7 @@ class Evaluation extends Model
         'title',
         'form_type',
         'form_customizations',
+        'event_dates',
         'form_number',
         'revision',
         'date_effectivity',
@@ -32,6 +33,7 @@ class Evaluation extends Model
         'available_from' => 'datetime',
         'available_until' => 'datetime',
         'form_customizations' => 'array',
+        'event_dates' => 'array', // CRITICAL: This ensures JSON is cast to array
     ];
 
     public function event(): BelongsTo
@@ -95,6 +97,33 @@ class Evaluation extends Model
                 ->orderBy('order')
                 ->get();
         }
+        return $result;
+    }
+
+    public function getResponsesByDate($date = null)
+    {
+        $query = $this->responses();
+        if ($date) {
+            $query->where('event_date', $date);
+        }
+        return $query->get();
+    }
+
+    public function getDatesWithResponseCounts()
+    {
+        $dates = $this->event_dates ?: [];
+        $result = [];
+        
+        foreach ($dates as $index => $date) {
+            $count = $this->responses()->where('event_date', $date)->count();
+            $result[] = [
+                'date' => $date,
+                'index' => $index + 1,
+                'response_count' => $count,
+                'formatted_date' => date('F d, Y', strtotime($date))
+            ];
+        }
+        
         return $result;
     }
 }

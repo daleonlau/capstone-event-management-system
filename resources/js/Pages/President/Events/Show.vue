@@ -33,7 +33,7 @@
         </div>
       </div>
 
-      <!-- Status Alert -->
+      <!-- Status Alerts -->
       <div v-if="event.approval_status === 'pending_document'" class="bg-yellow-50 border-l-4 border-yellow-500 rounded-xl p-4">
         <div class="flex">
           <div class="flex-shrink-0">
@@ -94,7 +94,6 @@
         </div>
       </div>
 
-      <!-- Finished Alert -->
       <div v-if="event.status === 'Finished'" class="bg-purple-50 border-l-4 border-purple-500 rounded-xl p-4">
         <div class="flex">
           <div class="flex-shrink-0">
@@ -188,7 +187,6 @@
         <h2 class="text-lg font-semibold text-gray-800 mb-4">Target Audience</h2>
         
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <!-- Departments -->
           <div>
             <h3 class="font-medium text-gray-700 mb-2 flex items-center gap-2">
               <svg class="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -210,7 +208,6 @@
             </div>
           </div>
 
-          <!-- Courses -->
           <div>
             <h3 class="font-medium text-gray-700 mb-2 flex items-center gap-2">
               <svg class="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -232,7 +229,6 @@
             </div>
           </div>
 
-          <!-- Year Levels -->
           <div>
             <h3 class="font-medium text-gray-700 mb-2 flex items-center gap-2">
               <svg class="w-4 h-4 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -333,11 +329,167 @@
         </div>
       </div>
 
+      <!-- Tabs Navigation -->
+      <div class="border-b border-gray-200">
+        <nav class="flex gap-4">
+          <button 
+            @click="activeTab = 'students'" 
+            :class="activeTab === 'students' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-500'"
+            class="px-4 py-2 border-b-2 font-medium transition flex items-center gap-2"
+          >
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+            Eligible Students ({{ eligibleStudents.length }})
+          </button>
+          <button 
+            @click="activeTab = 'guests'" 
+            :class="activeTab === 'guests' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-500'"
+            class="px-4 py-2 border-b-2 font-medium transition flex items-center gap-2"
+          >
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+            Guest Respondents ({{ eligibleGuests?.length || 0 }})
+          </button>
+        </nav>
+      </div>
+
+      <!-- Students Tab -->
+      <div v-if="activeTab === 'students'" class="bg-white rounded-2xl shadow-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
+          <div class="flex justify-between items-center">
+            <h3 class="text-lg font-semibold text-gray-800 flex items-center gap-2">
+              <svg class="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+              Eligible Students
+              <span class="text-sm font-normal text-gray-500">(Based on selected departments, courses, and year levels)</span>
+            </h3>
+            <button 
+              @click="refreshEligibleStudents"
+              :disabled="refreshing"
+              class="px-3 py-1.5 text-sm bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition flex items-center gap-2 disabled:opacity-50"
+            >
+              <svg v-if="refreshing" class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <svg v-else class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Refresh List
+            </button>
+          </div>
+        </div>
+        
+        <div class="divide-y divide-gray-200 max-h-96 overflow-y-auto">
+          <div v-for="student in eligibleStudents" :key="student.student_id" class="p-4 hover:bg-gray-50 transition">
+            <div class="flex justify-between items-start">
+              <div class="flex-1">
+                <p class="font-medium text-gray-800">{{ student.firstname }} {{ student.lastname }}</p>
+                <p class="text-sm text-gray-500">{{ student.student_id }}</p>
+                <div class="flex flex-wrap gap-2 mt-2">
+                  <span class="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded-full">{{ student.department }}</span>
+                  <span class="text-xs px-2 py-1 bg-green-50 text-green-700 rounded-full">{{ student.course }}</span>
+                  <span class="text-xs px-2 py-1 bg-purple-50 text-purple-700 rounded-full">{{ student.yearlevel }}</span>
+                </div>
+              </div>
+              <div class="text-right">
+                <span :class="[
+                  'px-3 py-1 text-xs font-medium rounded-full',
+                  student.status === 'Paid' ? 'bg-green-100 text-green-700' :
+                  student.status === 'Pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-700'
+                ]">
+                  {{ student.status }}
+                </span>
+                <p v-if="student.amount_paid > 0" class="text-xs text-gray-500 mt-1">
+                  ₱{{ student.amount_paid.toLocaleString() }}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div v-if="eligibleStudents.length === 0" class="p-8 text-center text-gray-500">
+            <svg class="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+            <p>No students are eligible for this event based on the selected criteria.</p>
+            <p class="text-xs mt-1">Make sure students have the correct department, course, and year level.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Guests Tab -->
+      <div v-if="activeTab === 'guests'" class="bg-white rounded-2xl shadow-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
+          <div class="flex justify-between items-center">
+            <h3 class="text-lg font-semibold text-gray-800 flex items-center gap-2">
+              <svg class="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+              Guest Respondents
+              <span class="text-sm font-normal text-gray-500">(External participants manually added)</span>
+            </h3>
+            <div class="flex gap-2">
+              <Link 
+                :href="`/president/events/${event.id}/guests`"
+                class="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
+              >
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+                Manage Guests
+              </Link>
+            </div>
+          </div>
+        </div>
+        
+        <div class="divide-y divide-gray-200 max-h-96 overflow-y-auto">
+          <div v-for="guest in eligibleGuests" :key="guest.id" class="p-4 hover:bg-gray-50 transition">
+            <div class="flex justify-between items-start">
+              <div class="flex-1">
+                <p class="font-medium text-gray-800">{{ guest.name }}</p>
+                <p class="text-sm text-gray-500">{{ guest.guest_id }}</p>
+                <div class="flex flex-wrap gap-2 mt-2">
+                  <span class="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full">{{ guest.email }}</span>
+                  <span v-if="guest.agency_office" class="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full">{{ guest.agency_office }}</span>
+                  <span v-if="guest.position" class="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full">{{ guest.position }}</span>
+                </div>
+              </div>
+              <div class="text-right">
+                <span :class="[
+                  'px-3 py-1 text-xs font-medium rounded-full',
+                  guest.status === 'Evaluated' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                ]">
+                  {{ guest.status }}
+                </span>
+                <p class="text-xs text-gray-500 mt-1">
+                  Added: {{ formatDate(guest.created_at) }}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div v-if="!eligibleGuests || eligibleGuests.length === 0" class="p-8 text-center text-gray-500">
+            <svg class="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+            <p>No guest respondents added yet.</p>
+            <p class="text-sm mt-1">Click "Manage Guests" to add external participants who can evaluate this event.</p>
+          </div>
+        </div>
+      </div>
+
       <!-- Statistics -->
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
         <div class="bg-blue-50 rounded-xl p-4">
-          <p class="text-sm text-blue-600 font-semibold">Total Students</p>
+          <p class="text-sm text-blue-600 font-semibold">Total Eligible Students</p>
           <p class="text-2xl font-bold text-blue-700">{{ stats?.total_students || 0 }}</p>
+          <p class="text-xs text-blue-500 mt-1">Based on selected criteria</p>
+        </div>
+        <div class="bg-indigo-50 rounded-xl p-4">
+          <p class="text-sm text-indigo-600 font-semibold">Total Guests</p>
+          <p class="text-2xl font-bold text-indigo-700">{{ stats?.total_guests || 0 }}</p>
+          <p class="text-xs text-indigo-500 mt-1">Manually added</p>
         </div>
         <div class="bg-green-50 rounded-xl p-4">
           <p class="text-sm text-green-600 font-semibold">Paid</p>
@@ -353,7 +505,7 @@
         </div>
       </div>
 
-      <!-- Request Evaluation Modal -->
+      <!-- Request Evaluation Modal with INCLUSIVE DATES DISPLAY -->
       <Teleport to="body">
         <div v-if="showRequestModal" class="fixed inset-0 z-50 overflow-y-auto">
           <div class="fixed inset-0 bg-black/40 backdrop-blur-sm" @click="showRequestModal = false"></div>
@@ -376,15 +528,32 @@
                   <input v-model="requestForm.title" type="text" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500" required />
                 </div>
 
-                <div class="grid grid-cols-2 gap-4">
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Date *</label>
-                    <input v-model="requestForm.activity_date" type="date" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500" required />
+                <!-- Display Inclusive Dates from Event -->
+                <div class="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                  <div class="flex items-center gap-2 mb-3">
+                    <svg class="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7H3v12a2 2 0 002 2z" />
+                    </svg>
+                    <span class="font-semibold text-blue-800">Event Inclusive Dates</span>
                   </div>
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Venue *</label>
-                    <input v-model="requestForm.venue" type="text" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500" required />
+                  <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    <div v-for="(date, idx) in inclusiveDates" :key="date" 
+                         class="flex items-center gap-2 p-2 bg-white rounded-lg border border-blue-100">
+                      <span class="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-xs font-bold text-blue-700">
+                        {{ idx + 1 }}
+                      </span>
+                      <span class="text-sm text-gray-700">{{ formatDate(date) }}</span>
+                    </div>
                   </div>
+                  <p class="text-xs text-blue-600 mt-2">
+                    These dates are automatically generated from the event's start and end dates.
+                    Students will be able to submit separate evaluations for each day.
+                  </p>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Venue *</label>
+                  <input v-model="requestForm.venue" type="text" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500" required />
                 </div>
 
                 <div>
@@ -493,8 +662,18 @@ const props = defineProps({
   evaluationRequest: {
     type: Object,
     default: null
+  },
+  eligibleStudents: {
+    type: Array,
+    default: () => []
+  },
+  eligibleGuests: {
+    type: Array,
+    default: () => []
   }
 });
+
+const activeTab = ref('students');
 
 // Document upload form
 const uploadForm = useForm({
@@ -504,10 +683,33 @@ const documentFileName = ref('');
 const showFinishedModal = ref(false);
 const finishedProcessing = ref(false);
 const showRequestModal = ref(false);
+const refreshing = ref(false);
+const eligibleStudents = ref(props.eligibleStudents || []);
+
+// Generate inclusive dates from event start and end
+const inclusiveDates = ref([]);
+
+// Generate dates when component mounts or when event dates change
+function generateInclusiveDates() {
+  if (props.event.event_date_start && props.event.event_date_end) {
+    const start = new Date(props.event.event_date_start);
+    const end = new Date(props.event.event_date_end);
+    const dates = [];
+    const currentDate = new Date(start);
+    
+    while (currentDate <= end) {
+      dates.push(new Date(currentDate).toISOString().split('T')[0]);
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    inclusiveDates.value = dates;
+  }
+}
+
+// Call on mount
+generateInclusiveDates();
 
 const requestForm = useForm({
-  title: '',
-  activity_date: '',
+  title: props.event.event_name,
   venue: '',
   speaker_name: '',
   topics: [''],
@@ -574,6 +776,31 @@ async function markAsFinished() {
   }
 }
 
+async function refreshEligibleStudents() {
+  refreshing.value = true;
+  try {
+    const response = await axios.post(`/president/events/${props.event.id}/refresh-students`);
+    if (response.data.success) {
+      eligibleStudents.value = response.data.students;
+      if (props.stats) {
+        props.stats.total_students = response.data.total;
+      }
+      showToastMessage('Student list refreshed successfully', 'success');
+    } else {
+      showToastMessage(response.data.error || 'Failed to refresh students', 'error');
+    }
+  } catch (error) {
+    console.error('Error refreshing students:', error);
+    showToastMessage(error.response?.data?.error || 'Failed to refresh students', 'error');
+  } finally {
+    refreshing.value = false;
+  }
+}
+
+function showToastMessage(message, type = 'success') {
+  alert(message);
+}
+
 function addTopic() {
   requestForm.topics.push('');
 }
@@ -584,6 +811,7 @@ function removeTopic(index) {
 
 function openRequestModal() {
   requestForm.reset();
+  requestForm.title = props.event.event_name;
   requestForm.topics = [''];
   showRequestModal.value = true;
 }

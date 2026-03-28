@@ -9,240 +9,489 @@ use App\Models\Event;
 use App\Models\EvaluationCategory;
 use App\Models\EvaluationQuestion;
 use App\Models\EvaluationResponse;
+use App\Models\EventStudent;
+use App\Models\EventGuest;
 use App\Models\AIAnalysis;
+use App\Models\Department;
+use App\Models\Course;
+use App\Models\Student;
+use App\Jobs\AnalyzeEvaluationJob;
+use App\Services\AIAnalysisService;
+use App\Services\LogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
-use App\Services\AIAnalysisService;
+use Carbon\Carbon;
 
 class EvaluationController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $search = $request->get('search');
+        
         $evaluations = Evaluation::with(['event', 'event.creator'])
+            ->when($search, function ($query, $search) {
+                $query->where('title', 'like', "%{$search}%")
+                    ->orWhereHas('event', function ($q) use ($search) {
+                        $q->where('event_name', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('event.creator', function ($q) use ($search) {
+                        $q->where('name', 'like', "%{$search}%");
+                    });
+            })
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($evaluation) {
+                $event = $evaluation->event;
+                $eventDates = $evaluation->event_dates ?: [];
+                $numberOfDates = count($eventDates);
+                
+                $totalStudents = EventStudent::where('event_id', $event->id)->count();
+                $totalGuests = EventGuest::where('event_id', $event->id)->count();
+                $totalExpected = ($totalStudents * max($numberOfDates, 1)) + $totalGuests;
+                
+                $responseRate = $totalExpected > 0 
+                    ? round(($evaluation->total_responses / $totalExpected) * 100, 1) 
+                    : 0;
+                
                 return [
                     'id' => $evaluation->id,
                     'title' => $evaluation->title,
                     'form_type' => $evaluation->form_type,
+                    'status' => $evaluation->status,
                     'event_name' => $evaluation->event->event_name,
                     'organization_name' => $evaluation->event->creator->name,
-                    'status' => $evaluation->status,
                     'responses_count' => $evaluation->total_responses,
+                    'expected_count' => $totalExpected,
+                    'response_rate' => $responseRate,
+                    'students_count' => $totalStudents,
+                    'guests_count' => $totalGuests,
+                    'number_of_dates' => $numberOfDates,
+                    'event_dates' => $eventDates,
                     'created_at' => $evaluation->created_at->format('Y-m-d'),
                 ];
             });
 
-        $pendingRequests = EvaluationRequest::with(['event', 'organization', 'requestedBy'])
-            ->where('status', 'pending')
-            ->count();
+        $pendingRequestsCount = EvaluationRequest::where('status', 'pending')->count();
+
+        // Log view action (admin viewing evaluations list)
+        $this->logAction('view_evaluations_list', 'Viewed evaluations list', [
+            'total_evaluations' => $evaluations->count(),
+            'pending_requests' => $pendingRequestsCount,
+            'search_term' => $search,
+        ]);
 
         return Inertia::render('Admin/Evaluations/Index', [
             'evaluations' => $evaluations,
-            'pendingRequestsCount' => $pendingRequests
+            'pendingRequestsCount' => $pendingRequestsCount,
+            'search' => $search,
         ]);
     }
 
     public function getPendingRequests()
     {
-        try {
-            $requests = EvaluationRequest::with(['event', 'organization', 'requestedBy'])
-                ->where('status', 'pending')
-                ->orderBy('created_at', 'desc')
-                ->get()
-                ->map(function ($request) {
-                    return [
-                        'id' => $request->id,
-                        'event_id' => $request->event_id,
-                        'event_name' => $request->event->event_name,
-                        'event_status' => $request->event->status,
-                        'organization_name' => $request->organization->name,
-                        'title' => $request->title,
-                        'activity_date' => $request->activity_date instanceof \Carbon\Carbon 
-                            ? $request->activity_date->format('M d, Y') 
-                            : date('M d, Y', strtotime($request->activity_date)),
-                        'venue' => $request->venue,
-                        'speaker_name' => $request->speaker_name,
-                        'topics' => $request->topics,
-                        'has_food' => $request->has_food,
-                        'notes' => $request->notes,
-                        'created_at' => $request->created_at instanceof \Carbon\Carbon 
-                            ? $request->created_at->format('M d, Y h:i A') 
-                            : date('M d, Y h:i A', strtotime($request->created_at)),
-                    ];
-                });
-
-            return response()->json($requests);
-        } catch (\Exception $e) {
-            Log::error('Failed to fetch pending requests', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-            return response()->json([], 200);
-        }
-    }
-
-    public function create(Request $request)
-    {
-        $pendingRequests = EvaluationRequest::with(['event', 'organization', 'requestedBy'])
+        $requests = EvaluationRequest::with(['event', 'organization', 'requestedBy'])
             ->where('status', 'pending')
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($request) {
                 return [
                     'id' => $request->id,
-                    'event_id' => $request->event_id,
+                    'title' => $request->title,
                     'event_name' => $request->event->event_name,
                     'event_status' => $request->event->status,
                     'organization_name' => $request->organization->name,
-                    'title' => $request->title,
-                    'activity_date' => $request->activity_date instanceof \Carbon\Carbon 
-                        ? $request->activity_date->format('M d, Y') 
-                        : date('M d, Y', strtotime($request->activity_date)),
+                    'requested_by' => $request->requestedBy->name,
+                    'activity_date' => $request->activity_date->format('Y-m-d'),
+                    'event_dates' => $request->event_dates ?: [],
                     'venue' => $request->venue,
                     'speaker_name' => $request->speaker_name,
                     'topics' => $request->topics,
                     'has_food' => $request->has_food,
-                    'notes' => $request->notes,
-                    'created_at' => $request->created_at->format('Y-m-d H:i'),
+                    'created_at' => $request->created_at->diffForHumans(),
+                ];
+            });
+
+        return response()->json($requests);
+    }
+
+    public function create(Request $request)
+    {
+        $pendingRequests = EvaluationRequest::with(['event', 'organization'])
+            ->where('status', 'pending')
+            ->get()
+            ->map(function ($request) {
+                return [
+                    'id' => $request->id,
+                    'title' => $request->title,
+                    'event_name' => $request->event->event_name,
+                    'organization_name' => $request->organization->name,
+                    'activity_date' => $request->activity_date->format('Y-m-d'),
+                    'event_dates' => $request->event_dates ?: [],
                 ];
             });
 
         $formTypes = [
-            'type1' => '7 Quality Dimension (F-EEF-018a)',
-            'type2' => '5 Quality Dimension (F-EEF-018d)',
-            'type3' => '8 Quality Dimension (F-EEF-018e)',
-            'type4' => '6 Quality Dimension without Meals (F-EEF-018b)',
-            'type5' => '6 Quality Dimension without Speaker (F-EEF-018c)',
+            'type1' => '7 Quality Dimension (Standard)',
+            'type2' => '5 Quality Dimension (Basic)',
+            'type3' => '8 Quality Dimension (Comprehensive with Food & Speaker)',
+            'type4' => '6 Quality Dimension (With Speaker, No Food)',
+            'type5' => '6 Quality Dimension (With Food, No Speaker)',
         ];
 
-        $selectedRequestId = $request->query('request_id');
+        // Log view action
+        $this->logAction('view_create_evaluation_form', 'Viewed evaluation creation form', [
+            'pending_requests_count' => $pendingRequests->count(),
+        ]);
 
         return Inertia::render('Admin/Evaluations/Create', [
             'pendingRequests' => $pendingRequests,
             'formTypes' => $formTypes,
-            'selectedRequestId' => $selectedRequestId
+            'selectedRequestId' => $request->query('request_id'),
         ]);
     }
 
     public function store(Request $request)
     {
-        Log::info('=== EVALUATION STORE METHOD CALLED ===');
-        Log::info('Request data:', $request->all());
-
         $validated = $request->validate([
             'evaluation_request_id' => 'required|exists:evaluation_requests,id',
             'form_type' => 'required|in:type1,type2,type3,type4,type5',
             'title' => 'required|string|max:255',
-            'form_number' => 'required|string',
-            'revision' => 'required|string',
-            'date_effectivity' => 'required|string',
+            'form_number' => 'required|string|max:50',
+            'revision' => 'required|string|max:20',
+            'date_effectivity' => 'required|string|max:50',
             'available_from' => 'nullable|date',
             'available_until' => 'nullable|date|after:available_from',
         ]);
 
-        Log::info('Validation passed', $validated);
-
-        $evaluationRequest = EvaluationRequest::findOrFail($request->evaluation_request_id);
-        Log::info('Evaluation request found', ['id' => $evaluationRequest->id]);
-
-        if (!$evaluationRequest->canCreateEvaluation()) {
-            Log::warning('Evaluation request cannot be processed', [
-                'id' => $evaluationRequest->id,
-                'status' => $evaluationRequest->status
-            ]);
-            return back()->with('error', 'This request cannot be processed.');
-        }
+        $evaluationRequest = EvaluationRequest::findOrFail($validated['evaluation_request_id']);
+        $event = $evaluationRequest->event;
 
         DB::beginTransaction();
 
         try {
+            $eventDates = $evaluationRequest->event_dates ?: [];
+
             $evaluation = Evaluation::create([
-                'event_id' => $evaluationRequest->event_id,
-                'organization_id' => $evaluationRequest->organization_id,
-                'title' => $request->title,
-                'form_type' => $request->form_type,
-                'form_number' => $request->form_number,
-                'revision' => $request->revision,
-                'date_effectivity' => $request->date_effectivity,
-                'available_from' => $request->available_from,
-                'available_until' => $request->available_until,
-                'status' => 'draft',
+                'event_id' => $event->id,
+                'organization_id' => $event->user_id,
+                'title' => $validated['title'],
+                'form_type' => $validated['form_type'],
                 'form_customizations' => [
                     'original_title' => $evaluationRequest->title,
                     'activity_date' => $evaluationRequest->activity_date,
+                    'event_dates' => $eventDates,
                     'venue' => $evaluationRequest->venue,
                     'speaker_name' => $evaluationRequest->speaker_name,
                     'topics' => $evaluationRequest->topics,
                     'has_food' => $evaluationRequest->has_food,
-                ]
+                ],
+                'event_dates' => $eventDates,
+                'form_number' => $validated['form_number'],
+                'revision' => $validated['revision'],
+                'date_effectivity' => $validated['date_effectivity'],
+                'available_from' => $validated['available_from'],
+                'available_until' => $validated['available_until'],
+                'status' => 'draft',
             ]);
 
-            Log::info('Evaluation created', ['id' => $evaluation->id]);
-
-            $formTemplate = $this->getFormTemplate($request->form_type);
-            Log::info('Form template retrieved', ['type' => $request->form_type]);
-
-            foreach ($formTemplate['categories'] as $catIndex => $catData) {
-                $category = EvaluationCategory::create([
-                    'evaluation_id' => $evaluation->id,
-                    'category_name' => $catData['name'],
-                    'order' => $catIndex,
-                ]);
-                Log::info('Category created', ['id' => $category->id, 'name' => $catData['name']]);
-
-                foreach ($catData['questions'] as $qIndex => $qData) {
-                    EvaluationQuestion::create([
-                        'evaluation_id' => $evaluation->id,
-                        'category_id' => $category->id,
-                        'question_text' => $qData['text'],
-                        'question_type' => 'likert',
-                        'order' => $qIndex,
-                        'is_required' => true,
-                    ]);
-                }
-                Log::info('Questions created for category', ['category_id' => $category->id, 'count' => count($catData['questions'])]);
-            }
-
-            foreach ($formTemplate['comments'] as $cIndex => $cData) {
-                EvaluationQuestion::create([
-                    'evaluation_id' => $evaluation->id,
-                    'category_id' => null,
-                    'question_text' => $cData['text'],
-                    'question_type' => 'comment',
-                    'order' => $cIndex,
-                    'is_required' => $cData['required'] ?? false,
-                ]);
-            }
-            Log::info('Comments created', ['count' => count($formTemplate['comments'])]);
+            $this->createEvaluationStructure($evaluation, $validated['form_type']);
 
             $evaluationRequest->update([
-                'status' => 'processing',
+                'status' => 'completed',
                 'evaluation_id' => $evaluation->id,
-                'form_type' => $request->form_type,
             ]);
-            Log::info('Evaluation request updated', ['id' => $evaluationRequest->id, 'status' => 'processing']);
 
             DB::commit();
 
-            Log::info('=== EVALUATION CREATED SUCCESSFULLY ===', ['evaluation_id' => $evaluation->id]);
+            // Log evaluation creation
+            $this->logAction('create_evaluation', 'Created evaluation: ' . $evaluation->title, [
+                'evaluation_id' => $evaluation->id,
+                'title' => $evaluation->title,
+                'form_type' => $evaluation->form_type,
+                'form_number' => $evaluation->form_number,
+                'event_id' => $event->id,
+                'event_name' => $event->event_name,
+                'evaluation_request_id' => $evaluationRequest->id,
+                'organization_id' => $event->user_id,
+            ]);
 
             return redirect()->route('admin.evaluations.show', $evaluation->id)
-                ->with('success', 'Evaluation form created successfully!');
+                ->with('success', 'Evaluation created successfully!');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('=== EVALUATION CREATION FAILED ===');
-            Log::error('Error message: ' . $e->getMessage());
-            Log::error('Error trace: ' . $e->getTraceAsString());
+            Log::error('Failed to create evaluation: ' . $e->getMessage());
             
-            return back()->with('error', 'Failed to create evaluation: ' . $e->getMessage());
+            $this->logError('create_evaluation_failed', 'Failed to create evaluation: ' . $e->getMessage(), $e, [
+                'evaluation_request_id' => $validated['evaluation_request_id'],
+                'title' => $validated['title'],
+                'form_type' => $validated['form_type'],
+            ]);
+            
+            return back()->withErrors(['error' => 'Failed to create evaluation: ' . $e->getMessage()]);
         }
+    }
+
+    private function createEvaluationStructure(Evaluation $evaluation, $formType)
+    {
+        $templates = $this->getFormTemplates();
+        $template = $templates[$formType] ?? $templates['type1'];
+
+        foreach ($template['categories'] as $catIndex => $categoryData) {
+            $category = EvaluationCategory::create([
+                'evaluation_id' => $evaluation->id,
+                'category_name' => $categoryData['name'],
+                'order' => $catIndex + 1,
+            ]);
+
+            foreach ($categoryData['questions'] as $qIndex => $questionText) {
+                EvaluationQuestion::create([
+                    'evaluation_id' => $evaluation->id,
+                    'category_id' => $category->id,
+                    'question_text' => $questionText,
+                    'question_type' => 'likert',
+                    'order' => $qIndex + 1,
+                    'is_required' => true,
+                ]);
+            }
+        }
+
+        foreach ($template['comments'] as $cIndex => $commentText) {
+            EvaluationQuestion::create([
+                'evaluation_id' => $evaluation->id,
+                'category_id' => null,
+                'question_text' => $commentText,
+                'question_type' => 'comment',
+                'order' => $cIndex + 1,
+                'is_required' => false,
+            ]);
+        }
+    }
+
+    private function getFormTemplates()
+    {
+        return [
+            'type1' => [
+                'categories' => [
+                    ['name' => 'I. Information Dissemination', 'questions' => [
+                        'Timeliness of sending invites',
+                        'Adequacy of information dissemination'
+                    ]],
+                    ['name' => 'II. Design of the Event', 'questions' => [
+                        'Program / Order of activities',
+                        'Relevance of the activities',
+                        'Time allotment / pacing'
+                    ]],
+                    ['name' => 'III. Outcomes of the Event', 'questions' => [
+                        'Attendance of participants',
+                        'Participation to activities',
+                        'Interaction',
+                        'Teamwork'
+                    ]],
+                    ['name' => 'IV. Secretariat', 'questions' => [
+                        'Sensitivity in providing assistance/needs to the participants',
+                        'Management on the entire activities',
+                        'Provision of information/feedback to the participants in a clear, concise manner'
+                    ]],
+                    ['name' => 'V. Facilities', 'questions' => [
+                        'Overall appearance of the venue',
+                        'Cleanliness and orderliness',
+                        'Availability and functionality of applicable equipment'
+                    ]],
+                    ['name' => 'VI. Food', 'questions' => [
+                        'Quality of food and beverages',
+                        'Food and beverages presentation/setup',
+                        'Timeliness of delivery of food',
+                        'Quality of service provided',
+                        'Sufficiency of foods',
+                        'Quantity/Serving of food provided'
+                    ]],
+                    ['name' => 'VII. Resource Speaker', 'questions' => [
+                        'Methods/strategy employed',
+                        'Mastery of the subject matter',
+                        'Ability to draw and maintain interest and participation',
+                        'Relevancy and applicability of the topic/content discussed'
+                    ]]
+                ],
+                'comments' => [
+                    'VIII. Positive Comments',
+                    'IX. Suggestions/Recommendations for Improvement'
+                ]
+            ],
+            'type2' => [
+                'categories' => [
+                    ['name' => 'I. Information Dissemination', 'questions' => [
+                        'Timeliness of sending invites',
+                        'Adequacy of information dissemination'
+                    ]],
+                    ['name' => 'II. Design of the Event', 'questions' => [
+                        'Program / Order of activities',
+                        'Relevance of the activities',
+                        'Time allotment / pacing'
+                    ]],
+                    ['name' => 'III. Outcomes of the Event', 'questions' => [
+                        'Attendance of participants',
+                        'Participation to activities',
+                        'Interaction',
+                        'Teamwork'
+                    ]],
+                    ['name' => 'IV. Secretariat', 'questions' => [
+                        'Sensitivity in providing assistance/needs to the participants',
+                        'Management on the entire activities',
+                        'Provision of information/feedback to the participants in a clear, concise manner'
+                    ]],
+                    ['name' => 'V. Facilities', 'questions' => [
+                        'Overall appearance of the venue',
+                        'Cleanliness and orderliness',
+                        'Availability and functionality of applicable equipment'
+                    ]]
+                ],
+                'comments' => [
+                    'VI. Positive Comments',
+                    'VII. Suggestions/Recommendations for Improvement'
+                ]
+            ],
+            'type3' => [
+                'categories' => [
+                    ['name' => 'I. Information Dissemination', 'questions' => [
+                        'Timeliness of sending invites',
+                        'Adequacy of information dissemination'
+                    ]],
+                    ['name' => 'II. Design of the Event', 'questions' => [
+                        'Program / Order of activities',
+                        'Relevance of the activities',
+                        'Time allotment / pacing'
+                    ]],
+                    ['name' => 'III. Outcomes of the Event', 'questions' => [
+                        'Attendance of participants',
+                        'Participation to activities',
+                        'Timeliness and orderliness of the overall event',
+                        'Execution of awarding and recognition of graduates'
+                    ]],
+                    ['name' => 'IV. Secretariat', 'questions' => [
+                        'Sensitivity in providing assistance to the participants',
+                        'Management of the entire activities',
+                        'Provision of information/feedback to the participants in a clear, concise manner'
+                    ]],
+                    ['name' => 'V. Venue and other Facilities', 'questions' => [
+                        'Overall appearance of the venue',
+                        'Cleanliness and orderliness',
+                        'Comfortability of room temperature and ventilation',
+                        'Functionality and quality of audio-visual equipment',
+                        'Suitability of the venue for the number of participants/guests'
+                    ]],
+                    ['name' => 'VI. Food (For Students, Guests, Faculty and Working Committee)', 'questions' => [
+                        'Quality of foods and beverages',
+                        'Food and beverages presentation/setup',
+                        'Timeliness in the delivery of food',
+                        'Quality of services provided',
+                        'Sufficiency of foods',
+                        'Quantity/Serving of food provided'
+                    ]],
+                    ['name' => 'VII. Resource Speaker', 'questions' => [
+                        'Methods/strategy employed',
+                        'Mastery of the subject matter',
+                        'Ability to draw and maintain interest and participation',
+                        'Relevance and applicability of the topic/content discussed'
+                    ]],
+                    ['name' => 'VIII. Traffic Management', 'questions' => [
+                        'Traffic control management',
+                        'Clarity of signs and instruction',
+                        'Traffic capacity and safety'
+                    ]]
+                ],
+                'comments' => [
+                    'IX. What went well?',
+                    'X. What went not-so-well?',
+                    'XI. What should we change for the next time we hold this event?',
+                    'XII. Any recommendations for improvement?'
+                ]
+            ],
+            'type4' => [
+                'categories' => [
+                    ['name' => 'I. Information Dissemination', 'questions' => [
+                        'Timeliness of sending invites',
+                        'Adequacy of information dissemination'
+                    ]],
+                    ['name' => 'II. Design of the Event', 'questions' => [
+                        'Program / Order of activities',
+                        'Relevance of the activities',
+                        'Time allotment / pacing'
+                    ]],
+                    ['name' => 'III. Outcomes of the Event', 'questions' => [
+                        'Attendance of participants',
+                        'Participation to activities',
+                        'Interaction',
+                        'Teamwork'
+                    ]],
+                    ['name' => 'IV. Secretariat', 'questions' => [
+                        'Sensitivity in providing assistance/needs to the participants',
+                        'Management on the entire activities',
+                        'Provision of information/feedback to the participants in a clear, concise manner'
+                    ]],
+                    ['name' => 'V. Facilities', 'questions' => [
+                        'Overall appearance of the venue',
+                        'Cleanliness and orderliness',
+                        'Availability and functionality of applicable equipment'
+                    ]],
+                    ['name' => 'VI. Resource Speaker', 'questions' => [
+                        'Methods/strategy employed',
+                        'Mastery of the subject matter',
+                        'Ability to draw and maintain interest and participation',
+                        'Relevancy and applicability of the topic/content discussed'
+                    ]]
+                ],
+                'comments' => [
+                    'VII. Positive Comments',
+                    'VIII. Suggestions/Recommendations for Improvement'
+                ]
+            ],
+            'type5' => [
+                'categories' => [
+                    ['name' => 'I. Information Dissemination', 'questions' => [
+                        'Timeliness of sending invites',
+                        'Adequacy of information dissemination'
+                    ]],
+                    ['name' => 'II. Design of the Event', 'questions' => [
+                        'Program / Order of activities',
+                        'Relevance of the activities',
+                        'Time allotment / pacing'
+                    ]],
+                    ['name' => 'III. Outcomes of the Event', 'questions' => [
+                        'Attendance of participants',
+                        'Participation to activities',
+                        'Interaction',
+                        'Teamwork'
+                    ]],
+                    ['name' => 'IV. Secretariat', 'questions' => [
+                        'Sensitivity in providing assistance/needs to the participants',
+                        'Management on the entire activities',
+                        'Provision of information/feedback to the participants in a clear, concise manner'
+                    ]],
+                    ['name' => 'V. Facilities', 'questions' => [
+                        'Overall appearance of the venue',
+                        'Cleanliness and orderliness',
+                        'Availability and functionality of applicable equipment'
+                    ]],
+                    ['name' => 'VI. Food', 'questions' => [
+                        'Quality of food and beverages',
+                        'Food and beverages presentation/setup',
+                        'Timeliness of delivery of food',
+                        'Quality of service provided',
+                        'Sufficiency of foods',
+                        'Quantity/Serving of food provided'
+                    ]]
+                ],
+                'comments' => [
+                    'VII. Positive Comments',
+                    'VIII. Suggestions/Recommendations for Improvement'
+                ]
+            ]
+        ];
     }
 
     public function show(Evaluation $evaluation)
@@ -250,10 +499,74 @@ class EvaluationController extends Controller
         $evaluation->load(['event', 'categories.questions', 'questions' => function ($q) {
             $q->where('question_type', 'comment');
         }]);
-    
-        $evaluationRequest = EvaluationRequest::where('evaluation_id', $evaluation->id)->first();
-    
+
         $responses = EvaluationResponse::where('evaluation_id', $evaluation->id)->get();
+        
+        $event = $evaluation->event;
+        $eventDates = $evaluation->event_dates ?: [];
+        $numberOfDates = count($eventDates);
+        
+        $totalStudents = EventStudent::where('event_id', $event->id)->count();
+        $totalGuests = EventGuest::where('event_id', $event->id)->count();
+        
+        $perDateStats = [];
+        $totalResponsesOverall = 0;
+        $totalExpectedOverall = 0;
+        
+        foreach ($eventDates as $index => $date) {
+            $dateResponses = EvaluationResponse::where('evaluation_id', $evaluation->id)
+                ->where('event_date', $date)
+                ->count();
+            
+            $dateGuests = EventGuest::where('event_id', $event->id)
+                ->where(function($query) use ($date) {
+                    if (Schema::hasColumn('event_guests', 'event_date')) {
+                        $query->where('event_date', $date);
+                    }
+                })
+                ->count();
+            
+            $dateExpected = $totalStudents + $dateGuests;
+            $dateResponseRate = $dateExpected > 0 ? round(($dateResponses / $dateExpected) * 100, 1) : 0;
+            
+            $perDateStats[] = [
+                'date' => $date,
+                'date_index' => $index + 1,
+                'formatted_date' => Carbon::parse($date)->format('F d, Y'),
+                'responses' => $dateResponses,
+                'expected' => $dateExpected,
+                'response_rate' => $dateResponseRate,
+                'students' => $totalStudents,
+                'guests' => $dateGuests,
+            ];
+            
+            $totalResponsesOverall += $dateResponses;
+            $totalExpectedOverall += $dateExpected;
+        }
+        
+        if (empty($eventDates)) {
+            $dateResponses = $evaluation->total_responses;
+            $dateExpected = $totalStudents + $totalGuests;
+            $dateResponseRate = $dateExpected > 0 ? round(($dateResponses / $dateExpected) * 100, 1) : 0;
+            
+            $perDateStats[] = [
+                'date' => $event->event_date_start,
+                'date_index' => 1,
+                'formatted_date' => Carbon::parse($event->event_date_start)->format('F d, Y'),
+                'responses' => $dateResponses,
+                'expected' => $dateExpected,
+                'response_rate' => $dateResponseRate,
+                'students' => $totalStudents,
+                'guests' => $totalGuests,
+            ];
+            
+            $totalResponsesOverall = $dateResponses;
+            $totalExpectedOverall = $dateExpected;
+        }
+        
+        $overallResponseRate = $totalExpectedOverall > 0 
+            ? round(($totalResponsesOverall / $totalExpectedOverall) * 100, 1) 
+            : 0;
         
         $stats = [];
         $likertQuestions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
@@ -287,7 +600,7 @@ class EvaluationController extends Controller
                 ];
             }
         }
-    
+
         $comments = [];
         $commentQuestions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
             ->where('question_type', 'comment')
@@ -306,16 +619,20 @@ class EvaluationController extends Controller
                 'responses' => $commentResponses
             ];
         }
-    
-        // Get AI insights with sentiment analysis data
+
         $aiInsights = AIAnalysis::where('evaluation_id', $evaluation->id)->first();
-        
-        // Parse sentiment analysis data
-        $sentimentData = [];
-        if ($aiInsights && $aiInsights->sentiment_analysis) {
-            $sentimentData = json_decode($aiInsights->sentiment_analysis, true);
-        }
-    
+
+        $canGenerateQR = $evaluation->status === 'draft';
+
+        // Log view action
+        $this->logAction('view_evaluation_details', 'Viewed evaluation details: ' . $evaluation->title, [
+            'evaluation_id' => $evaluation->id,
+            'title' => $evaluation->title,
+            'status' => $evaluation->status,
+            'total_responses' => $evaluation->total_responses,
+            'overall_response_rate' => $overallResponseRate,
+        ]);
+
         return Inertia::render('Admin/Evaluations/Show', [
             'evaluation' => [
                 'id' => $evaluation->id,
@@ -325,12 +642,23 @@ class EvaluationController extends Controller
                 'revision' => $evaluation->revision,
                 'date_effectivity' => $evaluation->date_effectivity,
                 'status' => $evaluation->status,
-                'qr_code_url' => $evaluation->qr_code_url,
-                'qr_code_path' => $evaluation->qr_code_path,
+                'available_from' => $evaluation->available_from,
+                'available_until' => $evaluation->available_until,
+                'total_responses' => $evaluation->total_responses,
+                'total_responses_overall' => $totalResponsesOverall,
+                'total_expected_overall' => $totalExpectedOverall,
+                'overall_response_rate' => $overallResponseRate,
+                'students_count' => $totalStudents,
+                'guests_count' => $totalGuests,
+                'number_of_dates' => $numberOfDates,
+                'created_at' => $evaluation->created_at->format('Y-m-d H:i'),
+                'customizations' => $evaluation->form_customizations,
+                'event_dates' => $evaluation->event_dates,
                 'event' => [
                     'id' => $evaluation->event->id,
                     'event_name' => $evaluation->event->event_name,
-                    'status' => $evaluation->event->status,
+                    'event_date_start' => $evaluation->event->event_date_start,
+                    'event_date_end' => $evaluation->event->event_date_end,
                 ],
                 'categories' => $evaluation->categories->map(function ($cat) {
                     return [
@@ -340,6 +668,7 @@ class EvaluationController extends Controller
                             return [
                                 'id' => $q->id,
                                 'text' => $q->question_text,
+                                'required' => $q->is_required,
                             ];
                         }),
                     ];
@@ -348,61 +677,39 @@ class EvaluationController extends Controller
                     return [
                         'id' => $q->id,
                         'text' => $q->question_text,
+                        'required' => $q->is_required,
                     ];
                 })->values(),
-                'responses_count' => $evaluation->total_responses,
-                'created_at' => $evaluation->created_at->format('Y-m-d H:i'),
-                'customizations' => $evaluation->form_customizations,
             ],
-            'evaluationRequest' => $evaluationRequest,
             'stats' => $stats,
             'comments' => $comments,
-            'aiInsights' => $aiInsights ? [
-                'summary' => $aiInsights->summary,
-                'strengths' => json_decode($aiInsights->strengths, true),
-                'weaknesses' => json_decode($aiInsights->weaknesses, true),
-                'recommendations' => json_decode($aiInsights->recommendations, true),
-                'feature_importance' => json_decode($aiInsights->feature_importance, true),
-                'predicted_satisfaction' => $aiInsights->predicted_satisfaction,
-                'success_probability' => $aiInsights->success_probability,
-                'category_breakdown' => json_decode($aiInsights->category_breakdown, true),
-                'response_rate' => $aiInsights->response_rate,
-                'total_respondents' => $aiInsights->total_respondents,
-                'analyzed_at' => $aiInsights->analyzed_at,
-                // Add sentiment data
-                'sentiment_score' => $sentimentData['sentiment_score'] ?? 0,
-                'positive_percentage' => $sentimentData['positive_percentage'] ?? 0,
-                'negative_percentage' => $sentimentData['negative_percentage'] ?? 0,
-                'neutral_percentage' => $sentimentData['neutral_percentage'] ?? 0,
-                'total_comments' => $sentimentData['total_comments'] ?? 0,
-                'common_themes' => $sentimentData['common_themes'] ?? [],
-                'positive_comments' => $sentimentData['positive_comments'] ?? [],
-                'negative_comments' => $sentimentData['negative_comments'] ?? [],
-                'neutral_comments' => $sentimentData['neutral_comments'] ?? [],
-                'what_if_optimistic' => json_decode($aiInsights->what_if_analysis, true)['optimistic'] ?? [],
-                'what_if_targeted' => json_decode($aiInsights->what_if_analysis, true)['targeted'] ?? [],
-            ] : null,
-            'canGenerateQR' => $evaluation->status === 'draft',
+            'aiInsights' => $aiInsights,
+            'perDateStats' => $perDateStats,
+            'canGenerateQR' => $canGenerateQR,
         ]);
     }
+
     public function edit(Evaluation $evaluation)
     {
         if ($evaluation->status !== 'draft') {
             return redirect()->route('admin.evaluations.show', $evaluation->id)
-                ->with('error', 'Cannot edit evaluation that is already active or closed.');
+                ->with('error', 'Only draft evaluations can be edited.');
         }
 
-        $evaluation->load(['categories.questions', 'questions' => function ($q) {
-            $q->where('question_type', 'comment');
-        }]);
-
         $formTypes = [
-            'type1' => '7 Quality Dimension (F-EEF-018a)',
-            'type2' => '5 Quality Dimension (F-EEF-018d)',
-            'type3' => '8 Quality Dimension (F-EEF-018e)',
-            'type4' => '6 Quality Dimension without Meals (F-EEF-018b)',
-            'type5' => '6 Quality Dimension without Speaker (F-EEF-018c)',
+            'type1' => '7 Quality Dimension (Standard)',
+            'type2' => '5 Quality Dimension (Basic)',
+            'type3' => '8 Quality Dimension (Comprehensive with Food & Speaker)',
+            'type4' => '6 Quality Dimension (With Speaker, No Food)',
+            'type5' => '6 Quality Dimension (With Food, No Speaker)',
         ];
+
+        // Log view action
+        $this->logAction('view_edit_evaluation_form', 'Viewed evaluation edit form: ' . $evaluation->title, [
+            'evaluation_id' => $evaluation->id,
+            'title' => $evaluation->title,
+            'form_type' => $evaluation->form_type,
+        ]);
 
         return Inertia::render('Admin/Evaluations/Edit', [
             'evaluation' => [
@@ -436,129 +743,215 @@ class EvaluationController extends Controller
                 })->values(),
             ],
             'formTypes' => $formTypes,
-            'event' => $evaluation->event,
         ]);
     }
 
     public function update(Request $request, Evaluation $evaluation)
     {
         if ($evaluation->status !== 'draft') {
-            return response()->json(['error' => 'Cannot update evaluation that is already active.'], 400);
+            $this->logSecurity('unauthorized_evaluation_update', 'Attempted to update non-draft evaluation', [
+                'evaluation_id' => $evaluation->id,
+                'title' => $evaluation->title,
+                'current_status' => $evaluation->status,
+            ]);
+            return response()->json(['error' => 'Only draft evaluations can be edited.'], 400);
         }
 
-        $request->validate([
+        $validated = $request->validate([
             'title' => 'required|string|max:255',
-            'form_type' => 'required|in:type1,type2,type3,type4,type5',
-            'form_number' => 'required|string',
-            'revision' => 'required|string',
-            'date_effectivity' => 'required|string',
+            'form_type' => 'required|string',
+            'form_number' => 'required|string|max:50',
+            'revision' => 'required|string|max:20',
+            'date_effectivity' => 'required|string|max:50',
             'available_from' => 'nullable|date',
             'available_until' => 'nullable|date|after:available_from',
-            'categories' => 'required|array|min:1',
-            'comments' => 'array',
+            'categories' => 'required|array',
+            'comments' => 'nullable|array',
         ]);
 
         DB::beginTransaction();
 
         try {
+            $oldData = [
+                'title' => $evaluation->title,
+                'form_type' => $evaluation->form_type,
+                'form_number' => $evaluation->form_number,
+                'revision' => $evaluation->revision,
+                'date_effectivity' => $evaluation->date_effectivity,
+            ];
+
             $evaluation->update([
-                'title' => $request->title,
-                'form_type' => $request->form_type,
-                'form_number' => $request->form_number,
-                'revision' => $request->revision,
-                'date_effectivity' => $request->date_effectivity,
-                'available_from' => $request->available_from,
-                'available_until' => $request->available_until,
+                'title' => $validated['title'],
+                'form_type' => $validated['form_type'],
+                'form_number' => $validated['form_number'],
+                'revision' => $validated['revision'],
+                'date_effectivity' => $validated['date_effectivity'],
+                'available_from' => $validated['available_from'],
+                'available_until' => $validated['available_until'],
             ]);
 
-            $evaluation->categories()->delete();
-            $evaluation->questions()->delete();
-
-            foreach ($request->categories as $catIndex => $catData) {
-                $category = EvaluationCategory::create([
-                    'evaluation_id' => $evaluation->id,
-                    'category_name' => $catData['name'],
-                    'order' => $catIndex,
-                ]);
-
-                foreach ($catData['questions'] as $qIndex => $qData) {
-                    EvaluationQuestion::create([
+            $existingCategoryIds = [];
+            foreach ($validated['categories'] as $catIndex => $categoryData) {
+                if (isset($categoryData['id'])) {
+                    $category = EvaluationCategory::find($categoryData['id']);
+                    if ($category) {
+                        $category->update([
+                            'category_name' => $categoryData['name'],
+                            'order' => $catIndex + 1,
+                        ]);
+                        $existingCategoryIds[] = $category->id;
+                    }
+                } else {
+                    $category = EvaluationCategory::create([
                         'evaluation_id' => $evaluation->id,
-                        'category_id' => $category->id,
-                        'question_text' => $qData['text'],
-                        'question_type' => 'likert',
-                        'order' => $qIndex,
-                        'is_required' => $qData['required'] ?? true,
+                        'category_name' => $categoryData['name'],
+                        'order' => $catIndex + 1,
                     ]);
+                    $existingCategoryIds[] = $category->id;
+                }
+
+                if (isset($category)) {
+                    $existingQuestionIds = [];
+                    foreach ($categoryData['questions'] as $qIndex => $questionData) {
+                        if (isset($questionData['id'])) {
+                            $question = EvaluationQuestion::find($questionData['id']);
+                            if ($question) {
+                                $question->update([
+                                    'question_text' => $questionData['text'],
+                                    'is_required' => $questionData['required'],
+                                    'order' => $qIndex + 1,
+                                ]);
+                                $existingQuestionIds[] = $question->id;
+                            }
+                        } else {
+                            $question = EvaluationQuestion::create([
+                                'evaluation_id' => $evaluation->id,
+                                'category_id' => $category->id,
+                                'question_text' => $questionData['text'],
+                                'question_type' => 'likert',
+                                'order' => $qIndex + 1,
+                                'is_required' => $questionData['required'],
+                            ]);
+                            $existingQuestionIds[] = $question->id;
+                        }
+                    }
+
+                    EvaluationQuestion::where('category_id', $category->id)
+                        ->whereNotIn('id', $existingQuestionIds)
+                        ->delete();
                 }
             }
 
-            if ($request->has('comments')) {
-                foreach ($request->comments as $cIndex => $cData) {
-                    EvaluationQuestion::create([
+            EvaluationCategory::where('evaluation_id', $evaluation->id)
+                ->whereNotIn('id', $existingCategoryIds)
+                ->delete();
+
+            $existingCommentIds = [];
+            foreach ($validated['comments'] as $cIndex => $commentData) {
+                if (isset($commentData['id'])) {
+                    $comment = EvaluationQuestion::find($commentData['id']);
+                    if ($comment) {
+                        $comment->update([
+                            'question_text' => $commentData['text'],
+                            'is_required' => $commentData['required'],
+                            'order' => $cIndex + 1,
+                        ]);
+                        $existingCommentIds[] = $comment->id;
+                    }
+                } else {
+                    $comment = EvaluationQuestion::create([
                         'evaluation_id' => $evaluation->id,
                         'category_id' => null,
-                        'question_text' => $cData['text'],
+                        'question_text' => $commentData['text'],
                         'question_type' => 'comment',
-                        'order' => $cIndex,
-                        'is_required' => $cData['required'] ?? false,
+                        'order' => $cIndex + 1,
+                        'is_required' => $commentData['required'],
                     ]);
+                    $existingCommentIds[] = $comment->id;
                 }
             }
+
+            EvaluationQuestion::where('evaluation_id', $evaluation->id)
+                ->where('question_type', 'comment')
+                ->whereNotIn('id', $existingCommentIds)
+                ->delete();
 
             DB::commit();
 
+            // Log evaluation update
+            $this->logAction('update_evaluation', 'Updated evaluation: ' . $evaluation->title, [
+                'evaluation_id' => $evaluation->id,
+                'title' => $evaluation->title,
+                'changes' => [
+                    'old' => $oldData,
+                    'new' => [
+                        'title' => $evaluation->title,
+                        'form_type' => $evaluation->form_type,
+                        'form_number' => $evaluation->form_number,
+                        'revision' => $evaluation->revision,
+                        'date_effectivity' => $evaluation->date_effectivity,
+                    ],
+                ],
+            ]);
+
             return redirect()->route('admin.evaluations.show', $evaluation->id)
-                ->with('success', 'Evaluation updated successfully.');
+                ->with('success', 'Evaluation updated successfully!');
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Failed to update evaluation', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+            Log::error('Failed to update evaluation: ' . $e->getMessage());
+            
+            $this->logError('update_evaluation_failed', 'Failed to update evaluation: ' . $e->getMessage(), $e, [
+                'evaluation_id' => $evaluation->id,
+                'title' => $evaluation->title,
             ]);
-            return back()->with('error', 'Failed to update evaluation.');
+            
+            return back()->withErrors(['error' => 'Failed to update evaluation: ' . $e->getMessage()]);
         }
     }
 
     public function activate(Evaluation $evaluation)
     {
         if ($evaluation->status !== 'draft') {
-            return response()->json(['error' => 'Only draft evaluations can be activated.'], 400);
+            return response()->json(['error' => 'Evaluation must be in draft mode to activate'], 400);
         }
 
+        DB::beginTransaction();
+
         try {
-            $evaluationUrl = route('evaluations.form', $evaluation->id);
+            $qrCodeData = route('evaluations.form', $evaluation->id);
             
             $evaluation->update([
                 'status' => 'active',
-                'qr_code_url' => $evaluationUrl
+                'qr_code_url' => $qrCodeData,
+                'available_from' => now(),
             ]);
 
-            EvaluationRequest::where('evaluation_id', $evaluation->id)
-                ->update(['status' => 'completed']);
+            DB::commit();
 
-            Log::info('Evaluation activated', [
+            // Log activation
+            $this->logAction('activate_evaluation', 'Activated evaluation: ' . $evaluation->title, [
                 'evaluation_id' => $evaluation->id,
-                'qr_code_url' => $evaluationUrl
+                'title' => $evaluation->title,
+                'event_id' => $evaluation->event_id,
             ]);
 
             return response()->json([
-                'success' => true, 
+                'success' => true,
+                'evaluation_id' => $evaluation->id,
                 'message' => 'Evaluation activated successfully',
-                'evaluation_url' => $evaluationUrl,
-                'evaluation_id' => $evaluation->id
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Failed to activate evaluation', [
+            DB::rollBack();
+            Log::error('Failed to activate evaluation: ' . $e->getMessage());
+            
+            $this->logError('activate_evaluation_failed', 'Failed to activate evaluation: ' . $e->getMessage(), $e, [
                 'evaluation_id' => $evaluation->id,
-                'error' => $e->getMessage()
+                'title' => $evaluation->title,
             ]);
             
-            return response()->json([
-                'error' => 'Failed to activate evaluation: ' . $e->getMessage()
-            ], 500);
+            return response()->json(['error' => 'Failed to activate evaluation'], 500);
         }
     }
 
@@ -566,226 +959,265 @@ class EvaluationController extends Controller
     {
         if ($evaluation->status !== 'active') {
             return redirect()->route('admin.evaluations.show', $evaluation->id)
-                ->with('error', 'Evaluation must be active to view QR code.');
+                ->with('error', 'QR code is only available for active evaluations.');
         }
 
-        if (!$evaluation->qr_code_url) {
-            $evaluation->update([
-                'qr_code_url' => route('evaluations.form', $evaluation->id)
-            ]);
-            $evaluation->refresh();
-        }
+        $qrData = $evaluation->qr_code_url ?? route('evaluations.form', $evaluation->id);
+
+        // Log QR code view
+        $this->logAction('view_qr_code', 'Viewed QR code for evaluation: ' . $evaluation->title, [
+            'evaluation_id' => $evaluation->id,
+            'title' => $evaluation->title,
+        ]);
 
         return Inertia::render('Admin/Evaluations/QRCode', [
             'evaluation' => [
                 'id' => $evaluation->id,
                 'title' => $evaluation->title,
                 'event_name' => $evaluation->event->event_name,
-                'qr_code_url' => $evaluation->qr_code_url,
             ],
-            'qr_data' => $evaluation->qr_code_url
+            'qr_data' => $qrData,
         ]);
     }
 
     public function close(Evaluation $evaluation)
     {
         if ($evaluation->status !== 'active') {
-            return back()->with('error', 'Only active evaluations can be closed.');
+            return response()->json(['error' => 'Only active evaluations can be closed'], 400);
         }
 
-        DB::beginTransaction();
-        
-        $evaluation->update(['status' => 'closed']);
+        $evaluation->update([
+            'status' => 'closed',
+            'available_until' => now(),
+        ]);
 
-        DB::commit();
+        // Log closure
+        $this->logAction('close_evaluation', 'Closed evaluation: ' . $evaluation->title, [
+            'evaluation_id' => $evaluation->id,
+            'title' => $evaluation->title,
+            'total_responses' => $evaluation->total_responses,
+        ]);
 
-        if ($evaluation->total_responses > 0) {
-            try {
-                $aiService = resolve(AIAnalysisService::class);
-                $aiService->analyzeEvaluation($evaluation);
-            } catch (\Exception $e) {
-                Log::error('AI analysis failed', [
-                    'evaluation_id' => $evaluation->id,
-                    'error' => $e->getMessage()
-                ]);
-            }
-        }
-
-        return redirect()->route('admin.evaluations.show', $evaluation->id)
-            ->with('success', 'Evaluation closed successfully.');
+        return response()->json(['success' => true]);
     }
 
     public function reopen(Evaluation $evaluation)
     {
         if ($evaluation->status !== 'closed') {
-            return back()->with('error', 'Only closed evaluations can be reopened.');
+            return response()->json(['error' => 'Only closed evaluations can be reopened'], 400);
         }
 
-        $evaluation->update(['status' => 'active']);
-
-        return redirect()->route('admin.evaluations.show', $evaluation->id)
-            ->with('success', 'Evaluation reopened.');
-    }
-
-    public function generateInsights(Evaluation $evaluation)
-    {
-        if ($evaluation->status !== 'closed') {
-            return response()->json(['error' => 'Evaluation must be closed to generate insights.'], 400);
-        }
-    
-        try {
-            $aiService = resolve(AIAnalysisService::class);
-            $insights = $aiService->analyzeEvaluation($evaluation, true);
-            
-            if ($insights) {
-                // Fetch the newly created analysis to return full data
-                $analysis = AIAnalysis::where('evaluation_id', $evaluation->id)->first();
-                
-                // Get sentiment analysis data
-                $sentimentData = [];
-                if ($analysis && $analysis->sentiment_analysis) {
-                    $sentimentData = json_decode($analysis->sentiment_analysis, true);
-                }
-                
-                return response()->json([
-                    'success' => true, 
-                    'message' => 'AI insights generated successfully!',
-                    'data' => [
-                        'summary' => $analysis->summary,
-                        'strengths' => json_decode($analysis->strengths, true),
-                        'weaknesses' => json_decode($analysis->weaknesses, true),
-                        'recommendations' => json_decode($analysis->recommendations, true),
-                        'predicted_satisfaction' => $analysis->predicted_satisfaction,
-                        'success_probability' => $analysis->success_probability,
-                        'category_breakdown' => json_decode($analysis->category_breakdown, true),
-                        'feature_importance' => json_decode($analysis->feature_importance, true),
-                        'response_rate' => $analysis->response_rate,
-                        'total_respondents' => $analysis->total_respondents,
-                        'analyzed_at' => $analysis->analyzed_at,
-                        'sentiment_analysis' => [
-                            'positive_percentage' => $sentimentData['positive_percentage'] ?? 0,
-                            'negative_percentage' => $sentimentData['negative_percentage'] ?? 0,
-                            'neutral_percentage' => $sentimentData['neutral_percentage'] ?? 0,
-                            'total_comments' => $sentimentData['total_comments'] ?? 0,
-                            'positive_comments' => $sentimentData['positive_comments'] ?? [],
-                            'negative_comments' => $sentimentData['negative_comments'] ?? [],
-                            'neutral_comments' => $sentimentData['neutral_comments'] ?? [],
-                            'common_themes' => $sentimentData['common_themes'] ?? [],
-                        ],
-                        'what_if_optimistic' => json_decode($analysis->what_if_analysis, true)['optimistic'] ?? [],
-                        'what_if_targeted' => json_decode($analysis->what_if_analysis, true)['targeted'] ?? [],
-                    ]
-                ]);
-            } else {
-                return response()->json(['error' => 'Failed to generate insights.'], 500);
-            }
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
-        }
-    }
-
-    public function getAIInsights(Evaluation $evaluation)
-{
-    $analysis = AIAnalysis::where('evaluation_id', $evaluation->id)->first();
-    
-    if (!$analysis) {
-        return response()->json(null, 404);
-    }
-    
-    // Get sentiment analysis data
-    $sentimentData = [];
-    if ($analysis->sentiment_analysis) {
-        $sentimentData = json_decode($analysis->sentiment_analysis, true);
-    }
-    
-    return response()->json([
-        'summary' => $analysis->summary,
-        'strengths' => json_decode($analysis->strengths, true),
-        'weaknesses' => json_decode($analysis->weaknesses, true),
-        'recommendations' => json_decode($analysis->recommendations, true),
-        'predicted_satisfaction' => $analysis->predicted_satisfaction,
-        'success_probability' => $analysis->success_probability,
-        'category_breakdown' => json_decode($analysis->category_breakdown, true),
-        'feature_importance' => json_decode($analysis->feature_importance, true),
-        'response_rate' => $analysis->response_rate,
-        'total_respondents' => $analysis->total_respondents,
-        'analyzed_at' => $analysis->analyzed_at,
-        // Add sentiment analysis data
-        'sentiment_analysis' => [
-            'positive_percentage' => $sentimentData['positive_percentage'] ?? 0,
-            'negative_percentage' => $sentimentData['negative_percentage'] ?? 0,
-            'neutral_percentage' => $sentimentData['neutral_percentage'] ?? 0,
-            'total_comments' => $sentimentData['total_comments'] ?? 0,
-            'positive_comments' => $sentimentData['positive_comments'] ?? [],
-            'negative_comments' => $sentimentData['negative_comments'] ?? [],
-            'neutral_comments' => $sentimentData['neutral_comments'] ?? [],
-            'common_themes' => $sentimentData['common_themes'] ?? [],
-        ],
-        'what_if_optimistic' => json_decode($analysis->what_if_analysis, true)['optimistic'] ?? [],
-        'what_if_targeted' => json_decode($analysis->what_if_analysis, true)['targeted'] ?? [],
-    ]);
-}
-    public function bulkUpload(Request $request, Evaluation $evaluation)
-    {
-        if ($evaluation->status !== 'active') {
-            return response()->json(['error' => 'Evaluation must be active to upload responses.'], 400);
-        }
-
-        $request->validate([
-            'csv_file' => 'required|file|mimes:csv,txt|max:10240',
+        $evaluation->update([
+            'status' => 'active',
+            'available_until' => null,
         ]);
 
-        $file = $request->file('csv_file');
-        
-        $import = new \App\Imports\EvaluationResponsesImport($evaluation);
-        
+        // Log reopening
+        $this->logAction('reopen_evaluation', 'Reopened evaluation: ' . $evaluation->title, [
+            'evaluation_id' => $evaluation->id,
+            'title' => $evaluation->title,
+        ]);
+
+        return response()->json(['success' => true]);
+    }
+
+    public function generateInsights(Evaluation $evaluation, Request $request)
+    {
         try {
-            \Maatwebsite\Excel\Facades\Excel::import($import, $file);
+            $eventDate = $request->get('event_date');
+            $generateAll = $request->get('generate_all', false);
             
-            $stats = $import->getStats();
+            $aiService = new AIAnalysisService();
             
-            $evaluation->update([
-                'total_responses' => EvaluationResponse::where('evaluation_id', $evaluation->id)->count()
-            ]);
-
-            $message = "✅ Successfully imported {$stats['success']} responses.";
-            if ($stats['errors'] > 0) {
-                $message .= " Failed: {$stats['errors']}. Check logs for details.";
+            if ($generateAll) {
+                $availableDates = $aiService->getAvailableDates($evaluation);
+                if (empty($availableDates)) {
+                    return response()->json([
+                        'error' => 'No responses found to generate insights.'
+                    ], 400);
+                }
+                
+                dispatch(new AnalyzeEvaluationJob($evaluation, null, true));
+                
+                // Log insights generation
+                $this->logAction('generate_all_insights', 'Started AI insights generation for all dates', [
+                    'evaluation_id' => $evaluation->id,
+                    'title' => $evaluation->title,
+                    'available_dates' => $availableDates,
+                ]);
+                
+                return response()->json([
+                    'success' => true,
+                    'message' => 'AI analysis for all dates and overall started. This may take a few minutes.'
+                ]);
             }
-
+            
+            if ($eventDate) {
+                try {
+                    $eventDate = Carbon::parse($eventDate)->format('Y-m-d');
+                } catch (\Exception $e) {}
+            }
+            
+            if (!$aiService->canGenerateInsights($evaluation, $eventDate)) {
+                $responseRate = $aiService->getResponseRateForDate($evaluation, $eventDate);
+                return response()->json([
+                    'error' => sprintf(
+                        'Response rate is %.1f%%. At least 75%% of eligible participants must respond.',
+                        $responseRate * 100
+                    )
+                ], 400);
+            }
+            
+            dispatch(new AnalyzeEvaluationJob($evaluation, $eventDate));
+            
+            // Log insights generation
+            $this->logAction('generate_insights', 'Started AI insights generation for evaluation', [
+                'evaluation_id' => $evaluation->id,
+                'title' => $evaluation->title,
+                'event_date' => $eventDate,
+            ]);
+            
             return response()->json([
                 'success' => true,
-                'message' => $message,
-                'stats' => $stats
+                'message' => sprintf(
+                    'AI analysis for %s started.',
+                    $eventDate ?: 'overall evaluation'
+                )
             ]);
-
-        } catch (\Maatwebsite\Excel\Validators\ValidationException $e) {
-            $failures = $e->failures();
-            $errors = [];
-            foreach ($failures as $failure) {
-                $errors[] = "Row {$failure->row()}: " . implode(', ', $failure->errors());
-            }
-            
-            return response()->json([
-                'error' => 'CSV validation failed',
-                'details' => $errors
-            ], 422);
             
         } catch (\Exception $e) {
-            Log::error('Bulk upload failed', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+            Log::error('Error in generateInsights: ' . $e->getMessage());
+            
+            $this->logError('generate_insights_failed', 'Failed to generate insights: ' . $e->getMessage(), $e, [
+                'evaluation_id' => $evaluation->id,
+                'title' => $evaluation->title,
             ]);
             
             return response()->json([
-                'error' => 'Failed to process CSV: ' . $e->getMessage()
+                'error' => 'Failed to start AI analysis: ' . $e->getMessage()
             ], 500);
         }
     }
 
-    public function downloadCsvTemplate(Evaluation $evaluation)
+    public function getAIInsights(Evaluation $evaluation, Request $request)
     {
-        // Get all questions for this evaluation in order
+        try {
+            $eventDate = $request->get('event_date');
+            
+            if ($eventDate) {
+                try {
+                    $eventDate = Carbon::parse($eventDate)->format('Y-m-d');
+                } catch (\Exception $e) {}
+            }
+            
+            $aiService = new AIAnalysisService();
+            
+            if (!$eventDate) {
+                $allInsights = $aiService->getAllInsights($evaluation);
+                $availableDates = $aiService->getAvailableDates($evaluation);
+                $responseRate = $aiService->getResponseRateForDate($evaluation, null);
+                
+                return response()->json([
+                    'insights' => $allInsights,
+                    'available_dates' => $availableDates,
+                    'current_date' => null,
+                    'response_rate' => $responseRate,
+                    'has_insights' => !empty($allInsights)
+                ]);
+            }
+            
+            $insights = $aiService->getInsights($evaluation, $eventDate);
+            
+            if (!$insights) {
+                return response()->json([
+                    'message' => sprintf('No insights available for %s yet.', $eventDate),
+                    'available_dates' => $aiService->getAvailableDates($evaluation)
+                ], 404);
+            }
+            
+            $availableDates = $aiService->getAvailableDates($evaluation);
+            $responseRate = $aiService->getResponseRateForDate($evaluation, $eventDate);
+            
+            return response()->json([
+                'insights' => $insights,
+                'available_dates' => $availableDates,
+                'current_date' => $eventDate,
+                'response_rate' => $responseRate
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error in getAIInsights: ' . $e->getMessage());
+            
+            $this->logError('get_ai_insights_failed', 'Failed to fetch AI insights: ' . $e->getMessage(), $e, [
+                'evaluation_id' => $evaluation->id,
+            ]);
+            
+            return response()->json([
+                'error' => 'Failed to fetch AI insights: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function getStatsByDate(Evaluation $evaluation, Request $request)
+    {
+        $eventDate = $request->get('event_date');
+        
+        $query = EvaluationResponse::where('evaluation_id', $evaluation->id);
+        
+        if ($eventDate) {
+            $query->where('event_date', $eventDate);
+        }
+        
+        $responses = $query->get();
+        
+        $stats = [];
+        $likertQuestions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
+            ->where('question_type', 'likert')
+            ->get();
+        
+        foreach ($likertQuestions as $question) {
+            $ratings = [];
+            foreach ($responses as $response) {
+                $responses_array = $response->likert_responses ?? [];
+                if (isset($responses_array[$question->id])) {
+                    $ratings[] = $responses_array[$question->id];
+                }
+            }
+            
+            $total = count($ratings);
+            if ($total > 0) {
+                $distribution = [];
+                for ($i = 1; $i <= 5; $i++) {
+                    $count = count(array_filter($ratings, fn($r) => $r == $i));
+                    $distribution[$i] = [
+                        'count' => $count,
+                        'percentage' => round(($count / $total) * 100, 2)
+                    ];
+                }
+                
+                $stats[$question->id] = [
+                    'average' => round(array_sum($ratings) / $total, 2),
+                    'distribution' => $distribution,
+                    'total' => $total
+                ];
+            }
+        }
+        
+        return response()->json($stats);
+    }
+
+    public function getRawResponses(Evaluation $evaluation, Request $request)
+    {
+        $eventDate = $request->get('event_date');
+        
+        $query = EvaluationResponse::where('evaluation_id', $evaluation->id);
+        
+        if ($eventDate) {
+            $query->where('event_date', $eventDate);
+        }
+        
+        $responses = $query->orderBy('created_at', 'desc')->get();
+        
         $likertQuestions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
             ->where('question_type', 'likert')
             ->orderBy('order')
@@ -795,620 +1227,494 @@ class EvaluationController extends Controller
             ->where('question_type', 'comment')
             ->orderBy('order')
             ->get();
+        
+        $formattedResponses = $responses->map(function ($response) use ($likertQuestions, $commentQuestions) {
+            $row = [
+                'Student ID' => $response->student_id,
+                'Student Name' => $response->name,
+                'Email' => $response->email,
+                'Event Date' => $response->event_date ? Carbon::parse($response->event_date)->format('F d, Y') : 'N/A',
+                'Agency/Office' => $response->agency_office,
+                'Position' => $response->position,
+                'Respondent Type' => $response->respondent_type,
+                'Sex' => $response->sex,
+                'Age' => $response->age,
+                'Title' => $response->title_prefix,
+                'Submitted At' => $response->created_at->format('Y-m-d H:i:s'),
+            ];
+            
+            $likertResponses = $response->likert_responses;
+            if (is_string($likertResponses)) {
+                $likertResponses = json_decode($likertResponses, true);
+            }
+            
+            if (is_array($likertResponses)) {
+                foreach ($likertQuestions as $question) {
+                    $questionText = $question->question_text;
+                    $rating = $likertResponses[$question->id] ?? null;
+                    $row[$questionText] = $rating !== null ? (int)$rating : '—';
+                }
+            }
+            
+            $commentResponses = $response->comment_responses;
+            if (is_string($commentResponses)) {
+                $commentResponses = json_decode($commentResponses, true);
+            }
+            
+            if (is_array($commentResponses)) {
+                foreach ($commentQuestions as $question) {
+                    $questionText = $question->question_text;
+                    $comment = $commentResponses[$question->id] ?? null;
+                    $row[$questionText] = $comment ?: '—';
+                }
+            }
+            
+            if ($response->speaker_topic) {
+                $row['Speaker Topic'] = $response->speaker_topic;
+            }
+            if ($response->speaker_name) {
+                $row['Speaker Name'] = $response->speaker_name;
+            }
+            
+            return $row;
+        });
+        
+        // Log raw responses export
+        $this->logAction('export_raw_responses', 'Exported raw responses for evaluation: ' . $evaluation->title, [
+            'evaluation_id' => $evaluation->id,
+            'title' => $evaluation->title,
+            'event_date' => $eventDate,
+            'total_responses' => $responses->count(),
+        ]);
+        
+        return response()->json($formattedResponses);
+    }
     
-        // Get event details for sample data
+    public function getEligibilityInfo(Evaluation $evaluation)
+    {
         $event = $evaluation->event;
+        $eventDates = $evaluation->event_dates ?: [];
         
-        // Get eligible departments names
-        $departments = [];
-        if (!empty($event->departments)) {
-            $departments = \App\Models\Department::whereIn('id', $event->departments)
-                ->pluck('name')
-                ->toArray();
+        $departments = Department::whereIn('id', $event->departments ?? [])->pluck('name');
+        $courses = Course::whereIn('id', $event->courses ?? [])->pluck('name');
+        $yearLevels = $event->year_levels ?? [];
+        
+        $totalStudents = EventStudent::where('event_id', $event->id)->count();
+        $totalGuests = EventGuest::where('event_id', $event->id)->count();
+        
+        $perDateExpected = [];
+        foreach ($eventDates as $date) {
+            $dateGuests = EventGuest::where('event_id', $event->id)
+                ->where(function($query) use ($date) {
+                    if (Schema::hasColumn('event_guests', 'event_date')) {
+                        $query->where('event_date', $date);
+                    }
+                })
+                ->count();
+            $perDateExpected[$date] = $totalStudents + $dateGuests;
         }
         
-        // Get eligible courses names
-        $courses = [];
-        if (!empty($event->courses)) {
-            $courses = \App\Models\Course::whereIn('id', $event->courses)
-                ->pluck('name')
-                ->toArray();
-        }
+        $totalExpectedOverall = ($totalStudents * max(count($eventDates), 1)) + $totalGuests;
+
+        return response()->json([
+            'departments' => $departments,
+            'courses' => $courses,
+            'yearLevels' => $yearLevels,
+            'event_dates' => $eventDates,
+            'total_students' => $totalStudents,
+            'total_guests' => $totalGuests,
+            'total_expected_overall' => $totalExpectedOverall,
+            'per_date_expected' => $perDateExpected,
+            'number_of_dates' => count($eventDates),
+        ]);
+    }
+
+    public function downloadCsvTemplate(Evaluation $evaluation)
+    {
+        $event = $evaluation->event;
+        $eventDates = $evaluation->event_dates ?: [];
         
-        $eligibleYearLevels = $event->year_levels ?? ['1st Year', '2nd Year', '3rd Year', '4th Year'];
-    
-        // Build headers in order
         $headers = [
-            'student_id',
-            'email',
-            'name',
-            'age',
-            'sex',
-            'agency_office',
-            'position',
-            'respondent_type',
-            'title_prefix',
-            'department',
-            'course',
-            'year_level'
+            'student_id', 'email', 'name', 'age', 'sex', 'agency_office',
+            'position', 'respondent_type', 'title_prefix', 'event_date'
         ];
-    
-        // Add speaker fields for forms that have speaker
+        
         $formType = $evaluation->form_type;
         if (in_array($formType, ['type1', 'type3', 'type4'])) {
             $headers[] = 'speaker_topic';
             $headers[] = 'speaker_name';
         }
-    
-        // Add likert questions with full text
-        foreach ($likertQuestions as $question) {
-            $headers[] = $question->question_text;
-        }
-    
-        // Add comment questions with full text
-        foreach ($commentQuestions as $question) {
-            $headers[] = $question->question_text;
-        }
-    
-        // Create sample row with realistic data
-        $sampleRow = [
-            'CEIT-2024-0001',
-            'student@example.com',
-            'Juan Dela Cruz',
-            '20',
-            'Male',
-            'College of Engineering',
-            'Student',
-            'Student',
-            'Mr.',
-            $departments[0] ?? 'College of Engineering',
-            $courses[0] ?? 'BSIT',
-            $eligibleYearLevels[0] ?? '1st Year'
-        ];
-    
-        // Add speaker fields sample
-        if (in_array($formType, ['type1', 'type3', 'type4'])) {
-            $sampleRow[] = 'Sample Topic';
-            $sampleRow[] = $evaluation->form_customizations['speaker_name'] ?? 'Dr. John Smith';
-        }
-    
-        // Add sample ratings (all 4s)
-        foreach ($likertQuestions as $question) {
-            $sampleRow[] = 4;
-        }
-    
-        // Add sample comments (empty)
-        foreach ($commentQuestions as $question) {
-            $sampleRow[] = '';
-        }
-    
-        $callback = function() use ($headers, $sampleRow) {
-            $file = fopen('php://output', 'w');
-            
-            // Add UTF-8 BOM for Excel compatibility
-            fwrite($file, "\xEF\xBB\xBF");
-            
-            // Add headers
-            fputcsv($file, $headers);
-            
-            // Add one sample data row
-            fputcsv($file, $sampleRow);
-            
-            fclose($file);
-        };
-    
-        $filename = 'evaluation_' . $evaluation->id . '_template.csv';
         
-        return response()->stream($callback, 200, [
-            'Content-Type' => 'text/csv; charset=UTF-8',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
-        ]);
-    }
-
-private function getFormTypeName($formType)
-{
-    $types = [
-        'type1' => '7 Quality Dimension (F-EEF-018a)',
-        'type2' => '5 Quality Dimension (F-EEF-018d)',
-        'type3' => '8 Quality Dimension (F-EEF-018e)',
-        'type4' => '6 Quality Dimension without Meals (F-EEF-018b)',
-        'type5' => '6 Quality Dimension without Speaker (F-EEF-018c)'
-    ];
-    return $types[$formType] ?? $formType;
-}
-
-    public function destroy(Evaluation $evaluation)
-    {
-        if ($evaluation->status !== 'draft') {
-            return response()->json(['error' => 'Only draft evaluations can be deleted.'], 400);
-        }
-
-        $evaluation->delete();
-
-        return response()->json(['success' => true]);
-    }
-
-    private function getFormTemplate($formType)
-    {
-        $templates = [
-            // Type 1: 7 Quality Dimension (F-EEF-018a)
-            'type1' => [
-                'name' => '7 Quality Dimension',
-                'form_number' => 'F-EEF-018a',
-                'revision' => 'Rev. 0',
-                'date_effectivity' => '04-28-2025',
-                'categories' => [
-                    [
-                        'name' => 'I. Information Dissemination',
-                        'questions' => [
-                            ['text' => 'Timeliness of sending invites'],
-                            ['text' => 'Adequacy of information dissemination'],
-                        ]
-                    ],
-                    [
-                        'name' => 'II. Design of the Event',
-                        'questions' => [
-                            ['text' => 'Program / Order of activities'],
-                            ['text' => 'Relevance of the activities'],
-                            ['text' => 'Time allotment / pacing'],
-                        ]
-                    ],
-                    [
-                        'name' => 'III. Outcomes of the Event',
-                        'questions' => [
-                            ['text' => 'Attendance of participants'],
-                            ['text' => 'Participation to activities'],
-                            ['text' => 'Interaction'],
-                            ['text' => 'Teamwork'],
-                        ]
-                    ],
-                    [
-                        'name' => 'IV. Secretariat',
-                        'questions' => [
-                            ['text' => 'Sensitivity in providing assistance/needs to the participants'],
-                            ['text' => 'Management on the entire activities'],
-                            ['text' => 'Provision of information/feedback to the participants in a clear, concise manner'],
-                        ]
-                    ],
-                    [
-                        'name' => 'V. Facilities',
-                        'questions' => [
-                            ['text' => 'Overall appearance of the venue'],
-                            ['text' => 'Cleanliness and orderliness'],
-                            ['text' => 'Availability and functionality of applicable equipment'],
-                        ]
-                    ],
-                    [
-                        'name' => 'VI. Food',
-                        'questions' => [
-                            ['text' => 'Quality of food and beverages'],
-                            ['text' => 'Food and beverages presentation/setup'],
-                            ['text' => 'Timelines of delivery of food'],
-                            ['text' => 'Quality of service provided'],
-                            ['text' => 'Sufficiency of foods'],
-                            ['text' => 'Quantity/Serving of food provided'],
-                        ]
-                    ],
-                    [
-                        'name' => 'VII. Resource Speaker',
-                        'questions' => [
-                            ['text' => 'Methods/strategy employed'],
-                            ['text' => 'Mastery of the subject matter'],
-                            ['text' => 'Ability to draw and maintain interest and participation'],
-                            ['text' => 'Relevancy and applicability of the topic/content discussed'],
-                        ]
-                    ],
-                ],
-                'comments' => [
-                    ['text' => 'VIII. Positive Comments', 'required' => false],
-                    ['text' => 'IX. Suggestions/Recommendations for Improvement', 'required' => false],
-                ],
-                'has_speaker' => true,
-                'has_food' => true,
-            ],
-            
-            // Type 2: 5 Quality Dimension (F-EEF-018d)
-            'type2' => [
-                'name' => '5 Quality Dimension',
-                'form_number' => 'F-EEF-018d',
-                'revision' => 'Rev. 0',
-                'date_effectivity' => '04-28-2025',
-                'categories' => [
-                    [
-                        'name' => 'I. Information Dissemination',
-                        'questions' => [
-                            ['text' => 'Timelines of sending invites'],
-                            ['text' => 'Adequacy of information dissemination'],
-                        ]
-                    ],
-                    [
-                        'name' => 'II. Design of the Event',
-                        'questions' => [
-                            ['text' => 'Program / Order of activities'],
-                            ['text' => 'Relevance of the activities'],
-                            ['text' => 'Time allotment / pacing'],
-                        ]
-                    ],
-                    [
-                        'name' => 'III. Outcomes of the Event',
-                        'questions' => [
-                            ['text' => 'Attendance of participants'],
-                            ['text' => 'Participation to activities'],
-                            ['text' => 'Interaction'],
-                            ['text' => 'Teamwork'],
-                        ]
-                    ],
-                    [
-                        'name' => 'IV. Secretariat',
-                        'questions' => [
-                            ['text' => 'Sensitivity in providing assistance/needs to the participants'],
-                            ['text' => 'Management on the entire activities'],
-                            ['text' => 'Provision of information/feedback to the participants in a clear, concise manner'],
-                        ]
-                    ],
-                    [
-                        'name' => 'V. Facilities',
-                        'questions' => [
-                            ['text' => 'Overall appearance of the venue'],
-                            ['text' => 'Cleanliness and orderliness'],
-                            ['text' => 'Availability and functionality of applicable equipment'],
-                        ]
-                    ],
-                ],
-                'comments' => [
-                    ['text' => 'VI. Positive Comments', 'required' => false],
-                    ['text' => 'VII. Suggestions/Recommendations for Improvement', 'required' => false],
-                ],
-                'has_speaker' => false,
-                'has_food' => false,
-            ],
-            
-            // Type 3: 8 Quality Dimension (F-EEF-018e)
-            'type3' => [
-                'name' => '8 Quality Dimension',
-                'form_number' => 'F-EEF-018e',
-                'revision' => 'Rev. 0',
-                'date_effectivity' => '06-16-2025',
-                'categories' => [
-                    [
-                        'name' => 'I. Information Dissemination',
-                        'questions' => [
-                            ['text' => 'Timelines of sending invites'],
-                            ['text' => 'Adequacy of information dissemination'],
-                        ]
-                    ],
-                    [
-                        'name' => 'II. Design of the Event',
-                        'questions' => [
-                            ['text' => 'Program / Order of activities'],
-                            ['text' => 'Relevance of the activities'],
-                            ['text' => 'Time allotment / pacing'],
-                        ]
-                    ],
-                    [
-                        'name' => 'III. Outcomes of the Event',
-                        'questions' => [
-                            ['text' => 'Attendance of participants'],
-                            ['text' => 'Participation to activities'],
-                            ['text' => 'Timeliness and orderliness of the overall event'],
-                            ['text' => 'Execution of awarding and recognition of graduates'],
-                        ]
-                    ],
-                    [
-                        'name' => 'IV. Secretariat',
-                        'questions' => [
-                            ['text' => 'Sensitivity in providing assistance to the participants'],
-                            ['text' => 'Management of the entire activities'],
-                            ['text' => 'Provision of information/feedback to the participants in a clear, concise manner'],
-                        ]
-                    ],
-                    [
-                        'name' => 'V. Venue and other Facilities',
-                        'questions' => [
-                            ['text' => 'Overall appearance of the venue'],
-                            ['text' => 'Cleanliness and orderliness'],
-                            ['text' => 'Comfortability of room temperature and ventilation'],
-                            ['text' => 'Functionality and quality of audio-visual equipment'],
-                            ['text' => 'Suitability of the venue for the number of participants/guests'],
-                        ]
-                    ],
-                    [
-                        'name' => 'VI. Food (For Students, Guests, Faculty and Working Committee)',
-                        'questions' => [
-                            ['text' => 'Quality of foods and beverages'],
-                            ['text' => 'Food and beverages presentation/setup'],
-                            ['text' => 'Timeliness in the delivery of food'],
-                            ['text' => 'Quality of services provided'],
-                            ['text' => 'Sufficiency of foods'],
-                            ['text' => 'Quantity/Serving of food provided'],
-                        ]
-                    ],
-                    [
-                        'name' => 'VII. Resource Speaker',
-                        'questions' => [
-                            ['text' => 'Methods/strategy employed'],
-                            ['text' => 'Mastery of the subject matter'],
-                            ['text' => 'Ability to draw and maintain interest and participation'],
-                            ['text' => 'Relevance and applicability of the topic/content discussed'],
-                        ]
-                    ],
-                    [
-                        'name' => 'VIII. Traffic Management',
-                        'questions' => [
-                            ['text' => 'Traffic control management'],
-                            ['text' => 'Clarity of signs and instruction'],
-                            ['text' => 'Traffic capacity and safety'],
-                        ]
-                    ],
-                ],
-                'comments' => [
-                    ['text' => 'IX. What went well?', 'required' => false],
-                    ['text' => 'X. What went not-so-well?', 'required' => false],
-                    ['text' => 'XI. What should we change for the next time we hold this event?', 'required' => false],
-                    ['text' => 'XII. Any recommendations for improvement?', 'required' => false],
-                ],
-                'has_speaker' => true,
-                'has_food' => true,
-            ],
-            
-            // Type 4: 6 Quality Dimension without Meals (F-EEF-018b)
-            'type4' => [
-                'name' => '6 Quality Dimension (without Meals)',
-                'form_number' => 'F-EEF-018b',
-                'revision' => 'Rev. 0',
-                'date_effectivity' => '04-28-2025',
-                'categories' => [
-                    [
-                        'name' => 'I. Information Dissemination',
-                        'questions' => [
-                            ['text' => 'Timeliness of sending invites'],
-                            ['text' => 'Adequacy of information dissemination'],
-                        ]
-                    ],
-                    [
-                        'name' => 'II. Design of the Event',
-                        'questions' => [
-                            ['text' => 'Program / Order of activities'],
-                            ['text' => 'Relevance of the activities'],
-                            ['text' => 'Time allotment / pacing'],
-                        ]
-                    ],
-                    [
-                        'name' => 'III. Outcomes of the Event',
-                        'questions' => [
-                            ['text' => 'Attendance of participants'],
-                            ['text' => 'Participation to activities'],
-                            ['text' => 'Interaction'],
-                            ['text' => 'Teamwork'],
-                        ]
-                    ],
-                    [
-                        'name' => 'IV. Secretariat',
-                        'questions' => [
-                            ['text' => 'Sensitivity in providing assistance/needs to the participants'],
-                            ['text' => 'Management on the entire activities'],
-                            ['text' => 'Provision of information/feedback to the participants in a clear, concise manner'],
-                        ]
-                    ],
-                    [
-                        'name' => 'V. Facilities',
-                        'questions' => [
-                            ['text' => 'Overall appearance of the venue'],
-                            ['text' => 'Cleanliness and orderliness'],
-                            ['text' => 'Availability and functionality of applicable equipment'],
-                        ]
-                    ],
-                    [
-                        'name' => 'VI. Resource Speaker',
-                        'questions' => [
-                            ['text' => 'Methods/strategy employed'],
-                            ['text' => 'Mastery of the subject matter'],
-                            ['text' => 'Ability to draw and maintain interest and participation'],
-                            ['text' => 'Relevancy and applicability of the topic/content discussed'],
-                        ]
-                    ],
-                ],
-                'comments' => [
-                    ['text' => 'VII. Positive Comments', 'required' => false],
-                    ['text' => 'VIII. Suggestions/Recommendations for Improvement', 'required' => false],
-                ],
-                'has_speaker' => true,
-                'has_food' => false,
-            ],
-            
-            // Type 5: 6 Quality Dimension without Speaker (F-EEF-018c)
-            'type5' => [
-                'name' => '6 Quality Dimension (without Speaker)',
-                'form_number' => 'F-EEF-018c',
-                'revision' => 'Rev. 0',
-                'date_effectivity' => '04-28-2025',
-                'categories' => [
-                    [
-                        'name' => 'I. Information Dissemination',
-                        'questions' => [
-                            ['text' => 'Timeliness of sending invites'],
-                            ['text' => 'Adequacy of information dissemination'],
-                        ]
-                    ],
-                    [
-                        'name' => 'II. Design of the Event',
-                        'questions' => [
-                            ['text' => 'Program / Order of activities'],
-                            ['text' => 'Relevance of the activities'],
-                            ['text' => 'Time allotment / pacing'],
-                        ]
-                    ],
-                    [
-                        'name' => 'III. Outcomes of the Event',
-                        'questions' => [
-                            ['text' => 'Attendance of participants'],
-                            ['text' => 'Participation to activities'],
-                            ['text' => 'Interaction'],
-                            ['text' => 'Teamwork'],
-                        ]
-                    ],
-                    [
-                        'name' => 'IV. Secretariat',
-                        'questions' => [
-                            ['text' => 'Sensitivity in providing assistance/needs to the participants'],
-                            ['text' => 'Management on the entire activities'],
-                            ['text' => 'Provision of information/feedback to the participants in a clear, concise manner'],
-                        ]
-                    ],
-                    [
-                        'name' => 'V. Facilities',
-                        'questions' => [
-                            ['text' => 'Overall appearance of the venue'],
-                            ['text' => 'Cleanliness and orderliness'],
-                            ['text' => 'Availability and functionality of applicable equipment'],
-                        ]
-                    ],
-                    [
-                        'name' => 'VI. Food',
-                        'questions' => [
-                            ['text' => 'Quality of food and beverages'],
-                            ['text' => 'Food and beverages presentation/setup'],
-                            ['text' => 'Timelines of delivery of food'],
-                            ['text' => 'Quality of service provided'],
-                            ['text' => 'Sufficiency of foods'],
-                            ['text' => 'Quantity/Serving of food provided'],
-                        ]
-                    ],
-                ],
-                'comments' => [
-                    ['text' => 'VII. Positive Comments', 'required' => false],
-                    ['text' => 'VIII. Suggestions/Recommendations for Improvement', 'required' => false],
-                ],
-                'has_speaker' => false,
-                'has_food' => true,
-            ],
-        ];
-
-        return $templates[$formType] ?? $templates['type2'];
-    }
-    public function getEligibilityInfo(Evaluation $evaluation)
-{
-    $event = $evaluation->event;
-    
-    // Get department names
-    $departments = [];
-    if (!empty($event->departments)) {
-        $departments = \App\Models\Department::whereIn('id', $event->departments)
-            ->pluck('name')
-            ->toArray();
-    }
-    
-    // Get course names
-    $courses = [];
-    if (!empty($event->courses)) {
-        $courses = \App\Models\Course::whereIn('id', $event->courses)
-            ->pluck('name')
-            ->toArray();
-    }
-    
-    $yearLevels = $event->year_levels ?? ['1st Year', '2nd Year', '3rd Year', '4th Year'];
-    
-    return response()->json([
-        'departments' => $departments,
-        'courses' => $courses,
-        'yearLevels' => $yearLevels,
-        'event_name' => $event->event_name,
-        'form_type' => $this->getFormTypeName($evaluation->form_type),
-    ]);
-}
-
-/**
- * Get raw student responses for export/view
- */
-/**
- * Get raw student responses for export/view
- */
-public function getRawResponses(Evaluation $evaluation)
-{
-    try {
-        $responses = EvaluationResponse::where('evaluation_id', $evaluation->id)
-            ->orderBy('created_at', 'desc')
-            ->get();
-        
-        if ($responses->isEmpty()) {
-            return response()->json([]);
-        }
-        
-        // Get all questions for headers
         $likertQuestions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
             ->where('question_type', 'likert')
             ->orderBy('order')
             ->get();
+            
+        foreach ($likertQuestions as $question) {
+            $headers[] = $question->question_text;
+        }
         
         $commentQuestions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
             ->where('question_type', 'comment')
             ->orderBy('order')
             ->get();
-        
-        $formattedResponses = [];
-        
-        foreach ($responses as $response) {
-            $row = [];
             
-            // Personal Information - Use the name field directly from the response
-            $row['Student ID'] = $response->student_id ?? 'N/A';
-            $row['Student Name'] = $response->name ?? 'N/A';
-            $row['Email'] = $response->email ?? 'N/A';
-            $row['Age'] = $response->age ?? 'N/A';
-            $row['Sex'] = $response->sex ?? 'N/A';
-            $row['Department'] = $response->department ?? 'N/A';
-            $row['Course'] = $response->course ?? 'N/A';
-            $row['Year Level'] = $response->year_level ?? 'N/A';
-            $row['Title Prefix'] = $response->title_prefix ?? 'N/A';
-            $row['Respondent Type'] = $response->respondent_type ?? 'N/A';
-            $row['Agency/Office'] = $response->agency_office ?? 'N/A';
-            $row['Position'] = $response->position ?? 'N/A';
-            
-            // Add speaker fields if present
-            if (isset($response->speaker_topic) && $response->speaker_topic) {
-                $row['Speaker Topic'] = $response->speaker_topic;
-            }
-            if (isset($response->speaker_name) && $response->speaker_name) {
-                $row['Speaker Name'] = $response->speaker_name;
-            }
-            
-            // Likert Responses
-            $likertResponses = is_string($response->likert_responses) 
-                ? json_decode($response->likert_responses, true) 
-                : ($response->likert_responses ?? []);
-            
-            foreach ($likertQuestions as $question) {
-                $questionText = $question->question_text;
-                $row[$questionText] = $likertResponses[$question->id] ?? '—';
-            }
-            
-            // Comment Responses
-            $commentResponses = is_string($response->comment_responses) 
-                ? json_decode($response->comment_responses, true) 
-                : ($response->comment_responses ?? []);
-            
-            foreach ($commentQuestions as $question) {
-                $questionText = $question->question_text;
-                $row[$questionText] = $commentResponses[$question->id] ?? '—';
-            }
-            
-            // Submission metadata
-            $row['Submitted At'] = $response->created_at ? $response->created_at->format('Y-m-d H:i:s') : 'N/A';
-            
-            $formattedResponses[] = $row;
+        foreach ($commentQuestions as $question) {
+            $headers[] = $question->question_text;
         }
         
-        return response()->json($formattedResponses);
+        $sampleRow = [
+            'STUDENT-001',
+            'student@example.com',
+            'Juan Dela Cruz',
+            '20',
+            'Male',
+            'Office Name',
+            'Student',
+            'Student',
+            'Mr.',
+            $eventDates[0] ?? date('Y-m-d'),
+        ];
         
-    } catch (\Exception $e) {
-        Log::error('Failed to fetch raw responses', [
+        if (in_array($formType, ['type1', 'type3', 'type4'])) {
+            $sampleRow[] = 'Sample Topic';
+            $sampleRow[] = 'Sample Speaker Name';
+        }
+        
+        foreach ($likertQuestions as $question) {
+            $sampleRow[] = '4';
+        }
+        
+        foreach ($commentQuestions as $question) {
+            $sampleRow[] = 'Sample comment here';
+        }
+        
+        $callback = function() use ($headers, $sampleRow, $eventDates) {
+            $file = fopen('php://output', 'w');
+            fwrite($file, "\xEF\xBB\xBF");
+            fputcsv($file, $headers);
+            fputcsv($file, $sampleRow);
+            fwrite($file, "# Note: event_date must be one of these dates: " . implode(', ', $eventDates) . "\n");
+            fclose($file);
+        };
+        
+        $filename = 'evaluation_' . $evaluation->id . '_template.csv';
+        
+        // Log template download
+        $this->logAction('download_csv_template', 'Downloaded CSV template for evaluation: ' . $evaluation->title, [
             'evaluation_id' => $evaluation->id,
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
+            'title' => $evaluation->title,
         ]);
         
-        return response()->json(['error' => 'Failed to fetch responses: ' . $e->getMessage()], 500);
+        return response()->stream($callback, 200, [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ]);
     }
-}
 
+    public function bulkUpload(Request $request, Evaluation $evaluation)
+    {
+        $request->validate([
+            'csv_file' => 'required|file|mimes:csv,txt|max:10240',
+        ]);
+        
+        $file = $request->file('csv_file');
+        $handle = fopen($file->getPathname(), 'r');
+        
+        $firstLine = fgets($handle);
+        rewind($handle);
+        
+        $delimiter = ',';
+        if (strpos($firstLine, "\t") !== false) {
+            $delimiter = "\t";
+        } elseif (strpos($firstLine, ';') !== false) {
+            $delimiter = ';';
+        }
+        
+        $headers = fgetcsv($handle, 0, $delimiter);
+        
+        if (!$headers) {
+            return response()->json(['error' => 'Invalid CSV file format - no headers found'], 400);
+        }
+        
+        $headers = array_map(function($header) {
+            return trim($header, "\xEF\xBB\xBF \t\n\r\0\x0B\"'");
+        }, $headers);
+        
+        $likertQuestions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
+            ->where('question_type', 'likert')
+            ->get();
+        $commentQuestions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
+            ->where('question_type', 'comment')
+            ->get();
+        $event = $evaluation->event;
+        $eventDates = $evaluation->event_dates ?: [];
+        
+        $successCount = 0;
+        $errorCount = 0;
+        $errors = [];
+        
+        DB::beginTransaction();
+        
+        try {
+            $rowNumber = 0;
+            while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
+                $rowNumber++;
+                
+                if (count($row) == 1 && empty($row[0])) {
+                    continue;
+                }
+                
+                if (!empty($row[0]) && str_starts_with($row[0], '#')) {
+                    continue;
+                }
+                
+                if (count($row) < count($headers)) {
+                    $row = array_pad($row, count($headers), '');
+                } elseif (count($row) > count($headers)) {
+                    $row = array_slice($row, 0, count($headers));
+                }
+                
+                $data = [];
+                foreach ($headers as $index => $header) {
+                    $data[$header] = isset($row[$index]) ? trim($row[$index]) : '';
+                }
+                
+                if (empty($data['student_id'])) {
+                    $errors[] = "Row $rowNumber: student_id is empty";
+                    $errorCount++;
+                    continue;
+                }
+                
+                if (empty($data['event_date'])) {
+                    $errors[] = "Row $rowNumber: event_date is required";
+                    $errorCount++;
+                    continue;
+                }
+                
+                if (!in_array($data['event_date'], $eventDates)) {
+                    $errors[] = "Row $rowNumber: event_date '{$data['event_date']}' is not valid.";
+                    $errorCount++;
+                    continue;
+                }
+                
+                $isGuest = str_starts_with($data['student_id'], 'GUEST-');
+                
+                if (!$isGuest) {
+                    $eventStudent = EventStudent::where('event_id', $event->id)
+                        ->where('student_id', $data['student_id'])
+                        ->first();
+                        
+                    if (!$eventStudent) {
+                        $errors[] = "Row $rowNumber: Student {$data['student_id']} is not eligible";
+                        $errorCount++;
+                        continue;
+                    }
+                    
+                    $student = Student::where('student_id', $data['student_id'])->first();
+                    if (!$student) {
+                        $errors[] = "Row $rowNumber: Student {$data['student_id']} not found";
+                        $errorCount++;
+                        continue;
+                    }
+                } else {
+                    $guest = EventGuest::where('event_id', $event->id)
+                        ->where('guest_id', $data['student_id'])
+                        ->first();
+                        
+                    if (!$guest) {
+                        $errors[] = "Row $rowNumber: Guest {$data['student_id']} not found";
+                        $errorCount++;
+                        continue;
+                    }
+                }
+                
+                $existing = EvaluationResponse::where('evaluation_id', $evaluation->id)
+                    ->where('student_id', $data['student_id'])
+                    ->where('event_date', $data['event_date'])
+                    ->exists();
+                    
+                if ($existing) {
+                    $errors[] = "Row $rowNumber: Already submitted for {$data['event_date']}";
+                    $errorCount++;
+                    continue;
+                }
+                
+                $likertResponses = [];
+                foreach ($likertQuestions as $question) {
+                    $questionText = $question->question_text;
+                    $value = $data[$questionText] ?? '';
+                    if (is_numeric($value)) {
+                        $likertResponses[$question->id] = (int)$value;
+                    }
+                }
+                
+                $commentResponses = [];
+                foreach ($commentQuestions as $question) {
+                    $questionText = $question->question_text;
+                    $value = $data[$questionText] ?? '';
+                    if (!empty($value) && !is_numeric($value)) {
+                        $commentResponses[$question->id] = $value;
+                    }
+                }
+                
+                $dateIndex = array_search($data['event_date'], $eventDates) + 1;
+                
+                if (!$isGuest) {
+                    $student = Student::where('student_id', $data['student_id'])->first();
+                    $agencyOffice = !empty($data['agency_office']) ? $data['agency_office'] : ($student->department ?? '');
+                } else {
+                    $guest = EventGuest::where('event_id', $event->id)
+                        ->where('guest_id', $data['student_id'])
+                        ->first();
+                    $agencyOffice = !empty($data['agency_office']) ? $data['agency_office'] : ($guest->agency_office ?? '');
+                }
+                
+                EvaluationResponse::create([
+                    'evaluation_id' => $evaluation->id,
+                    'event_id' => $event->id,
+                    'event_date' => $data['event_date'],
+                    'date_index' => $dateIndex,
+                    'student_id' => $data['student_id'],
+                    'email' => $data['email'] ?? '',
+                    'name' => $data['name'] ?? '',
+                    'age' => $data['age'] ?? null,
+                    'sex' => $data['sex'] ?? null,
+                    'agency_office' => $agencyOffice,
+                    'position' => $data['position'] ?? null,
+                    'respondent_type' => $data['respondent_type'] ?? ($isGuest ? 'Guest' : 'Student'),
+                    'title_prefix' => $data['title_prefix'] ?? null,
+                    'speaker_topic' => $data['speaker_topic'] ?? null,
+                    'speaker_name' => $data['speaker_name'] ?? null,
+                    'likert_responses' => $likertResponses,
+                    'comment_responses' => $commentResponses,
+                ]);
+                
+                $successCount++;
+            }
+            
+            $evaluation->increment('total_responses', $successCount);
+            
+            DB::commit();
+            
+            // Log bulk upload success
+            $this->logAction('bulk_upload_responses', 'Bulk uploaded responses for evaluation: ' . $evaluation->title, [
+                'evaluation_id' => $evaluation->id,
+                'title' => $evaluation->title,
+                'success_count' => $successCount,
+                'error_count' => $errorCount,
+                'file_name' => $file->getClientOriginalName(),
+                'file_size' => $file->getSize(),
+            ]);
+            
+            return response()->json([
+                'success' => true,
+                'message' => "Imported {$successCount} responses, {$errorCount} failed",
+                'stats' => [
+                    'success' => $successCount,
+                    'errors' => $errorCount,
+                    'error_details' => $errors,
+                ]
+            ]);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Bulk upload failed: ' . $e->getMessage());
+            
+            $this->logError('bulk_upload_failed', 'Bulk upload failed: ' . $e->getMessage(), $e, [
+                'evaluation_id' => $evaluation->id,
+                'title' => $evaluation->title,
+                'file_name' => $file->getClientOriginalName(),
+            ]);
+            
+            return response()->json([
+                'error' => 'Upload failed: ' . $e->getMessage(),
+                'details' => $errors
+            ], 500);
+        } finally {
+            fclose($handle);
+        }
+    }
+
+    public function destroy(Evaluation $evaluation)
+    {
+        if ($evaluation->status !== 'draft') {
+            $this->logSecurity('unauthorized_evaluation_deletion', 'Attempted to delete non-draft evaluation', [
+                'evaluation_id' => $evaluation->id,
+                'title' => $evaluation->title,
+                'current_status' => $evaluation->status,
+            ]);
+            return response()->json(['error' => 'Only draft evaluations can be deleted'], 400);
+        }
+        
+        try {
+            $evaluationTitle = $evaluation->title;
+            $evaluationId = $evaluation->id;
+            
+            $evaluation->delete();
+            
+            // Log deletion
+            $this->logAction('delete_evaluation', 'Deleted evaluation: ' . $evaluationTitle, [
+                'evaluation_id' => $evaluationId,
+                'title' => $evaluationTitle,
+                'event_id' => $evaluation->event_id,
+            ]);
+            
+            return response()->json(['success' => true]);
+        } catch (\Exception $e) {
+            Log::error('Failed to delete evaluation: ' . $e->getMessage());
+            
+            $this->logError('delete_evaluation_failed', 'Failed to delete evaluation: ' . $e->getMessage(), $e, [
+                'evaluation_id' => $evaluation->id,
+                'title' => $evaluation->title,
+            ]);
+            
+            return response()->json(['error' => 'Failed to delete evaluation'], 500);
+        }
+    }
+
+    /**
+     * Helper method to log CRUD and critical actions only
+     */
+    private function logAction($action, $description, $details = [])
+    {
+        try {
+            $user = Auth::user();
+            if ($user) {
+                LogService::action($action, $description, $user, $details);
+            } else {
+                LogService::system($action, $description, $details);
+            }
+        } catch (\Exception $e) {
+            // Silent fail - don't let logging break the application
+            Log::warning('Failed to log action: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Helper method to log errors
+     */
+    private function logError($action, $description, $exception = null, $details = [])
+    {
+        try {
+            LogService::error($action, $description, $exception, $details);
+        } catch (\Exception $e) {
+            // Silent fail
+            Log::warning('Failed to log error: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Helper method to log security events
+     */
+    private function logSecurity($action, $description, $details = [])
+    {
+        try {
+            $user = Auth::user();
+            LogService::security($action, $description, $user, $details);
+        } catch (\Exception $e) {
+            // Silent fail
+            Log::warning('Failed to log security event: ' . $e->getMessage());
+        }
+    }
 }

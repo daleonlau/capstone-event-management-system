@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Carbon\Carbon;
 
 class OrganizationUser extends Authenticatable
 {
@@ -18,6 +19,8 @@ class OrganizationUser extends Authenticatable
         'email',
         'password',
         'role',
+        'blocked_at',
+        'block_reason',
     ];
 
     protected $hidden = [
@@ -28,6 +31,7 @@ class OrganizationUser extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
+        'blocked_at' => 'datetime',
     ];
 
     public function organization()
@@ -35,9 +39,6 @@ class OrganizationUser extends Authenticatable
         return $this->belongsTo(User::class, 'organization_id');
     }
 
-    /**
-     * Get the organization name directly
-     */
     public function getOrganizationNameAttribute()
     {
         return $this->organization ? $this->organization->name : 'N/A';
@@ -61,5 +62,26 @@ class OrganizationUser extends Authenticatable
     public function isTreasurer()
     {
         return $this->role === 'treasurer';
+    }
+
+    public function isBlocked()
+    {
+        return !is_null($this->blocked_at);
+    }
+
+    public function block($reason = null)
+    {
+        $this->update([
+            'blocked_at' => Carbon::now(),
+            'block_reason' => $reason,
+        ]);
+    }
+
+    public function unblock()
+    {
+        $this->update([
+            'blocked_at' => null,
+            'block_reason' => null,
+        ]);
     }
 }

@@ -15,6 +15,7 @@ return new class extends Migration
             $table->string('title')->default('EVENT EVALUATION FORM');
             $table->enum('form_type', ['type1', 'type2', 'type3', 'type4', 'type5'])->nullable();
             $table->json('form_customizations')->nullable();
+            $table->json('event_dates')->nullable(); // NEW - stores all inclusive dates
             $table->string('form_number')->nullable();
             $table->string('revision')->nullable();
             $table->string('date_effectivity')->nullable();
@@ -24,6 +25,9 @@ return new class extends Migration
             $table->string('qr_code_path')->nullable();
             $table->string('qr_code_url')->nullable();
             $table->integer('total_responses')->default(0);
+            $table->timestamp('report_generated_at')->nullable(); // Combined from later migration
+            $table->timestamp('report_sent_at')->nullable(); // Combined from later migration
+            $table->string('report_path')->nullable(); // Combined from later migration
             $table->timestamps();
 
             $table->foreign('event_id')->references('id')->on('events')->onDelete('cascade');

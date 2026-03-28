@@ -33,15 +33,46 @@ class ReportController extends Controller
             ->map(function ($evaluation) {
                 $organization = User::find($evaluation->event->user_id);
                 
+                $eventDates = $evaluation->event_dates ?: [];
+                $datesWithCounts = [];
+                foreach ($eventDates as $date) {
+                    $count = EvaluationResponse::where('evaluation_id', $evaluation->id)
+                        ->where('event_date', $date)
+                        ->count();
+                    $datesWithCounts[] = [
+                        'date' => $date,
+                        'formatted_date' => Carbon::parse($date)->format('F d, Y'),
+                        'response_count' => $count
+                    ];
+                }
+                
+                $hasOverallInsights = AIAnalysis::where('evaluation_id', $evaluation->id)
+                    ->whereNull('event_date')
+                    ->exists();
+                
+                $dateInsights = [];
+                foreach ($eventDates as $date) {
+                    $hasInsight = AIAnalysis::where('evaluation_id', $evaluation->id)
+                        ->whereDate('event_date', $date)
+                        ->exists();
+                    if ($hasInsight) {
+                        $dateInsights[] = $date;
+                    }
+                }
+                
                 return [
                     'id' => $evaluation->id,
                     'title' => $evaluation->title,
                     'form_type' => $evaluation->form_type,
                     'event_name' => $evaluation->event->event_name,
-                    'event_date' => $evaluation->event->event_date_start,
+                    'event_date_start' => $evaluation->event->event_date_start,
+                    'event_date_end' => $evaluation->event->event_date_end,
+                    'event_dates' => $datesWithCounts,
                     'organization_name' => $organization ? $organization->name : 'N/A',
                     'responses_count' => $evaluation->total_responses,
-                    'has_ai_insights' => AIAnalysis::where('evaluation_id', $evaluation->id)->exists(),
+                    'has_ai_insights' => $hasOverallInsights,
+                    'has_date_insights' => !empty($dateInsights),
+                    'date_insights_count' => count($dateInsights),
                     'created_at' => $evaluation->created_at->format('Y-m-d'),
                     'report_generated_at' => $evaluation->report_generated_at,
                     'report_sent_at' => $evaluation->report_sent_at,
@@ -55,7 +86,7 @@ class ReportController extends Controller
     }
 
     /**
-     * Generate PDF report for an evaluation
+     * Generate PDF report for an evaluation (with multi-date grouping and AI insights)
      */
     public function generateReport(Evaluation $evaluation)
     {
@@ -66,85 +97,81 @@ class ReportController extends Controller
             $evaluation->load(['event', 'categories.questions']);
             
             // Get all responses
-            $responses = EvaluationResponse::where('evaluation_id', $evaluation->id)->get();
+            $allResponses = EvaluationResponse::where('evaluation_id', $evaluation->id)->get();
             
-            if ($responses->isEmpty()) {
+            if ($allResponses->isEmpty()) {
                 return response()->json(['error' => 'No responses found for this evaluation.'], 400);
             }
             
-            // Get AI insights
-            $aiInsights = AIAnalysis::where('evaluation_id', $evaluation->id)->first();
+            // Get event dates
+            $eventDates = $evaluation->event_dates ?: [];
             
-            // Calculate category scores
-            $categoryScores = $this->calculateCategoryScoresForReport($evaluation, $responses);
-            
-            // Get profile statistics
-            $totalResp = $responses->count();
-            
-            // Gender counts with all options
-            $gender_counts = [
-                'Male' => $responses->where('sex', 'Male')->count(),
-                'Female' => $responses->where('sex', 'Female')->count(),
-                'Nonbinary/Intersex' => $responses->where('sex', 'Nonbinary/Intersex')->count(),
-                'Prefer not to say' => $responses->where('sex', 'Prefer not to say')->count(),
-            ];
-            
-            // Age distribution with detailed brackets
-            $age_groups = [
-                '18 years old' => $responses->filter(function($response) { return (int)$response->age == 18; })->count(),
-                '19 years old' => $responses->filter(function($response) { return (int)$response->age == 19; })->count(),
-                '20 years old' => $responses->filter(function($response) { return (int)$response->age == 20; })->count(),
-                '21 years old' => $responses->filter(function($response) { return (int)$response->age == 21; })->count(),
-                '22 years old' => $responses->filter(function($response) { return (int)$response->age == 22; })->count(),
-                '23-25 years old' => $responses->filter(function($response) { 
-                    $age = (int)$response->age; 
-                    return $age >= 23 && $age <= 25; 
-                })->count(),
-                '27-29 years old' => $responses->filter(function($response) { 
-                    $age = (int)$response->age; 
-                    return $age >= 27 && $age <= 29; 
-                })->count(),
-            ];
-            
-            // Remove empty age groups
-            $age_groups = array_filter($age_groups, function($count) { return $count > 0; });
-            
-            // Respondent type counts with all options
-            $respondent_type_counts = [
-                'Student' => $responses->where('respondent_type', 'Student')->count(),
-                'Faculty' => $responses->where('respondent_type', 'Faculty')->count(),
-                'Admin Personnel' => $responses->where('respondent_type', 'Admin Personnel')->count(),
-                'Guest' => $responses->where('respondent_type', 'Guest')->count(),
-                'Visiting Committee/Officers' => $responses->where('respondent_type', 'Visiting Committee/Officers')->count(),
-            ];
-            
-            // Remove empty types
-            $respondent_type_counts = array_filter($respondent_type_counts, function($count) { return $count > 0; });
-            
-            // Title counts
-            $title_counts = [
-                'Dr.' => $responses->where('title_prefix', 'Dr.')->count(),
-                'Prof.' => $responses->where('title_prefix', 'Prof.')->count(),
-                'Mr.' => $responses->where('title_prefix', 'Mr.')->count(),
-                'Ms.' => $responses->where('title_prefix', 'Ms.')->count(),
-                'Mx.' => $responses->where('title_prefix', 'Mx.')->count(),
-            ];
-            
-            // Remove empty titles
-            $title_counts = array_filter($title_counts, function($count) { return $count > 0; });
-            
-            // Year level counts
-            $year_level_counts = [];
-            foreach (['1st Year', '2nd Year', '3rd Year', '4th Year'] as $level) {
-                $year_level_counts[$level] = $responses->where('year_level', $level)->count();
+            // If no event dates, use the default from event
+            if (empty($eventDates)) {
+                $eventDates = [$evaluation->event->event_date_start];
             }
             
-            // COLLECT ALL COMMENTS - NO FILTERING, NO DEDUPLICATION
+            // Get ALL AI insights (overall and per date)
+            $overallInsights = AIAnalysis::where('evaluation_id', $evaluation->id)
+                ->whereNull('event_date')
+                ->first();
+            
+            $dateInsights = [];
+            foreach ($eventDates as $date) {
+                $insight = AIAnalysis::where('evaluation_id', $evaluation->id)
+                    ->whereDate('event_date', $date)
+                    ->first();
+                if ($insight) {
+                    $dateInsights[$date] = $insight;
+                }
+            }
+            
+            // Get overall stats
+            $totalResp = $allResponses->count();
+            
+            // Gender counts
+            $gender_counts = [
+                'Male' => $allResponses->where('sex', 'Male')->count(),
+                'Female' => $allResponses->where('sex', 'Female')->count(),
+            ];
+            
+            // Age distribution
+            $age_groups = [];
+            foreach ($allResponses as $response) {
+                $age = (int)$response->age;
+                if ($age == 18) $age_groups['18 years old'] = ($age_groups['18 years old'] ?? 0) + 1;
+                elseif ($age == 19) $age_groups['19 years old'] = ($age_groups['19 years old'] ?? 0) + 1;
+                elseif ($age == 20) $age_groups['20 years old'] = ($age_groups['20 years old'] ?? 0) + 1;
+                elseif ($age == 21) $age_groups['21 years old'] = ($age_groups['21 years old'] ?? 0) + 1;
+                elseif ($age == 22) $age_groups['22 years old'] = ($age_groups['22 years old'] ?? 0) + 1;
+                elseif ($age >= 23 && $age <= 25) $age_groups['23-25 years old'] = ($age_groups['23-25 years old'] ?? 0) + 1;
+                elseif ($age >= 27 && $age <= 29) $age_groups['27-29 years old'] = ($age_groups['27-29 years old'] ?? 0) + 1;
+            }
+            
+            // Respondent type counts
+            $respondent_type_counts = [];
+            foreach ($allResponses as $response) {
+                $type = $response->respondent_type;
+                if ($type) {
+                    $respondent_type_counts[$type] = ($respondent_type_counts[$type] ?? 0) + 1;
+                }
+            }
+            
+            // Title counts
+            $title_counts = [];
+            foreach ($allResponses as $response) {
+                $title = $response->title_prefix;
+                if ($title) {
+                    $title_counts[$title] = ($title_counts[$title] ?? 0) + 1;
+                }
+            }
+            
+            // Collect ALL comments
             $allPositiveComments = [];
             $allNegativeComments = [];
             $allNeutralComments = [];
             
-            foreach ($responses as $response) {
+            foreach ($allResponses as $response) {
                 $comments = $response->comment_responses;
                 if (is_string($comments)) {
                     $comments = json_decode($comments, true);
@@ -153,30 +180,16 @@ class ReportController extends Controller
                     foreach ($comments as $comment) {
                         if (!empty($comment) && is_string($comment) && strlen(trim($comment)) > 0) {
                             $commentTrimmed = trim($comment);
-                            // Simple sentiment classification based on keywords
                             $commentLower = strtolower($commentTrimmed);
                             if (strpos($commentLower, 'bad') !== false || 
                                 strpos($commentLower, 'poor') !== false ||
                                 strpos($commentLower, 'disappoint') !== false ||
-                                strpos($commentLower, 'terrible') !== false ||
-                                strpos($commentLower, 'cold') !== false ||
-                                strpos($commentLower, 'not enough') !== false ||
-                                strpos($commentLower, 'hungry') !== false ||
-                                strpos($commentLower, 'broken') !== false ||
-                                strpos($commentLower, 'damaged') !== false ||
-                                strpos($commentLower, 'unsafe') !== false ||
-                                strpos($commentLower, 'issue') !== false ||
-                                strpos($commentLower, 'problem') !== false) {
+                                strpos($commentLower, 'terrible') !== false) {
                                 $allNegativeComments[] = $commentTrimmed;
                             } elseif (strpos($commentLower, 'good') !== false || 
                                 strpos($commentLower, 'great') !== false ||
                                 strpos($commentLower, 'amazing') !== false ||
-                                strpos($commentLower, 'excellent') !== false ||
-                                strpos($commentLower, 'best') !== false ||
-                                strpos($commentLower, 'awesome') !== false ||
-                                strpos($commentLower, 'fantastic') !== false ||
-                                strpos($commentLower, 'perfect') !== false ||
-                                strpos($commentLower, 'love') !== false) {
+                                strpos($commentLower, 'excellent') !== false) {
                                 $allPositiveComments[] = $commentTrimmed;
                             } else {
                                 $allNeutralComments[] = $commentTrimmed;
@@ -186,7 +199,7 @@ class ReportController extends Controller
                 }
             }
             
-            // Get sentiment data from AI insights if available
+            // Get sentiment data from AI insights (overall)
             $positivePercentage = 0;
             $negativePercentage = 0;
             $neutralPercentage = 0;
@@ -197,9 +210,12 @@ class ReportController extends Controller
             $commonThemes = [];
             $whatIfOptimistic = [];
             $whatIfTargeted = [];
+            $strengths = [];
+            $weaknesses = [];
+            $recommendations = [];
             
-            if ($aiInsights) {
-                $sentimentAnalysis = json_decode($aiInsights->sentiment_analysis, true);
+            if ($overallInsights) {
+                $sentimentAnalysis = json_decode($overallInsights->sentiment_analysis, true);
                 $positivePercentage = $sentimentAnalysis['positive_percentage'] ?? 0;
                 $negativePercentage = $sentimentAnalysis['negative_percentage'] ?? 0;
                 $neutralPercentage = $sentimentAnalysis['neutral_percentage'] ?? 0;
@@ -209,18 +225,19 @@ class ReportController extends Controller
                 $neutralCommentsList = $sentimentAnalysis['neutral_comments'] ?? [];
                 $commonThemes = $sentimentAnalysis['common_themes'] ?? [];
                 
-                $whatIfAnalysis = json_decode($aiInsights->what_if_analysis, true);
+                $whatIfAnalysis = json_decode($overallInsights->what_if_analysis, true);
                 $whatIfOptimistic = $whatIfAnalysis['optimistic'] ?? [];
                 $whatIfTargeted = $whatIfAnalysis['targeted'] ?? [];
+                
+                $strengths = json_decode($overallInsights->strengths, true) ?: [];
+                $weaknesses = json_decode($overallInsights->weaknesses, true) ?: [];
+                $recommendations = json_decode($overallInsights->recommendations, true) ?: [];
             }
             
-            // Use AI insights if available, otherwise use extracted comments
-            // IMPORTANT: DO NOT slice or limit comments - show ALL comments
             $finalPositiveComments = !empty($positiveCommentsList) ? $positiveCommentsList : $allPositiveComments;
             $finalNegativeComments = !empty($negativeCommentsList) ? $negativeCommentsList : $allNegativeComments;
             $finalNeutralComments = !empty($neutralCommentsList) ? $neutralCommentsList : $allNeutralComments;
             
-            // Calculate percentages based on actual comment counts if AI insights not available
             $totalCommentCount = count($finalPositiveComments) + count($finalNegativeComments) + count($finalNeutralComments);
             if ($totalCommentCount > 0 && ($positivePercentage == 0 && $negativePercentage == 0 && $neutralPercentage == 0)) {
                 $positivePercentage = round((count($finalPositiveComments) / $totalCommentCount) * 100, 1);
@@ -229,14 +246,9 @@ class ReportController extends Controller
                 $totalComments = $totalCommentCount;
             }
             
-            // Get strengths and weaknesses
-            $strengths = $aiInsights ? json_decode($aiInsights->strengths, true) : [];
-            $weaknesses = $aiInsights ? json_decode($aiInsights->weaknesses, true) : [];
-            $recommendations = $aiInsights ? json_decode($aiInsights->recommendations, true) : [];
-            
             // Calculate overall satisfaction
-            $overallSatisfaction = $aiInsights ? $aiInsights->predicted_satisfaction : 3.0;
-            $responseRate = $evaluation->total_responses > 0 ? round(($evaluation->total_responses / $responses->count()) * 100, 1) : 0;
+            $overallSatisfaction = $overallInsights ? $overallInsights->predicted_satisfaction : 3.0;
+            $responseRate = $totalResp > 0 ? round(($evaluation->total_responses / $totalResp) * 100, 1) : 0;
             
             // Get event details
             $event = $evaluation->event;
@@ -247,9 +259,6 @@ class ReportController extends Controller
             // Get organization name
             $organization = User::find($event->user_id);
             $organizationName = $organization ? $organization->name : 'Organization';
-            
-            // AI Summary
-            $aiSummary = $aiInsights ? $aiInsights->summary : 'No AI insights available for this evaluation.';
             
             // Prepare header image data
             $imageData = '';
@@ -270,25 +279,22 @@ class ReportController extends Controller
                 'evaluation' => $evaluation,
                 'event' => $event,
                 'event_date' => $eventDate,
+                'event_dates' => $eventDates,
                 'venue' => $venue,
                 'total_eligible' => $totalEligible,
                 'total_responses' => $evaluation->total_responses,
                 'response_rate' => $responseRate,
                 'overall_satisfaction' => $overallSatisfaction,
                 'satisfaction_interpretation' => $this->getInterpretation($overallSatisfaction),
-                'ai_summary' => $aiSummary,
-                'category_scores' => $categoryScores,
                 'gender_counts' => $gender_counts,
                 'age_groups' => $age_groups,
                 'title_counts' => $title_counts,
-                'year_level_counts' => $year_level_counts,
                 'respondent_type_counts' => $respondent_type_counts,
                 'totalResp' => $totalResp,
                 'positive_percentage' => $positivePercentage,
                 'negative_percentage' => $negativePercentage,
                 'neutral_percentage' => $neutralPercentage,
                 'total_comments' => $totalComments,
-                // SHOW ALL COMMENTS - NO LIMITING
                 'positive_comments' => $finalPositiveComments,
                 'negative_comments' => $finalNegativeComments,
                 'neutral_comments' => $finalNeutralComments,
@@ -302,6 +308,7 @@ class ReportController extends Controller
                 'report_date' => now()->format('F d, Y'),
                 'generated_by' => auth()->user()->name,
                 'header_image' => $imageData,
+                'per_date_data' => $this->getPerDateData($evaluation, $eventDates, $dateInsights, $totalEligible),
             ];
             
             // Generate PDF
@@ -326,7 +333,6 @@ class ReportController extends Controller
             ]);
             
             Log::info('Report generated successfully for evaluation: ' . $evaluation->id);
-            Log::info('Comments count - Positive: ' . count($finalPositiveComments) . ', Negative: ' . count($finalNegativeComments) . ', Neutral: ' . count($finalNeutralComments));
             
             return response()->json([
                 'success' => true,
@@ -344,6 +350,272 @@ class ReportController extends Controller
     }
 
     /**
+     * Get per-date data by querying the responses table directly
+     */
+    private function getPerDateData($evaluation, $eventDates, $dateInsights, $totalEligible)
+    {
+        $perDateData = [];
+        
+        try {
+            foreach ($eventDates as $index => $date) {
+                $dateIndex = $index + 1;
+                $insight = $dateInsights[$date] ?? null;
+                
+                // Get responses for this specific date
+                $dateResponses = EvaluationResponse::where('evaluation_id', $evaluation->id)
+                    ->where('event_date', $date)
+                    ->get();
+                
+                $responseCount = $dateResponses->count();
+                
+                // Calculate category scores for this date
+                $dateCategoryScores = $this->calculateCategoryScores($evaluation, $dateResponses);
+                
+                // Get demographic data for this date
+                $gender_counts = [
+                    'Male' => $dateResponses->where('sex', 'Male')->count(),
+                    'Female' => $dateResponses->where('sex', 'Female')->count(),
+                ];
+                
+                // Age distribution for this date
+                $age_groups = [];
+                foreach ($dateResponses as $response) {
+                    $age = (int)$response->age;
+                    if ($age == 18) $age_groups['18 years old'] = ($age_groups['18 years old'] ?? 0) + 1;
+                    elseif ($age == 19) $age_groups['19 years old'] = ($age_groups['19 years old'] ?? 0) + 1;
+                    elseif ($age == 20) $age_groups['20 years old'] = ($age_groups['20 years old'] ?? 0) + 1;
+                    elseif ($age == 21) $age_groups['21 years old'] = ($age_groups['21 years old'] ?? 0) + 1;
+                    elseif ($age == 22) $age_groups['22 years old'] = ($age_groups['22 years old'] ?? 0) + 1;
+                    elseif ($age >= 23 && $age <= 25) $age_groups['23-25 years old'] = ($age_groups['23-25 years old'] ?? 0) + 1;
+                }
+                
+                // Respondent types for this date
+                $respondent_types = [];
+                foreach ($dateResponses as $response) {
+                    $type = $response->respondent_type;
+                    if ($type) {
+                        $respondent_types[$type] = ($respondent_types[$type] ?? 0) + 1;
+                    }
+                }
+                
+                // Title counts for this date
+                $title_counts = [];
+                foreach ($dateResponses as $response) {
+                    $title = $response->title_prefix;
+                    if ($title) {
+                        $title_counts[$title] = ($title_counts[$title] ?? 0) + 1;
+                    }
+                }
+                
+                // Get comments for this date
+                $positiveComments = [];
+                $negativeComments = [];
+                $neutralComments = [];
+                
+                foreach ($dateResponses as $response) {
+                    $comments = $response->comment_responses;
+                    if (is_string($comments)) {
+                        $comments = json_decode($comments, true);
+                    }
+                    if (is_array($comments)) {
+                        foreach ($comments as $comment) {
+                            if (!empty($comment) && is_string($comment) && strlen(trim($comment)) > 0) {
+                                $commentTrimmed = trim($comment);
+                                $commentLower = strtolower($commentTrimmed);
+                                
+                                if (strpos($commentLower, 'bad') !== false || 
+                                    strpos($commentLower, 'poor') !== false ||
+                                    strpos($commentLower, 'disappoint') !== false ||
+                                    strpos($commentLower, 'terrible') !== false) {
+                                    $negativeComments[] = $commentTrimmed;
+                                } elseif (strpos($commentLower, 'good') !== false || 
+                                    strpos($commentLower, 'great') !== false ||
+                                    strpos($commentLower, 'amazing') !== false ||
+                                    strpos($commentLower, 'excellent') !== false) {
+                                    $positiveComments[] = $commentTrimmed;
+                                } else {
+                                    $neutralComments[] = $commentTrimmed;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Get AI insights for this date if available
+                $dateStrengths = [];
+                $dateWeaknesses = [];
+                $dateRecommendations = [];
+                $datePositiveComments = [];
+                $dateNegativeComments = [];
+                $dateNeutralComments = [];
+                $positivePercentage = 0;
+                $negativePercentage = 0;
+                $neutralPercentage = 0;
+                
+                if ($insight) {
+                    $dateStrengths = json_decode($insight->strengths, true) ?: [];
+                    $dateWeaknesses = json_decode($insight->weaknesses, true) ?: [];
+                    $dateRecommendations = json_decode($insight->recommendations, true) ?: [];
+                    $dateSentimentData = json_decode($insight->sentiment_analysis, true) ?: [];
+                    $datePositiveComments = $dateSentimentData['positive_comments'] ?? [];
+                    $dateNegativeComments = $dateSentimentData['negative_comments'] ?? [];
+                    $dateNeutralComments = $dateSentimentData['neutral_comments'] ?? [];
+                    $positivePercentage = $dateSentimentData['positive_percentage'] ?? 0;
+                    $negativePercentage = $dateSentimentData['negative_percentage'] ?? 0;
+                    $neutralPercentage = $dateSentimentData['neutral_percentage'] ?? 0;
+                }
+                
+                // Use AI comments if available, otherwise use basic classified comments
+                $finalPositiveComments = !empty($datePositiveComments) ? $datePositiveComments : $positiveComments;
+                $finalNegativeComments = !empty($dateNegativeComments) ? $dateNegativeComments : $negativeComments;
+                $finalNeutralComments = !empty($dateNeutralComments) ? $dateNeutralComments : $neutralComments;
+                
+                // Calculate sentiment percentages if not provided by AI
+                $totalDateComments = count($finalPositiveComments) + count($finalNegativeComments) + count($finalNeutralComments);
+                if ($totalDateComments > 0 && $positivePercentage == 0 && $negativePercentage == 0 && $neutralPercentage == 0) {
+                    $positivePercentage = round((count($finalPositiveComments) / $totalDateComments) * 100, 1);
+                    $negativePercentage = round((count($finalNegativeComments) / $totalDateComments) * 100, 1);
+                    $neutralPercentage = round((count($finalNeutralComments) / $totalDateComments) * 100, 1);
+                }
+                
+                $perDateData[] = [
+                    'date' => $date,
+                    'date_index' => $dateIndex,
+                    'formatted_date' => Carbon::parse($date)->format('F d, Y'),
+                    'response_count' => $responseCount,
+                    'response_rate' => $totalEligible > 0 ? round(($responseCount / $totalEligible) * 100, 1) : 0,
+                    'category_scores' => $dateCategoryScores,
+                    'gender_counts' => $gender_counts,
+                    'age_groups' => $age_groups,
+                    'respondent_types' => $respondent_types,
+                    'title_counts' => $title_counts,
+                    'has_ai_insights' => $insight ? true : false,
+                    'strengths' => $dateStrengths,
+                    'weaknesses' => $dateWeaknesses,
+                    'recommendations' => $dateRecommendations,
+                    'sentiment' => [
+                        'positive_comments' => $finalPositiveComments,
+                        'negative_comments' => $finalNegativeComments,
+                        'neutral_comments' => $finalNeutralComments,
+                        'positive_percentage' => $positivePercentage,
+                        'negative_percentage' => $negativePercentage,
+                        'neutral_percentage' => $neutralPercentage,
+                    ],
+                ];
+            }
+        } catch (\Exception $e) {
+            Log::error('Error in getPerDateData: ' . $e->getMessage());
+            Log::error($e->getTraceAsString());
+        }
+        
+        return $perDateData;
+    }
+
+    /**
+     * Calculate category scores from responses
+     */
+    private function calculateCategoryScores($evaluation, $responses)
+    {
+        try {
+            // Get all questions with their categories
+            $questions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
+                ->with('category')
+                ->where('question_type', 'likert')
+                ->orderBy('order')
+                ->get();
+            
+            if ($questions->isEmpty()) {
+                return [];
+            }
+            
+            // Initialize arrays for storing scores per category
+            $categoryTotals = [];
+            $categoryCounts = [];
+            $questionTotals = [];
+            $questionCounts = [];
+            
+            // Initialize structure
+            foreach ($questions as $question) {
+                $categoryName = $question->category ? $question->category->category_name : 'Other';
+                $questionText = $question->question_text;
+                
+                if (!isset($categoryTotals[$categoryName])) {
+                    $categoryTotals[$categoryName] = 0;
+                    $categoryCounts[$categoryName] = 0;
+                    $questionTotals[$categoryName] = [];
+                    $questionCounts[$categoryName] = [];
+                }
+                
+                $questionTotals[$categoryName][$questionText] = 0;
+                $questionCounts[$categoryName][$questionText] = 0;
+            }
+            
+            // Process each response
+            foreach ($responses as $response) {
+                $likert = $response->likert_responses;
+                if (is_string($likert)) {
+                    $likert = json_decode($likert, true);
+                }
+                
+                if (!is_array($likert)) {
+                    continue;
+                }
+                
+                foreach ($likert as $questionId => $rating) {
+                    $questionId = (int)$questionId;
+                    $rating = (float)$rating;
+                    
+                    $question = $questions->firstWhere('id', $questionId);
+                    if (!$question) {
+                        continue;
+                    }
+                    
+                    $categoryName = $question->category ? $question->category->category_name : 'Other';
+                    $questionText = $question->question_text;
+                    
+                    // Add to category totals
+                    if (isset($categoryTotals[$categoryName])) {
+                        $categoryTotals[$categoryName] += $rating;
+                        $categoryCounts[$categoryName]++;
+                    }
+                    
+                    // Add to question totals
+                    if (isset($questionTotals[$categoryName][$questionText])) {
+                        $questionTotals[$categoryName][$questionText] += $rating;
+                        $questionCounts[$categoryName][$questionText]++;
+                    }
+                }
+            }
+            
+            // Calculate averages and format output
+            $result = [];
+            foreach ($categoryTotals as $categoryName => $totalScore) {
+                $categoryAverage = $categoryCounts[$categoryName] > 0 
+                    ? $totalScore / $categoryCounts[$categoryName] 
+                    : 0;
+                
+                $questionsArray = [];
+                foreach ($questionTotals[$categoryName] as $questionText => $total) {
+                    $count = $questionCounts[$categoryName][$questionText] ?? 0;
+                    if ($count > 0) {
+                        $questionsArray[$questionText] = $total / $count;
+                    }
+                }
+                
+                $result[$categoryName] = [
+                    'average' => $categoryAverage,
+                    'questions' => $questionsArray
+                ];
+            }
+            
+            return $result;
+        } catch (\Exception $e) {
+            Log::error('Error in calculateCategoryScores: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
      * Regenerate report (even if already generated)
      */
     public function regenerateReport(Evaluation $evaluation)
@@ -351,13 +623,11 @@ class ReportController extends Controller
         try {
             Log::info('Starting report regeneration for evaluation: ' . $evaluation->id);
             
-            // Delete old report file if exists
             if ($evaluation->report_path && Storage::disk('public')->exists($evaluation->report_path)) {
                 Storage::disk('public')->delete($evaluation->report_path);
                 Log::info('Deleted old report file: ' . $evaluation->report_path);
             }
             
-            // Reset the report fields
             $evaluation->update([
                 'report_generated_at' => null,
                 'report_path' => null,
@@ -365,7 +635,6 @@ class ReportController extends Controller
             
             Log::info('Reset evaluation report fields, generating new report...');
             
-            // Generate new report
             return $this->generateReport($evaluation);
         } catch (\Exception $e) {
             Log::error('Report regeneration failed: ' . $e->getMessage());
@@ -440,116 +709,6 @@ class ReportController extends Controller
         } catch (\Exception $e) {
             Log::error('Failed to send report email: ' . $e->getMessage());
             return response()->json(['error' => 'Failed to send email: ' . $e->getMessage()], 500);
-        }
-    }
-
-    /**
-     * Calculate category scores for report
-     */
-    private function calculateCategoryScoresForReport($evaluation, $responses)
-    {
-        $questions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
-            ->with('category')
-            ->get();
-        
-        $categoryScores = [];
-        $categoryCounts = [];
-        
-        foreach ($questions as $question) {
-            $categoryName = $question->category ? $question->category->category_name : 'Other';
-            $questionText = $question->question_text;
-            
-            if (!isset($categoryScores[$categoryName])) {
-                $categoryScores[$categoryName] = [];
-                $categoryCounts[$categoryName] = [];
-            }
-            
-            if (!isset($categoryScores[$categoryName][$questionText])) {
-                $categoryScores[$categoryName][$questionText] = 0;
-                $categoryCounts[$categoryName][$questionText] = 0;
-            }
-        }
-        
-        foreach ($responses as $response) {
-            $likert = $response->likert_responses;
-            if (is_string($likert)) {
-                $likert = json_decode($likert, true);
-            }
-            
-            if (!is_array($likert)) {
-                continue;
-            }
-            
-            foreach ($likert as $questionId => $rating) {
-                $questionId = (int)$questionId;
-                $rating = (float)$rating;
-                
-                $question = $questions->firstWhere('id', $questionId);
-                if (!$question) {
-                    continue;
-                }
-                
-                $categoryName = $question->category ? $question->category->category_name : 'Other';
-                $questionText = $question->question_text;
-                
-                if (isset($categoryScores[$categoryName][$questionText])) {
-                    $categoryScores[$categoryName][$questionText] += $rating;
-                    $categoryCounts[$categoryName][$questionText]++;
-                }
-            }
-        }
-        
-        $result = [];
-        foreach ($categoryScores as $categoryName => $questions) {
-            $totalCategoryScore = 0;
-            $totalCategoryCount = 0;
-            $formattedQuestions = [];
-            
-            foreach ($questions as $questionText => $totalScore) {
-                $count = $categoryCounts[$categoryName][$questionText] ?? 0;
-                if ($count > 0) {
-                    $average = $totalScore / $count;
-                    $formattedQuestions[$questionText] = $average;
-                    $totalCategoryScore += $average;
-                    $totalCategoryCount++;
-                }
-            }
-            
-            $categoryAverage = $totalCategoryCount > 0 ? $totalCategoryScore / $totalCategoryCount : 0;
-            
-            $result[$categoryName] = [
-                'average' => $categoryAverage,
-                'questions' => $formattedQuestions
-            ];
-        }
-        
-        return $result;
-    }
-
-    /**
-     * Reset report (for regeneration)
-     */
-    public function resetReport(Evaluation $evaluation)
-    {
-        try {
-            if ($evaluation->report_path && Storage::disk('public')->exists($evaluation->report_path)) {
-                Storage::disk('public')->delete($evaluation->report_path);
-            }
-            
-            $evaluation->update([
-                'report_generated_at' => null,
-                'report_sent_at' => null,
-                'report_path' => null,
-            ]);
-            
-            return response()->json([
-                'success' => true,
-                'message' => 'Report reset successfully'
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'error' => 'Failed to reset report: ' . $e->getMessage()
-            ], 500);
         }
     }
 

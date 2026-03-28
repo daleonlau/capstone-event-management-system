@@ -13,6 +13,7 @@ class EvaluationRequest extends Model
         'requested_by',
         'title',
         'activity_date',
+        'event_dates', // NEW
         'venue',
         'speaker_name',
         'topics',
@@ -25,6 +26,7 @@ class EvaluationRequest extends Model
 
     protected $casts = [
         'topics' => 'array',
+        'event_dates' => 'array', // NEW
         'activity_date' => 'date',
         'has_food' => 'boolean',
     ];

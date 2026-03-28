@@ -10,7 +10,8 @@ return new class extends Migration
     {
         Schema::create('ai_analyses', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('evaluation_id')->unique();
+            $table->unsignedBigInteger('evaluation_id');
+            $table->date('event_date')->nullable(); // For date-specific insights
             $table->text('summary');
             $table->json('strengths');
             $table->json('weaknesses');
@@ -19,6 +20,11 @@ return new class extends Migration
             $table->decimal('success_probability', 3, 2);
             $table->json('critical_factors')->nullable();
             $table->json('category_breakdown');
+            $table->json('feature_importance')->nullable();
+            $table->json('sentiment_analysis')->nullable();
+            $table->json('what_if_analysis')->nullable();
+            $table->json('low_scoring_questions')->nullable();
+            $table->json('year_level_analysis')->nullable();
             $table->decimal('response_rate', 3, 2)->nullable();
             $table->integer('total_respondents')->nullable();
             $table->timestamp('analyzed_at')->nullable();
@@ -30,6 +36,7 @@ return new class extends Migration
                   ->onDelete('cascade');
                   
             $table->index('analyzed_at');
+            $table->index(['evaluation_id', 'event_date']);
         });
     }
 

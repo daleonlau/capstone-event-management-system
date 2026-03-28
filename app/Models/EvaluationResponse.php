@@ -10,6 +10,8 @@ class EvaluationResponse extends Model
     protected $fillable = [
         'evaluation_id',
         'event_id',
+        'event_date',
+        'date_index',
         'student_id',
         'email',
         'name',
@@ -19,9 +21,6 @@ class EvaluationResponse extends Model
         'position',
         'respondent_type',
         'title_prefix',
-        'department',
-        'course',
-        'year_level',
         'likert_responses',
         'comment_responses',
         'speaker_topic',
@@ -31,6 +30,7 @@ class EvaluationResponse extends Model
     protected $casts = [
         'likert_responses' => 'array',
         'comment_responses' => 'array',
+        'event_date' => 'date',
     ];
 
     public function evaluation(): BelongsTo
@@ -56,5 +56,10 @@ class EvaluationResponse extends Model
     public function getCommentForQuestion($questionId)
     {
         return $this->comment_responses[$questionId] ?? null;
+    }
+
+    public function isGuest(): bool
+    {
+        return str_starts_with($this->student_id, 'GUEST-');
     }
 }

@@ -15,6 +15,7 @@ return new class extends Migration
             $table->foreignId('requested_by')->constrained('organization_users')->onDelete('cascade');
             $table->string('title');
             $table->date('activity_date');
+            $table->json('event_dates')->nullable(); // NEW - stores all inclusive dates from event
             $table->string('venue');
             $table->string('speaker_name');
             $table->json('topics');

@@ -5,8 +5,12 @@ namespace App\Http\Controllers\President;
 use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\Evaluation;
+use App\Models\EvaluationResponse;
+use App\Models\EvaluationQuestion;
+use App\Models\AIAnalysis;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
+use Carbon\Carbon;
 
 class EvaluationController extends Controller
 {
@@ -57,10 +61,57 @@ class EvaluationController extends Controller
             $q->where('question_type', 'comment');
         }]);
 
-        $responses = \App\Models\EvaluationResponse::where('evaluation_id', $evaluation->id)->get();
+        $responses = EvaluationResponse::where('evaluation_id', $evaluation->id)->get();
         
+        // Get all AI insights (overall and per date)
+        $allAiInsights = AIAnalysis::where('evaluation_id', $evaluation->id)
+            ->orderBy('event_date', 'asc')
+            ->get()
+            ->map(function ($insight) {
+                return [
+                    'event_date' => $insight->event_date,
+                    'summary' => $insight->summary,
+                    'strengths' => json_decode($insight->strengths, true) ?: [],
+                    'weaknesses' => json_decode($insight->weaknesses, true) ?: [],
+                    'recommendations' => json_decode($insight->recommendations, true) ?: [],
+                    'predicted_satisfaction' => $insight->predicted_satisfaction,
+                    'success_probability' => $insight->success_probability,
+                    'response_rate' => $insight->response_rate,
+                    'total_respondents' => $insight->total_respondents,
+                    'analyzed_at' => $insight->analyzed_at,
+                    'category_breakdown' => json_decode($insight->category_breakdown, true) ?: [],
+                    'feature_importance' => json_decode($insight->feature_importance, true) ?: [],
+                    'sentiment_analysis' => json_decode($insight->sentiment_analysis, true) ?: [],
+                    'what_if_analysis' => json_decode($insight->what_if_analysis, true) ?: [],
+                    'critical_factors' => json_decode($insight->critical_factors, true) ?: [],
+                    'low_scoring_questions' => json_decode($insight->low_scoring_questions, true) ?: [],
+                ];
+            })->toArray();
+        
+        // Separate overall insights from date-specific insights
+        $overallInsights = null;
+        $dateInsights = [];
+        
+        foreach ($allAiInsights as $insight) {
+            if ($insight['event_date'] === null) {
+                $overallInsights = $insight;
+            } else {
+                $dateInsights[] = $insight;
+            }
+        }
+        
+        // Get available dates from responses
+        $availableDates = EvaluationResponse::where('evaluation_id', $evaluation->id)
+            ->distinct()
+            ->pluck('event_date')
+            ->map(function($date) {
+                return Carbon::parse($date)->format('Y-m-d');
+            })
+            ->toArray();
+        
+        // Calculate stats for overall
         $stats = [];
-        $likertQuestions = \App\Models\EvaluationQuestion::where('evaluation_id', $evaluation->id)
+        $likertQuestions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
             ->where('question_type', 'likert')
             ->get();
         
@@ -93,7 +144,7 @@ class EvaluationController extends Controller
         }
 
         $comments = [];
-        $commentQuestions = \App\Models\EvaluationQuestion::where('evaluation_id', $evaluation->id)
+        $commentQuestions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
             ->where('question_type', 'comment')
             ->get();
             
@@ -111,47 +162,23 @@ class EvaluationController extends Controller
             ];
         }
 
-        $aiInsights = \App\Models\AIAnalysis::where('evaluation_id', $evaluation->id)->first();
-
-        // Calculate category breakdown and feature importance from AI insights if available
+        // Calculate category breakdown from stats if no AI insights
         $categoryBreakdown = [];
-        $featureImportance = [];
-        $sentimentAnalysis = [];
-        $whatIfTargeted = [];
-        $whatIfOptimistic = [];
-
-        if ($aiInsights) {
-            // Get category scores from the AI analysis
-            $categoryBreakdown = json_decode($aiInsights->category_breakdown, true) ?? [];
-            
-            // Get feature importance
-            $featureImportance = json_decode($aiInsights->feature_importance, true) ?? [];
-            
-            // Get sentiment analysis data
-            $sentimentAnalysis = json_decode($aiInsights->sentiment_analysis, true) ?? [];
-            
-            // Get what-if analysis data
-            $whatIfData = json_decode($aiInsights->what_if_analysis, true) ?? [];
-            $whatIfTargeted = $whatIfData['targeted'] ?? [];
-            $whatIfOptimistic = $whatIfData['optimistic'] ?? [];
-            
-            // If category breakdown is empty, calculate it from the category scores
-            if (empty($categoryBreakdown) && $evaluation->categories) {
-                $categoryScores = [];
-                foreach ($evaluation->categories as $category) {
-                    $totalScore = 0;
-                    $questionCount = 0;
-                    foreach ($category->questions as $question) {
-                        if (isset($stats[$question->id]['average'])) {
-                            $totalScore += $stats[$question->id]['average'];
-                            $questionCount++;
-                        }
-                    }
-                    if ($questionCount > 0) {
-                        $categoryScores[$category->category_name] = round($totalScore / $questionCount, 2);
+        if ($overallInsights && !empty($overallInsights['category_breakdown'])) {
+            $categoryBreakdown = $overallInsights['category_breakdown'];
+        } elseif ($evaluation->categories) {
+            foreach ($evaluation->categories as $category) {
+                $totalScore = 0;
+                $questionCount = 0;
+                foreach ($category->questions as $question) {
+                    if (isset($stats[$question->id]['average'])) {
+                        $totalScore += $stats[$question->id]['average'];
+                        $questionCount++;
                     }
                 }
-                $categoryBreakdown = $categoryScores;
+                if ($questionCount > 0) {
+                    $categoryBreakdown[$category->category_name] = round($totalScore / $questionCount, 2);
+                }
             }
         }
 
@@ -164,6 +191,7 @@ class EvaluationController extends Controller
                 'event' => [
                     'id' => $evaluation->event->id,
                     'event_name' => $evaluation->event->event_name,
+                    'event_dates' => $evaluation->event_dates ?: [],
                 ],
                 'categories' => $evaluation->categories->map(function ($cat) {
                     return [
@@ -188,22 +216,10 @@ class EvaluationController extends Controller
             ],
             'stats' => $stats,
             'comments' => $comments,
-            'aiInsights' => $aiInsights ? [
-                'summary' => $aiInsights->summary,
-                'strengths' => json_decode($aiInsights->strengths, true),
-                'weaknesses' => json_decode($aiInsights->weaknesses, true),
-                'recommendations' => json_decode($aiInsights->recommendations, true),
-                'predicted_satisfaction' => $aiInsights->predicted_satisfaction,
-                'success_probability' => $aiInsights->success_probability,
-                'response_rate' => $aiInsights->response_rate,
-                'total_respondents' => $aiInsights->total_respondents,
-                'analyzed_at' => $aiInsights->analyzed_at,
-                'category_breakdown' => $categoryBreakdown,
-                'feature_importance' => $featureImportance,
-                'sentiment_analysis' => $sentimentAnalysis,
-                'what_if_targeted' => $whatIfTargeted,
-                'what_if_optimistic' => $whatIfOptimistic,
-            ] : null,
+            'aiInsights' => $overallInsights,
+            'dateInsights' => $dateInsights,
+            'availableDates' => $availableDates,
+            'categoryBreakdown' => $categoryBreakdown,
         ]);
     }
 }

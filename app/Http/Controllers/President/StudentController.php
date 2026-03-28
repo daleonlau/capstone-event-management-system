@@ -4,9 +4,12 @@ namespace App\Http\Controllers\President;
 
 use App\Http\Controllers\Controller;
 use App\Models\Student;
+use App\Models\Event;
+use App\Models\EventStudent;
 use App\Models\OrganizationSetting;
 use App\Models\Course;
 use App\Models\Department;
+use App\Services\LogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -178,7 +181,7 @@ class StudentController extends Controller
         ]);
 
         try {
-            Student::create([
+            $student = Student::create([
                 'student_id' => $validated['student_id'],
                 'firstname' => $validated['firstname'],
                 'lastname' => $validated['lastname'],
@@ -189,11 +192,31 @@ class StudentController extends Controller
                 'user_id' => $this->organizationId,
             ]);
 
+            // Sync student with all eligible events
+            $this->syncStudentWithEvents($student);
+
+            // Log student creation
+            $this->logAction('create_student', 'Created student: ' . $student->firstname . ' ' . $student->lastname, [
+                'student_id' => $student->student_id,
+                'student_name' => $student->firstname . ' ' . $student->lastname,
+                'student_email' => $student->email,
+                'department' => $student->department,
+                'course' => $student->course,
+                'year_level' => $student->yearlevel,
+            ]);
+
             return redirect()->route('president.students.index')
-                ->with('success', 'Student added successfully.');
+                ->with('success', 'Student added successfully and assigned to eligible events.');
 
         } catch (\Exception $e) {
             Log::error('Failed to create student: ' . $e->getMessage());
+            
+            $this->logError('create_student_failed', 'Failed to create student: ' . $e->getMessage(), $e, [
+                'student_id' => $validated['student_id'] ?? null,
+                'student_name' => ($validated['firstname'] ?? '') . ' ' . ($validated['lastname'] ?? ''),
+                'student_email' => $validated['email'] ?? null,
+            ]);
+            
             return back()->withErrors(['error' => 'Failed to create student. Please try again.']);
         }
     }
@@ -253,6 +276,12 @@ class StudentController extends Controller
                 $request->file('file')
             );
             
+            // Log bulk upload success
+            $this->logAction('bulk_upload_students', 'Bulk uploaded students', [
+                'file_name' => $request->file('file')->getClientOriginalName(),
+                'file_size' => $request->file('file')->getSize(),
+            ]);
+            
             return redirect()->route('president.students.index')
                 ->with('success', 'Students imported successfully.');
                 
@@ -265,6 +294,11 @@ class StudentController extends Controller
             
             Log::error('Bulk upload validation failed', ['errors' => $errorMessages]);
             
+            $this->logError('bulk_upload_students_failed', 'Bulk upload validation failed', $e, [
+                'file_name' => $request->file('file')->getClientOriginalName(),
+                'errors' => array_slice($errorMessages, 0, 5),
+            ]);
+            
             return back()->withErrors([
                 'file' => 'Validation failed: ' . implode(' | ', array_slice($errorMessages, 0, 3))
             ]);
@@ -273,6 +307,10 @@ class StudentController extends Controller
             Log::error('Bulk upload failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
+            ]);
+            
+            $this->logError('bulk_upload_students_failed', 'Bulk upload failed: ' . $e->getMessage(), $e, [
+                'file_name' => $request->file('file')->getClientOriginalName(),
             ]);
             
             return back()->withErrors([
@@ -342,13 +380,59 @@ class StudentController extends Controller
         ]);
 
         try {
+            $oldData = [
+                'firstname' => $student->firstname,
+                'lastname' => $student->lastname,
+                'email' => $student->email,
+                'department' => $student->department,
+                'course' => $student->course,
+                'yearlevel' => $student->yearlevel,
+            ];
+            
+            $oldDepartment = $student->department;
+            $oldCourse = $student->course;
+            $oldYearLevel = $student->yearlevel;
+            
             $student->update($validated);
+            
+            // If eligibility changed, resync with events
+            $eligibilityChanged = false;
+            if ($oldDepartment != $student->department || 
+                $oldCourse != $student->course || 
+                $oldYearLevel != $student->yearlevel) {
+                $this->syncStudentWithEvents($student);
+                $eligibilityChanged = true;
+            }
+
+            // Log student update
+            $this->logAction('update_student', 'Updated student: ' . $student->firstname . ' ' . $student->lastname, [
+                'student_id' => $student->student_id,
+                'student_name' => $student->firstname . ' ' . $student->lastname,
+                'changes' => [
+                    'old' => $oldData,
+                    'new' => [
+                        'firstname' => $student->firstname,
+                        'lastname' => $student->lastname,
+                        'email' => $student->email,
+                        'department' => $student->department,
+                        'course' => $student->course,
+                        'yearlevel' => $student->yearlevel,
+                    ],
+                ],
+                'eligibility_changed' => $eligibilityChanged,
+            ]);
 
             return redirect()->route('president.students.index')
                 ->with('success', 'Student updated successfully.');
                 
         } catch (\Exception $e) {
             Log::error('Failed to update student: ' . $e->getMessage());
+            
+            $this->logError('update_student_failed', 'Failed to update student: ' . $e->getMessage(), $e, [
+                'student_id' => $student->student_id,
+                'student_name' => $student->firstname . ' ' . $student->lastname,
+            ]);
+            
             return back()->withErrors(['error' => 'Failed to update student. Please try again.']);
         }
     }
@@ -363,14 +447,126 @@ class StudentController extends Controller
             ->firstOrFail();
 
         try {
+            $studentName = $student->firstname . ' ' . $student->lastname;
+            $studentId = $student->student_id;
+            
+            // Remove from all events first
+            EventStudent::where('student_id', $student->student_id)->delete();
+            
             $student->delete();
+
+            // Log student deletion
+            $this->logAction('delete_student', 'Deleted student: ' . $studentName, [
+                'student_id' => $studentId,
+                'student_name' => $studentName,
+                'student_email' => $student->email,
+            ]);
 
             return redirect()->route('president.students.index')
                 ->with('success', 'Student deleted successfully.');
                 
         } catch (\Exception $e) {
             Log::error('Failed to delete student: ' . $e->getMessage());
+            
+            $this->logError('delete_student_failed', 'Failed to delete student: ' . $e->getMessage(), $e, [
+                'student_id' => $student->student_id,
+                'student_name' => $student->firstname . ' ' . $student->lastname,
+            ]);
+            
             return back()->withErrors(['error' => 'Failed to delete student. Please try again.']);
+        }
+    }
+
+    /**
+     * Sync a student with all eligible events
+     */
+    private function syncStudentWithEvents(Student $student)
+    {
+        // Import Event model if not already imported at the top
+        if (!class_exists('App\Models\Event')) {
+            $eventModel = 'App\Models\Event';
+        } else {
+            $eventModel = Event::class;
+        }
+        
+        // Get all events for this organization
+        $events = Event::where('user_id', $this->organizationId)->get();
+        $syncedCount = 0;
+        
+        foreach ($events as $event) {
+            // Check if student is eligible for this event
+            $isEligible = true;
+            
+            if (!empty($event->departments) && !in_array($student->department, $event->departments)) {
+                $isEligible = false;
+            }
+            
+            if (!empty($event->courses) && !in_array($student->course, $event->courses)) {
+                $isEligible = false;
+            }
+            
+            if (!empty($event->year_levels) && !in_array($student->yearlevel, $event->year_levels)) {
+                $isEligible = false;
+            }
+            
+            if ($isEligible) {
+                // Add or update student in event
+                EventStudent::updateOrCreate(
+                    [
+                        'event_id' => $event->id,
+                        'student_id' => $student->student_id,
+                    ],
+                    [
+                        'user_id' => $this->organizationId,
+                        'status' => $event->payment === 'Payment' ? 'Pending' : 'Paid',
+                        'amount_paid' => $event->payment === 'Payment' ? 0 : $event->event_fee,
+                    ]
+                );
+                $syncedCount++;
+            } else {
+                // Remove student from event
+                EventStudent::where('event_id', $event->id)
+                    ->where('student_id', $student->student_id)
+                    ->delete();
+            }
+        }
+        
+        // Log sync if significant
+        if ($syncedCount > 0) {
+            $this->logAction('sync_student_with_events', 'Synced student with events', [
+                'student_id' => $student->student_id,
+                'student_name' => $student->firstname . ' ' . $student->lastname,
+                'events_synced' => $syncedCount,
+            ]);
+        }
+    }
+
+    /**
+     * Helper method to log CRUD and critical actions only
+     */
+    private function logAction($action, $description, $details = [])
+    {
+        try {
+            $user = Auth::guard('org_user')->user();
+            if ($user) {
+                LogService::action($action, $description, $user, $details);
+            }
+        } catch (\Exception $e) {
+            // Silent fail - don't let logging break the application
+            Log::warning('Failed to log action: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Helper method to log errors
+     */
+    private function logError($action, $description, $exception = null, $details = [])
+    {
+        try {
+            LogService::error($action, $description, $exception, $details);
+        } catch (\Exception $e) {
+            // Silent fail
+            Log::warning('Failed to log error: ' . $e->getMessage());
         }
     }
 }

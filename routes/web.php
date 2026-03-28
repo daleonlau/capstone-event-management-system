@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\OrganizationRegistrationController;
 use App\Http\Controllers\Admin\EvaluationController as AdminEvaluationController;
 use App\Http\Controllers\Admin\ReportController as AdminReportController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
+use App\Http\Controllers\Admin\LogController as AdminLogController;
 
 // President Controllers
 use App\Http\Controllers\President\DashboardController as PresidentDashboardController;
@@ -56,11 +57,21 @@ Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name
 |--------------------------------------------------------------------------
 */
 Route::prefix('evaluations')->name('evaluations.')->group(function () {
+    // Main form - includes verification
     Route::get('/{evaluation}/form', [PublicEvaluationController::class, 'form'])->name('form');
+    
+    // API endpoints for the form
     Route::post('/{evaluation}/verify', [PublicEvaluationController::class, 'verifyStudent'])->name('verify');
     Route::post('/{evaluation}', [PublicEvaluationController::class, 'store'])->name('store');
+    Route::get('/{evaluation}/student-submissions', [PublicEvaluationController::class, 'getStudentSubmissions'])->name('student-submissions');
+    
+    // Redirect old verify page to form (to prevent 404/422 errors)
+    Route::get('/{evaluation}/verify-page', [PublicEvaluationController::class, 'form'])->name('verify-page');
+    
+    // Other pages
     Route::get('/{evaluation}/already-submitted', [PublicEvaluationController::class, 'alreadySubmitted'])->name('already-submitted');
     Route::get('/thankyou', [PublicEvaluationController::class, 'thankyou'])->name('thankyou');
+    Route::get('/{evaluation}/dates', [PublicEvaluationController::class, 'getAvailableDates'])->name('dates');
 });
 
 /*
@@ -69,30 +80,36 @@ Route::prefix('evaluations')->name('evaluations.')->group(function () {
 |--------------------------------------------------------------------------
 */
 Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(function () {
-    // Dashboard - CORRECTED (remove /admin prefix since we're already in admin group)
+    // Dashboard
     Route::get('/dashboard', [AdminDashboardController::class, 'index'])->name('dashboard');
     
-    // Evaluation Management
-    Route::get('/evaluations/pending-requests', [AdminEvaluationController::class, 'getPendingRequests'])->name('evaluations.pending-requests');
-    Route::get('/evaluations', [AdminEvaluationController::class, 'index'])->name('evaluations.index');
-    Route::get('/evaluations/create', [AdminEvaluationController::class, 'create'])->name('evaluations.create');
-    Route::post('/evaluations', [AdminEvaluationController::class, 'store'])->name('evaluations.store');
-    Route::get('/evaluations/{evaluation}', [AdminEvaluationController::class, 'show'])->name('evaluations.show');
-    Route::get('/evaluations/{evaluation}/edit', [AdminEvaluationController::class, 'edit'])->name('evaluations.edit');
-    Route::put('/evaluations/{evaluation}', [AdminEvaluationController::class, 'update'])->name('evaluations.update');
-    Route::post('/evaluations/{evaluation}/activate', [AdminEvaluationController::class, 'activate'])->name('evaluations.activate');
-    Route::get('/evaluations/{evaluation}/qr', [AdminEvaluationController::class, 'showQRCode'])->name('evaluations.qr');
-    Route::post('/evaluations/{evaluation}/close', [AdminEvaluationController::class, 'close'])->name('evaluations.close');
-    Route::post('/evaluations/{evaluation}/reopen', [AdminEvaluationController::class, 'reopen'])->name('evaluations.reopen');
-    Route::post('/evaluations/{evaluation}/generate-insights', [AdminEvaluationController::class, 'generateInsights'])->name('evaluations.generate-insights');
-    Route::get('/evaluations/{evaluation}/ai-insights', [AdminEvaluationController::class, 'getAIInsights'])->name('evaluations.ai-insights');
-    Route::get('/evaluations/{evaluation}/raw-responses', [AdminEvaluationController::class, 'getRawResponses'])->name('evaluations.raw-responses');
-    Route::post('/evaluations/{evaluation}/bulk-upload', [AdminEvaluationController::class, 'bulkUpload'])->name('evaluations.bulk-upload');
-    Route::get('/evaluations/{evaluation}/download-template', [AdminEvaluationController::class, 'downloadCsvTemplate'])->name('evaluations.download-template');
-    Route::delete('/evaluations/{evaluation}', [AdminEvaluationController::class, 'destroy'])->name('evaluations.destroy');
-    Route::get('/evaluations/{evaluation}/eligibility-info', [AdminEvaluationController::class, 'getEligibilityInfo'])->name('evaluations.eligibility-info');
+    // ==================== EVALUATION MANAGEMENT ====================
+    Route::prefix('evaluations')->name('evaluations.')->group(function () {
+        Route::get('/pending-requests', [AdminEvaluationController::class, 'getPendingRequests'])->name('pending-requests');
+        Route::get('/', [AdminEvaluationController::class, 'index'])->name('index');
+        Route::get('/create', [AdminEvaluationController::class, 'create'])->name('create');
+        Route::post('/', [AdminEvaluationController::class, 'store'])->name('store');
+        Route::get('/{evaluation}', [AdminEvaluationController::class, 'show'])->name('show');
+        Route::get('/{evaluation}/edit', [AdminEvaluationController::class, 'edit'])->name('edit');
+        Route::put('/{evaluation}', [AdminEvaluationController::class, 'update'])->name('update');
+        Route::post('/{evaluation}/activate', [AdminEvaluationController::class, 'activate'])->name('activate');
+        Route::get('/{evaluation}/qr', [AdminEvaluationController::class, 'showQRCode'])->name('qr');
+        Route::post('/{evaluation}/close', [AdminEvaluationController::class, 'close'])->name('close');
+        Route::post('/{evaluation}/reopen', [AdminEvaluationController::class, 'reopen'])->name('reopen');
+        
+        // AI Insights Routes - IMPORTANT: These must be defined before the {evaluation} parameter routes
+        Route::post('/{evaluation}/generate-insights', [AdminEvaluationController::class, 'generateInsights'])->name('generate-insights');
+        Route::get('/{evaluation}/ai-insights', [AdminEvaluationController::class, 'getAIInsights'])->name('ai-insights');
+        
+        Route::get('/{evaluation}/raw-responses', [AdminEvaluationController::class, 'getRawResponses'])->name('raw-responses');
+        Route::get('/{evaluation}/stats', [AdminEvaluationController::class, 'getStatsByDate'])->name('stats');
+        Route::post('/{evaluation}/bulk-upload', [AdminEvaluationController::class, 'bulkUpload'])->name('bulk-upload');
+        Route::get('/{evaluation}/download-template', [AdminEvaluationController::class, 'downloadCsvTemplate'])->name('download-template');
+        Route::delete('/{evaluation}', [AdminEvaluationController::class, 'destroy'])->name('destroy');
+        Route::get('/{evaluation}/eligibility-info', [AdminEvaluationController::class, 'getEligibilityInfo'])->name('eligibility-info');
+    });
     
-    // Reports Management
+    // ==================== REPORTS MANAGEMENT ====================
     Route::prefix('reports')->name('reports.')->group(function () {
         Route::get('/', [AdminReportController::class, 'index'])->name('index');
         Route::post('/{evaluation}/generate', [AdminReportController::class, 'generateReport'])->name('generate');
@@ -102,17 +119,43 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
         Route::post('/{evaluation}/send', [AdminReportController::class, 'sendReport'])->name('send');
     });
     
-    // Organizations Management
-    Route::get('/organizations', [AdminController::class, 'indexOrganizations'])->name('organizations.index');
-    Route::get('/organizations/create', [OrganizationRegistrationController::class, 'create'])->name('organizations.create');
-    Route::post('/organizations', [OrganizationRegistrationController::class, 'store'])->name('organizations.store');
-    Route::get('/organizations/{organization}', [AdminController::class, 'showOrganization'])->name('organizations.show');
-    Route::delete('/organizations/{organization}', [AdminController::class, 'destroyOrganization'])->name('organizations.destroy');
+    // ==================== ORGANIZATIONS MANAGEMENT ====================
+    Route::prefix('organizations')->name('organizations.')->group(function () {
+        Route::get('/', [AdminController::class, 'indexOrganizations'])->name('index');
+        Route::get('/create', [OrganizationRegistrationController::class, 'create'])->name('create');
+        Route::post('/', [OrganizationRegistrationController::class, 'store'])->name('store');
+        Route::get('/{organization}', [AdminController::class, 'showOrganization'])->name('show');
+        Route::get('/{organization}/edit', [OrganizationRegistrationController::class, 'edit'])->name('edit');
+        Route::put('/{organization}', [OrganizationRegistrationController::class, 'update'])->name('update');
+        Route::delete('/{organization}', [AdminController::class, 'destroyOrganization'])->name('destroy');
+        Route::get('/{organization}/members', [OrganizationRegistrationController::class, 'getOrganizationMembers'])->name('members');
+        Route::get('/{organization}/settings', [OrganizationRegistrationController::class, 'getOrganizationSettings'])->name('settings');
+        Route::post('/{organization}/members', [AdminController::class, 'addOrganizationMember'])->name('members.store');
+    });
     
-    // Profile
+    // ==================== USER MANAGEMENT (Organization Users) ====================
+    Route::prefix('users')->name('users.')->group(function () {
+        Route::post('/{user}/block', [AdminController::class, 'blockUser'])->name('block');
+        Route::post('/{user}/unblock', [AdminController::class, 'unblockUser'])->name('unblock');
+        Route::put('/{user}', [AdminController::class, 'updateOrganizationMember'])->name('update');
+        Route::delete('/{user}', [AdminController::class, 'deleteOrganizationMember'])->name('delete');
+        Route::post('/{user}/reset-password', [AdminController::class, 'resetMemberPassword'])->name('reset-password');
+    });
+    
+    // ==================== LOG MANAGEMENT ====================
+    Route::prefix('logs')->name('logs.')->group(function () {
+        Route::get('/', [AdminLogController::class, 'index'])->name('index');
+        Route::get('/export', [AdminLogController::class, 'export'])->name('export');
+        Route::get('/auth', [AdminLogController::class, 'getAuthLogs'])->name('auth');
+        Route::get('/action', [AdminLogController::class, 'getActionLogs'])->name('action');
+        Route::post('/clear', [AdminLogController::class, 'clear'])->name('clear');
+    });
+    
+    // ==================== PROFILE ====================
     Route::get('/profile', [AdminController::class, 'profile'])->name('profile');
     Route::put('/profile', [AdminController::class, 'updateProfile'])->name('profile.update');
 });
+
 /*
 |--------------------------------------------------------------------------
 | PRESIDENT ROUTES
@@ -121,6 +164,7 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
 Route::middleware(['org_user:president'])->prefix('president')->name('president.')->group(function () {
     Route::get('/dashboard', [PresidentDashboardController::class, 'index'])->name('dashboard');
     
+    // Events
     Route::get('/events', [PresidentEventController::class, 'index'])->name('events.index');
     Route::get('/events/create', [PresidentEventController::class, 'create'])->name('events.create');
     Route::post('/events', [PresidentEventController::class, 'store'])->name('events.store');
@@ -131,20 +175,32 @@ Route::middleware(['org_user:president'])->prefix('president')->name('president.
     Route::post('/events/{event}/upload-document', [PresidentEventController::class, 'uploadDocument'])->name('events.upload-document');
     Route::post('/events/{event}/mark-finished', [PresidentEventController::class, 'markAsFinished'])->name('events.mark-finished');
     Route::post('/events/{event}/request-evaluation', [PresidentEventController::class, 'requestEvaluation'])->name('events.request-evaluation');
+    Route::post('/events/{event}/refresh-students', [PresidentEventController::class, 'refreshEligibleStudents'])->name('events.refresh-students');
     
+    // Students
     Route::get('/students', [PresidentStudentController::class, 'index'])->name('students.index');
     Route::get('/students/create', [PresidentStudentController::class, 'create'])->name('students.create');
     Route::post('/students', [PresidentStudentController::class, 'store'])->name('students.store');
     Route::get('/students/bulk-upload', [PresidentStudentController::class, 'bulkUpload'])->name('students.bulk-upload');
     Route::post('/students/bulk-upload', [PresidentStudentController::class, 'bulkStore'])->name('students.bulk-upload.store');
+    Route::get('/students/{student}/edit', [PresidentStudentController::class, 'edit'])->name('students.edit');
     Route::put('/students/{student}', [PresidentStudentController::class, 'update'])->name('students.update');
     Route::delete('/students/{student}', [PresidentStudentController::class, 'destroy'])->name('students.destroy');
     
+    // Guests
+    Route::get('/events/{event}/guests', [PresidentEventController::class, 'showGuests'])->name('events.guests');
+    Route::post('/events/{event}/guests', [PresidentEventController::class, 'addGuest'])->name('events.guests.store');
+    Route::post('/events/{event}/guests/bulk', [PresidentEventController::class, 'bulkAddGuests'])->name('events.guests.bulk');
+    Route::delete('/events/{event}/guests/{guest}', [PresidentEventController::class, 'deleteGuest'])->name('events.guests.delete');
+    Route::get('/events/{event}/guests/template', [PresidentEventController::class, 'downloadGuestTemplate'])->name('events.guests.template');
+    
+    // Evaluations
     Route::prefix('evaluations')->name('evaluations.')->group(function () {
         Route::get('/', [PresidentEvaluationController::class, 'index'])->name('index');
         Route::get('/{evaluation}', [PresidentEvaluationController::class, 'show'])->name('show');
     });
     
+    // Profile
     Route::get('/profile', [PresidentProfileController::class, 'edit'])->name('profile');
     Route::put('/profile', [PresidentProfileController::class, 'update'])->name('profile.update');
 });
@@ -157,22 +213,28 @@ Route::middleware(['org_user:president'])->prefix('president')->name('president.
 Route::middleware(['org_user:adviser'])->prefix('adviser')->name('adviser.')->group(function () {
     Route::get('/dashboard', [AdviserDashboardController::class, 'index'])->name('dashboard');
     
+    // Events (Read-only)
     Route::get('/events', [AdviserEventController::class, 'index'])->name('events.index');
     Route::get('/events/{event}', [AdviserEventController::class, 'show'])->name('events.show');
     
+    // Approvals
     Route::get('/approvals', [AdviserApprovalController::class, 'index'])->name('approvals.index');
+    Route::get('/approvals/history', [AdviserApprovalController::class, 'history'])->name('approvals.history');
     Route::get('/approvals/{event}', [AdviserApprovalController::class, 'show'])->name('approvals.show');
     Route::post('/approvals/{event}/approve', [AdviserApprovalController::class, 'approve'])->name('approvals.approve');
     Route::post('/approvals/{event}/reject', [AdviserApprovalController::class, 'reject'])->name('approvals.reject');
     Route::get('/approvals/stats', [AdviserApprovalController::class, 'getStats'])->name('approvals.stats');
     
+    // Students (Read-only)
     Route::get('/students', [AdviserStudentController::class, 'index'])->name('students.index');
     
+    // Evaluations (Read-only)
     Route::prefix('evaluations')->name('evaluations.')->group(function () {
         Route::get('/', [AdviserEvaluationController::class, 'index'])->name('index');
         Route::get('/{evaluation}', [AdviserEvaluationController::class, 'show'])->name('show');
     });
     
+    // Profile
     Route::get('/profile', [AdviserProfileController::class, 'edit'])->name('profile');
     Route::put('/profile', [AdviserProfileController::class, 'update'])->name('profile.update');
 });
@@ -183,7 +245,6 @@ Route::middleware(['org_user:adviser'])->prefix('adviser')->name('adviser.')->gr
 |--------------------------------------------------------------------------
 */
 Route::middleware(['org_user:treasurer'])->prefix('treasurer')->name('treasurer.')->group(function () {
-    // Dashboard
     Route::get('/dashboard', [TreasurerDashboardController::class, 'index'])->name('dashboard');
     
     // Collection Management
@@ -198,19 +259,13 @@ Route::middleware(['org_user:treasurer'])->prefix('treasurer')->name('treasurer.
     Route::get('/receipts/{eventId}/{studentId}/view', [TreasurerCollectionController::class, 'viewReceipt'])->name('receipts.view');
     Route::post('/receipts/{eventId}/{studentId}/resend', [TreasurerCollectionController::class, 'resendReceiptEmail'])->name('receipts.resend');
     
-    // Report Management - Updated with Generate, Regenerate, View, Download
+    // Report Management
     Route::get('/reports', [TreasurerReportController::class, 'index'])->name('reports.index');
-    
-    // Collection Report Routes (Single Event Reports)
     Route::post('/collection-reports/{eventId}/generate', [TreasurerReportController::class, 'generate'])->name('collection-reports.generate');
     Route::post('/collection-reports/{eventId}/regenerate', [TreasurerReportController::class, 'regenerate'])->name('collection-reports.regenerate');
     Route::get('/collection-reports/{eventId}/view', [TreasurerReportController::class, 'view'])->name('collection-reports.view');
     Route::get('/collection-reports/{eventId}/download', [TreasurerReportController::class, 'download'])->name('collection-reports.download');
-    
-    // Summary Report Route (Multiple Events)
     Route::post('/reports/summary', [TreasurerReportController::class, 'summaryReport'])->name('reports.summary');
-    
-    // Legacy Report Route (for backward compatibility)
     Route::post('/reports/collection', [TreasurerReportController::class, 'collectionReport'])->name('reports.collection');
     
     // Profile

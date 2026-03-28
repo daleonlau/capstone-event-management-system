@@ -7,6 +7,8 @@ use App\Models\EventStudent;
 use App\Models\Student;
 use App\Models\Evaluation;
 use App\Models\EvaluationQuestion;
+use App\Models\Event;
+use App\Models\EventGuest;
 use Maatwebsite\Excel\Concerns\ToModel;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use Maatwebsite\Excel\Concerns\WithValidation;
@@ -20,6 +22,7 @@ class EvaluationResponsesImport implements ToModel, WithHeadingRow, WithValidati
 {
     protected $evaluation;
     protected $eventId;
+    protected $event;
     protected $successCount = 0;
     protected $errorCount = 0;
     protected $errors = [];
@@ -32,6 +35,7 @@ class EvaluationResponsesImport implements ToModel, WithHeadingRow, WithValidati
     {
         $this->evaluation = $evaluation;
         $this->eventId = $evaluation->event_id;
+        $this->event = Event::find($this->eventId);
         
         // Get all questions for this evaluation
         $this->likertQuestions = $evaluation->questions()
@@ -55,7 +59,7 @@ class EvaluationResponsesImport implements ToModel, WithHeadingRow, WithValidati
         // Build expected headers for reference
         $this->expectedHeaders = [
             'student_id', 'email', 'name', 'age', 'sex', 'agency_office', 'position',
-            'respondent_type', 'title_prefix', 'department', 'course', 'year_level'
+            'respondent_type', 'title_prefix', 'event_date'
         ];
         
         $formType = $evaluation->form_type;
@@ -77,68 +81,69 @@ class EvaluationResponsesImport implements ToModel, WithHeadingRow, WithValidati
      * Map the row data by column position
      */
     public function prepareForValidation($data, $index)
-{
-    // Skip if student_id is empty or starts with #
-    if (empty($data['student_id']) || str_starts_with($data['student_id'], '#')) {
-        return [];
-    }
-    
-    $mappedData = [];
-    
-    // Map standard fields by position (they are the first 12 columns)
-    $standardFields = ['student_id', 'email', 'name', 'age', 'sex', 'agency_office', 
-                       'position', 'respondent_type', 'title_prefix', 'department', 'course', 'year_level'];
-    
-    // Get all column values in order
-    $columns = array_values($data);
-    
-    // Map by position
-    foreach ($standardFields as $pos => $field) {
-        if (isset($columns[$pos])) {
-            $value = $columns[$pos];
-            
-            // Special handling for age - convert to string
-            if ($field === 'age' && is_numeric($value)) {
-                $mappedData[$field] = (string) $value;
-            } else {
-                $mappedData[$field] = $value;
+    {
+        // Skip if student_id is empty or starts with #
+        if (empty($data['student_id']) || str_starts_with($data['student_id'], '#')) {
+            return [];
+        }
+        
+        $mappedData = [];
+        
+        // Map standard fields by position (first 10 columns)
+        $standardFields = ['student_id', 'email', 'name', 'age', 'sex', 'agency_office', 
+                           'position', 'respondent_type', 'title_prefix', 'event_date'];
+        
+        // Get all column values in order
+        $columns = array_values($data);
+        
+        // Map by position
+        foreach ($standardFields as $pos => $field) {
+            if (isset($columns[$pos])) {
+                $value = $columns[$pos];
+                
+                // Special handling for age - convert to string
+                if ($field === 'age' && is_numeric($value)) {
+                    $mappedData[$field] = (string) $value;
+                } else {
+                    $mappedData[$field] = $value;
+                }
             }
         }
+        
+        // Map speaker fields (next 2 columns if applicable)
+        $formType = $this->evaluation->form_type;
+        $speakerOffset = 10;
+        if (in_array($formType, ['type1', 'type3', 'type4'])) {
+            if (isset($columns[$speakerOffset])) {
+                $mappedData['speaker_topic'] = $columns[$speakerOffset];
+            }
+            if (isset($columns[$speakerOffset + 1])) {
+                $mappedData['speaker_name'] = $columns[$speakerOffset + 1];
+            }
+            $speakerOffset += 2;
+        }
+        
+        // Map likert questions by position
+        $likertOffset = $speakerOffset;
+        foreach ($this->likertQuestions as $pos => $question) {
+            if (isset($columns[$likertOffset + $pos])) {
+                $value = $columns[$likertOffset + $pos];
+                $cleanedValue = $this->cleanNumericValue($value);
+                $mappedData["q_{$question->id}"] = $cleanedValue;
+            }
+        }
+        
+        // Map comment questions by position
+        $commentOffset = $likertOffset + count($this->likertQuestions);
+        foreach ($this->commentQuestions as $pos => $question) {
+            if (isset($columns[$commentOffset + $pos])) {
+                $mappedData["c_{$question->id}"] = $columns[$commentOffset + $pos];
+            }
+        }
+        
+        return $mappedData;
     }
     
-    // Map speaker fields (next 2 columns if applicable)
-    $formType = $this->evaluation->form_type;
-    $speakerOffset = 12;
-    if (in_array($formType, ['type1', 'type3', 'type4'])) {
-        if (isset($columns[$speakerOffset])) {
-            $mappedData['speaker_topic'] = $columns[$speakerOffset];
-        }
-        if (isset($columns[$speakerOffset + 1])) {
-            $mappedData['speaker_name'] = $columns[$speakerOffset + 1];
-        }
-        $speakerOffset += 2;
-    }
-    
-    // Map likert questions by position
-    $likertOffset = $speakerOffset;
-    foreach ($this->likertQuestions as $pos => $question) {
-        if (isset($columns[$likertOffset + $pos])) {
-            $value = $columns[$likertOffset + $pos];
-            $cleanedValue = $this->cleanNumericValue($value);
-            $mappedData["q_{$question->id}"] = $cleanedValue;
-        }
-    }
-    
-    // Map comment questions by position
-    $commentOffset = $likertOffset + count($this->likertQuestions);
-    foreach ($this->commentQuestions as $pos => $question) {
-        if (isset($columns[$commentOffset + $pos])) {
-            $mappedData["c_{$question->id}"] = $columns[$commentOffset + $pos];
-        }
-    }
-    
-    return $mappedData;
-}
     /**
      * Clean numeric values - extract numbers from strings
      */
@@ -148,18 +153,15 @@ class EvaluationResponsesImport implements ToModel, WithHeadingRow, WithValidati
             return null;
         }
         
-        // If it's already numeric
         if (is_numeric($value)) {
             return (int) $value;
         }
         
-        // If it's a string, try to extract number
         if (is_string($value)) {
             $trimmed = trim($value);
             if (is_numeric($trimmed)) {
                 return (int) $trimmed;
             }
-            // Try to extract first number using regex
             preg_match('/\d+/', $trimmed, $matches);
             if (!empty($matches)) {
                 return (int) $matches[0];
@@ -175,15 +177,13 @@ class EvaluationResponsesImport implements ToModel, WithHeadingRow, WithValidati
             'student_id' => ['required', 'string'],
             'email' => ['required', 'email'],
             'name' => ['nullable', 'string'],
-            'age' => ['nullable'],  // Accept any type, we'll convert to string
+            'age' => ['nullable'],
             'sex' => ['nullable', 'string'],
             'agency_office' => ['nullable', 'string'],
             'position' => ['nullable', 'string'],
             'respondent_type' => ['nullable', 'string'],
             'title_prefix' => ['nullable', 'string'],
-            'department' => ['required', 'string'],
-            'course' => ['required', 'string'],
-            'year_level' => ['required', 'string', Rule::in(['1st Year', '2nd Year', '3rd Year', '4th Year'])],
+            'event_date' => ['required', 'date'],
         ];
     
         // Add speaker fields for forms that have speaker
@@ -212,13 +212,10 @@ class EvaluationResponsesImport implements ToModel, WithHeadingRow, WithValidati
             'student_id.required' => 'Student ID is required',
             'email.required' => 'Email is required',
             'email.email' => 'Please enter a valid email address',
-            'department.required' => 'Department is required',
-            'course.required' => 'Course is required',
-            'year_level.required' => 'Year Level is required',
-            'year_level.in' => 'Year Level must be 1st Year, 2nd Year, 3rd Year, or 4th Year',
+            'event_date.required' => 'Event date is required',
+            'event_date.date' => 'Event date must be a valid date',
         ];
         
-        // Add custom messages for each question
         foreach ($this->likertQuestions as $question) {
             $messages["q_{$question->id}.required"] = "The question '{$question->question_text}' is required";
             $messages["q_{$question->id}.integer"] = "Rating for '{$question->question_text}' must be a number (1-5)";
@@ -230,88 +227,106 @@ class EvaluationResponsesImport implements ToModel, WithHeadingRow, WithValidati
     }
 
     public function model(array $row)
-{
-    // Skip if student_id is empty
-    if (empty($row['student_id'])) {
-        return null;
-    }
-
-    // Check if student exists
-    $student = Student::where('student_id', $row['student_id'])
-        ->where('user_id', $this->evaluation->organization_id)
-        ->first();
-
-    if (!$student) {
-        $this->errors[] = "Row with Student ID {$row['student_id']} not found in students table";
-        $this->errorCount++;
-        return null;
-    }
-
-    // Check if already submitted
-    $existing = EvaluationResponse::where('evaluation_id', $this->evaluation->id)
-        ->where('student_id', $row['student_id'])
-        ->exists();
-
-    if ($existing) {
-        $this->errors[] = "Student {$row['student_id']} already submitted";
-        $this->errorCount++;
-        return null;
-    }
-
-    // Build likert responses
-    $likertResponses = [];
-    foreach ($this->likertQuestions as $question) {
-        $key = "q_{$question->id}";
-        if (isset($row[$key]) && is_numeric($row[$key])) {
-            $likertResponses[$question->id] = (int) $row[$key];
+    {
+        // Skip if student_id is empty
+        if (empty($row['student_id'])) {
+            return null;
         }
-    }
-
-    // Build comment responses
-    $commentResponses = [];
-    foreach ($this->commentQuestions as $question) {
-        $key = "c_{$question->id}";
-        if (isset($row[$key]) && !empty($row[$key]) && !str_starts_with($row[$key], '#')) {
-            $commentResponses[$question->id] = $row[$key];
+    
+        // Check if this is a guest
+        $isGuest = str_starts_with($row['student_id'], 'GUEST-');
+        
+        if (!$isGuest) {
+            // For regular students, check if they exist in students table
+            $student = Student::where('student_id', $row['student_id'])
+                ->where('user_id', $this->evaluation->organization_id)
+                ->first();
+    
+            if (!$student) {
+                $this->errors[] = "Student {$row['student_id']} not found in students table";
+                $this->errorCount++;
+                return null;
+            }
+    
+            // Check if student is in event_student
+            $eventStudent = EventStudent::where('event_id', $this->eventId)
+                ->where('student_id', $row['student_id'])
+                ->first();
+    
+            if (!$eventStudent) {
+                $this->errors[] = "Student {$row['student_id']} is not eligible for this event.";
+                $this->errorCount++;
+                return null;
+            }
+        } else {
+            // For guests, check if they exist in event_guests
+            $guest = EventGuest::where('event_id', $this->eventId)
+                ->where('guest_id', $row['student_id'])
+                ->first();
+                
+            if (!$guest) {
+                $this->errors[] = "Guest {$row['student_id']} not found for this event.";
+                $this->errorCount++;
+                return null;
+            }
         }
-    }
-
-    // Ensure student is in event_student
-    EventStudent::firstOrCreate(
-        [
+    
+        // Check if already submitted for this specific date
+        $existing = EvaluationResponse::where('evaluation_id', $this->evaluation->id)
+            ->where('student_id', $row['student_id'])
+            ->where('event_date', $row['event_date'])
+            ->exists();
+    
+        if ($existing) {
+            $this->errors[] = "Student/Guest {$row['student_id']} already submitted for {$row['event_date']}";
+            $this->errorCount++;
+            return null;
+        }
+    
+        // Build likert responses
+        $likertResponses = [];
+        foreach ($this->likertQuestions as $question) {
+            $key = "q_{$question->id}";
+            if (isset($row[$key]) && is_numeric($row[$key])) {
+                $likertResponses[$question->id] = (int) $row[$key];
+            }
+        }
+    
+        // Build comment responses
+        $commentResponses = [];
+        foreach ($this->commentQuestions as $question) {
+            $key = "c_{$question->id}";
+            if (isset($row[$key]) && !empty($row[$key]) && !str_starts_with($row[$key], '#')) {
+                $commentResponses[$question->id] = $row[$key];
+            }
+        }
+    
+        // Get event dates to calculate date_index
+        $eventDates = $this->evaluation->event_dates ?: [];
+        $dateIndex = array_search($row['event_date'], $eventDates) + 1;
+    
+        $this->successCount++;
+    
+        return new EvaluationResponse([
+            'evaluation_id' => $this->evaluation->id,
             'event_id' => $this->eventId,
-            'student_id' => $row['student_id']
-        ],
-        [
-            'user_id' => $this->evaluation->organization_id,
-            'status' => 'Pending',
-            'amount_paid' => 0
-        ]
-    );
-
-    $this->successCount++;
-
-    return new EvaluationResponse([
-        'evaluation_id' => $this->evaluation->id,
-        'event_id' => $this->eventId,
-        'student_id' => $row['student_id'],
-        'email' => $row['email'],
-        'name' => $row['name'] ?? ($student->firstname . ' ' . $student->lastname),
-        'age' => $row['age'] !== null && $row['age'] !== '' ? (string) $row['age'] : null,
-        'sex' => $row['sex'] ?? null,
-        'agency_office' => $row['agency_office'] ?? null,
-        'position' => $row['position'] ?? null,
-        'respondent_type' => $row['respondent_type'] ?? null,
-        'title_prefix' => $row['title_prefix'] ?? null,
-        'department' => $row['department'],
-        'course' => $row['course'],
-        'year_level' => $row['year_level'],
-        'speaker_topic' => $row['speaker_topic'] ?? null,
-        'speaker_name' => $row['speaker_name'] ?? null,
-        'likert_responses' => $likertResponses,
-        'comment_responses' => $commentResponses,
-    ]);
-}
+            'event_date' => $row['event_date'],
+            'date_index' => $dateIndex,
+            'student_id' => $row['student_id'],
+            'email' => $row['email'],
+            'name' => $isGuest ? ($row['name'] ?? 'Guest User') : ($row['name'] ?? ($student->firstname . ' ' . $student->lastname)),
+            'age' => $row['age'] ?? null,
+            'sex' => $row['sex'] ?? null,
+            'agency_office' => $row['agency_office'] ?? ($isGuest ? ($guest->agency_office ?? null) : ($student->department ?? null)),
+            'position' => $row['position'] ?? null,
+            'respondent_type' => $isGuest ? 'Guest' : ($row['respondent_type'] ?? 'Student'),
+            'title_prefix' => $row['title_prefix'] ?? null,
+            'speaker_topic' => $row['speaker_topic'] ?? null,
+            'speaker_name' => $row['speaker_name'] ?? null,
+            'likert_responses' => $likertResponses,
+            'comment_responses' => $commentResponses,
+        ]);
+    }
 
     public function headingRow(): int
     {
