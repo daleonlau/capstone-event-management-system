@@ -1,8 +1,0 @@
-[build]
-builder = "NIXPACKS"
-
-[nixpacks]
-nodeVersion = "20"
-
-[deploy]
-startCommand = "./railway-start.sh"
