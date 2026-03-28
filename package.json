@@ -2,6 +2,11 @@
     "$schema": "https://json.schemastore.org/package.json",
     "private": true,
     "type": "module",
+
+    "engines": {
+        "node": ">=20.19.0",
+        "npm": ">=9.0.0"
+      },
     "scripts": {
         "build": "vite build",
         "dev": "vite"
@@ -27,4 +32,8 @@
         "xlsx": "^0.18.5",
         "ziggy-js": "^2.6.0"
     }
+
+    
+    
 }
+
