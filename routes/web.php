@@ -285,3 +285,38 @@ Route::get('/debug-session', function() {
         'auth_web' => auth()->user(),
     ]);
 })->middleware('auth');
+
+Route::get('/run-migrations', function() {
+    try {
+        \Artisan::call('migrate --force');
+        return "✅ Migrations completed!<br><pre>" . \Artisan::output() . "</pre>";
+    } catch (\Exception $e) {
+        return "❌ Error: " . $e->getMessage();
+    }
+});
+
+Route::get('/seed-admin', function() {
+    try {
+        \DB::table('users')->insert([
+            'name' => 'System Administrator',
+            'email' => 'admin@csucc.edu.ph',
+            'password' => bcrypt('admin123'),
+            'role' => 'admin',
+            'created_at' => now(),
+            'updated_at' => now()
+        ]);
+        return "✅ Admin user created!";
+    } catch (\Exception $e) {
+        return "❌ Error: " . $e->getMessage();
+    }
+});
+
+Route::get('/seed-data', function() {
+    try {
+        \Artisan::call('db:seed --class=DepartmentCourseSeeder --force');
+        \Artisan::call('db:seed --class=EventTypeSeeder --force');
+        return "✅ Seeders completed!<br><pre>" . \Artisan::output() . "</pre>";
+    } catch (\Exception $e) {
+        return "❌ Error: " . $e->getMessage();
+    }
+});
