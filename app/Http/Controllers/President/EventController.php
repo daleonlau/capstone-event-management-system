@@ -62,13 +62,145 @@ class EventController extends Controller
         } catch (\Exception $e) {
             Log::error('Failed to sync students: ' . $e->getMessage());
             
-            // Log error to system log
             $this->logError('sync_students_failed', 'Failed to sync students for event: ' . $event->id, $e, [
                 'event_id' => $event->id,
                 'event_name' => $event->event_name,
             ]);
             
             return 0;
+        }
+    }
+
+    /**
+     * Get eligible students for an event based on criteria
+     */
+    private function getEligibleStudentsForEvent(Event $event)
+    {
+        $query = Student::where('user_id', $this->organizationId);
+        
+        // Filter by departments (convert IDs to names)
+        if (!empty($event->departments) && is_array($event->departments)) {
+            $departmentNames = Department::whereIn('id', $event->departments)->pluck('name')->toArray();
+            if (!empty($departmentNames)) {
+                $query->whereIn('department', $departmentNames);
+            }
+        }
+        
+        // Filter by courses (convert IDs to names)
+        if (!empty($event->courses) && is_array($event->courses)) {
+            $courseNames = Course::whereIn('id', $event->courses)->pluck('name')->toArray();
+            if (!empty($courseNames)) {
+                $query->whereIn('course', $courseNames);
+            }
+        }
+        
+        // Filter by year levels
+        if (!empty($event->year_levels) && is_array($event->year_levels)) {
+            $query->whereIn('yearlevel', $event->year_levels);
+        }
+        
+        return $query->get();
+    }
+
+    /**
+     * Sync all eligible students for an event (add new, remove ineligible)
+     */
+    public function syncAllEligibleStudents(Event $event)
+    {
+        if ($event->user_id !== $this->organizationId) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+        
+        try {
+            // Get all eligible students based on event criteria
+            $eligibleStudents = $this->getEligibleStudentsForEvent($event);
+            
+            // Get existing students in event_student
+            $existingStudents = EventStudent::where('event_id', $event->id)
+                ->pluck('student_id')
+                ->toArray();
+            
+            // Students to add (in eligible but not in existing)
+            $studentsToAdd = array_diff($eligibleStudents->pluck('student_id')->toArray(), $existingStudents);
+            
+            // Students to remove (in existing but not eligible)
+            $studentsToRemove = array_diff($existingStudents, $eligibleStudents->pluck('student_id')->toArray());
+            
+            $added = 0;
+            $removed = 0;
+            
+            // Add new eligible students
+            foreach ($eligibleStudents as $student) {
+                if (in_array($student->student_id, $studentsToAdd)) {
+                    EventStudent::updateOrCreate(
+                        [
+                            'event_id' => $event->id,
+                            'student_id' => $student->student_id,
+                        ],
+                        [
+                            'user_id' => $this->organizationId,
+                            'status' => $event->payment === 'Payment' ? 'Pending' : 'Paid',
+                            'amount_paid' => $event->payment === 'Payment' ? 0 : $event->event_fee,
+                        ]
+                    );
+                    $added++;
+                }
+            }
+            
+            // Remove ineligible students
+            foreach ($studentsToRemove as $studentId) {
+                EventStudent::where('event_id', $event->id)
+                    ->where('student_id', $studentId)
+                    ->delete();
+                $removed++;
+            }
+            
+            // Log the sync
+            $this->logAction('sync_event_students', 'Synced eligible students for event: ' . $event->event_name, [
+                'event_id' => $event->id,
+                'event_name' => $event->event_name,
+                'added' => $added,
+                'removed' => $removed,
+                'total_eligible' => $eligibleStudents->count(),
+            ]);
+            
+            // Get updated student list with payment status
+            $updatedStudents = EventStudent::where('event_id', $event->id)
+                ->with('student')
+                ->get()
+                ->map(function ($es) {
+                    return [
+                        'student_id' => $es->student->student_id,
+                        'firstname' => $es->student->firstname,
+                        'lastname' => $es->student->lastname,
+                        'department' => $es->student->department,
+                        'course' => $es->student->course,
+                        'yearlevel' => $es->student->yearlevel,
+                        'status' => $es->status,
+                        'amount_paid' => $es->amount_paid,
+                    ];
+                });
+            
+            return response()->json([
+                'success' => true,
+                'students' => $updatedStudents,
+                'total' => $updatedStudents->count(),
+                'added' => $added,
+                'removed' => $removed,
+                'message' => "Updated student list: +{$added} added, -{$removed} removed"
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Failed to sync event students: ' . $e->getMessage());
+            
+            $this->logError('sync_event_students_failed', 'Failed to sync students: ' . $e->getMessage(), $e, [
+                'event_id' => $event->id,
+                'event_name' => $event->event_name,
+            ]);
+            
+            return response()->json([
+                'error' => 'Failed to sync students: ' . $e->getMessage()
+            ], 500);
         }
     }
 
@@ -165,7 +297,6 @@ class EventController extends Controller
 
             DB::commit();
 
-            // Log the event creation
             $this->logAction('create_event', 'Created event: ' . $event->event_name, [
                 'event_id' => $event->id,
                 'event_name' => $event->event_name,
@@ -184,7 +315,6 @@ class EventController extends Controller
             DB::rollBack();
             Log::error('Failed to create event: ' . $e->getMessage());
             
-            // Log error
             $this->logError('create_event_failed', 'Failed to create event: ' . $e->getMessage(), $e, [
                 'event_name' => $request->event_name,
                 'event_type_id' => $request->event_type_id,
@@ -332,7 +462,6 @@ class EventController extends Controller
         DB::beginTransaction();
 
         try {
-            // Store old data for logging
             $oldData = [
                 'event_name' => $event->event_name,
                 'event_type_id' => $event->event_type_id,
@@ -372,7 +501,6 @@ class EventController extends Controller
 
             DB::commit();
 
-            // Log the update
             $this->logAction('update_event', 'Updated event: ' . $event->event_name, [
                 'event_id' => $event->id,
                 'event_name' => $event->event_name,
@@ -419,7 +547,6 @@ class EventController extends Controller
                 'approval_status' => 'pending_approval',
             ]);
 
-            // Log document upload
             $this->logAction('upload_event_document', 'Uploaded signed document for event: ' . $event->event_name, [
                 'event_id' => $event->id,
                 'event_name' => $event->event_name,
@@ -451,7 +578,6 @@ class EventController extends Controller
             $oldStatus = $event->status;
             $event->update(['status' => 'Finished']);
 
-            // Log marking as finished
             $this->logAction('mark_event_finished', 'Marked event as finished: ' . $event->event_name, [
                 'event_id' => $event->id,
                 'event_name' => $event->event_name,
@@ -514,7 +640,6 @@ class EventController extends Controller
                 'status' => 'pending',
             ]);
 
-            // Log evaluation request
             $this->logAction('request_evaluation', 'Requested evaluation service for event: ' . $event->event_name, [
                 'event_id' => $event->id,
                 'event_name' => $event->event_name,
@@ -554,7 +679,6 @@ class EventController extends Controller
 
             $event->delete();
 
-            // Log deletion
             $this->logAction('delete_event', 'Deleted event: ' . $eventName, [
                 'event_id' => $eventId,
                 'event_name' => $eventName,
@@ -598,7 +722,6 @@ class EventController extends Controller
                     ];
                 });
             
-            // Log refresh action
             $this->logAction('refresh_eligible_students', 'Refreshed eligible students for event: ' . $event->event_name, [
                 'event_id' => $event->id,
                 'event_name' => $event->event_name,
@@ -678,7 +801,6 @@ class EventController extends Controller
                 'status' => 'Pending',
             ]);
             
-            // Log guest addition
             $this->logAction('add_event_guest', 'Added guest to event: ' . $event->event_name, [
                 'event_id' => $event->id,
                 'event_name' => $event->event_name,
@@ -748,7 +870,6 @@ class EventController extends Controller
         
         fclose($handle);
         
-        // Log bulk add
         $this->logAction('bulk_add_event_guests', 'Bulk added guests to event: ' . $event->event_name, [
             'event_id' => $event->id,
             'event_name' => $event->event_name,
@@ -777,7 +898,6 @@ class EventController extends Controller
             $guestName = $guest->name;
             $guest->delete();
             
-            // Log guest deletion
             $this->logAction('delete_event_guest', 'Deleted guest from event: ' . $event->event_name, [
                 'event_id' => $event->id,
                 'event_name' => $event->event_name,
@@ -828,7 +948,6 @@ class EventController extends Controller
                 LogService::action($action, $description, $user, $details);
             }
         } catch (\Exception $e) {
-            // Silent fail - don't let logging break the application
             Log::warning('Failed to log action: ' . $e->getMessage());
         }
     }
@@ -841,7 +960,6 @@ class EventController extends Controller
         try {
             LogService::error($action, $description, $exception, $details);
         } catch (\Exception $e) {
-            // Silent fail
             Log::warning('Failed to log error: ' . $e->getMessage());
         }
     }

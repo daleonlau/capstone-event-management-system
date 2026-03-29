@@ -91,27 +91,42 @@ class LogController extends Controller
         
         $actionLogs = $actionQuery->get()->map(function($log) {
             // Safely get causer information
-            $causer = $log->causer;
             $userName = 'System';
             $userEmail = 'N/A';
             $userRole = 'system';
             
-            if ($causer) {
-                // Check if it's a User (admin) or OrganizationUser
-                if (get_class($causer) === 'App\Models\User') {
-                    $userName = $causer->name ?? 'Admin';
-                    $userEmail = $causer->email ?? 'N/A';
-                    $userRole = $causer->role ?? 'admin';
-                } elseif (get_class($causer) === 'App\Models\OrganizationUser') {
-                    $userName = $causer->name ?? 'Organization User';
-                    $userEmail = $causer->email ?? 'N/A';
-                    $userRole = $causer->role ?? 'organization';
-                } else {
-                    // Fallback for any other type
-                    $userName = 'User';
-                    $userEmail = 'N/A';
-                    $userRole = 'user';
+            try {
+                $causer = $log->causer;
+                
+                if ($causer) {
+                    // Check if it's a User (admin) or OrganizationUser
+                    $causerClass = get_class($causer);
+                    
+                    if ($causerClass === 'App\Models\User') {
+                        $userName = $causer->name ?? 'Admin';
+                        $userEmail = $causer->email ?? 'N/A';
+                        $userRole = $causer->role ?? 'admin';
+                    } elseif ($causerClass === 'App\Models\OrganizationUser') {
+                        $userName = $causer->name ?? 'Organization User';
+                        $userEmail = $causer->email ?? 'N/A';
+                        $userRole = $causer->role ?? 'organization';
+                    } else {
+                        // Fallback for any other type
+                        $userName = 'User';
+                        $userEmail = $causer->email ?? 'N/A';
+                        $userRole = 'user';
+                    }
                 }
+            } catch (\Exception $e) {
+                // If there's an error loading the causer, use system defaults
+                \Log::warning('Failed to load causer for log ID: ' . $log->id, [
+                    'error' => $e->getMessage(),
+                    'causer_type' => $log->causer_type,
+                    'causer_id' => $log->causer_id,
+                ]);
+                $userName = 'System';
+                $userEmail = 'N/A';
+                $userRole = 'system';
             }
             
             return [
@@ -123,36 +138,62 @@ class LogController extends Controller
                 'user_role' => $userRole,
                 'ip_address' => $log->ip_address,
                 'device' => $this->getDeviceInfo($log->user_agent),
-                'created_at' => $log->created_at->format('Y-m-d H:i:s'),
-                'created_at_readable' => $log->created_at->diffForHumans(),
+                'created_at' => $log->created_at ? $log->created_at->format('Y-m-d H:i:s') : now()->format('Y-m-d H:i:s'),
+                'created_at_readable' => $log->created_at ? $log->created_at->diffForHumans() : 'Just now',
             ];
         });
         
-        // Get statistics
-        $stats = [
-            'total_sessions' => count($pairedSessions),
-            'completed_sessions' => count(array_filter($pairedSessions, fn($s) => $s['status'] === 'completed')),
-            'active_sessions' => count(array_filter($pairedSessions, fn($s) => $s['status'] === 'active')),
-            'total_actions' => SystemLog::where('log_type', 'action')->count(),
-            'total_logs' => SystemLog::count(),
-            'unique_users' => SystemLog::whereNotNull('causer_id')->distinct('causer_id')->count('causer_id'),
-            'today_logs' => SystemLog::whereDate('created_at', today())->count(),
-        ];
+        // Get statistics - with safe error handling
+        try {
+            $stats = [
+                'total_sessions' => count($pairedSessions),
+                'completed_sessions' => count(array_filter($pairedSessions, fn($s) => $s['status'] === 'completed')),
+                'active_sessions' => count(array_filter($pairedSessions, fn($s) => $s['status'] === 'active')),
+                'total_actions' => SystemLog::where('log_type', 'action')->count(),
+                'total_logs' => SystemLog::count(),
+                'unique_users' => SystemLog::whereNotNull('causer_id')->distinct('causer_id')->count('causer_id'),
+                'today_logs' => SystemLog::whereDate('created_at', today())->count(),
+            ];
+        } catch (\Exception $e) {
+            \Log::error('Failed to get log stats: ' . $e->getMessage());
+            $stats = [
+                'total_sessions' => count($pairedSessions),
+                'completed_sessions' => count(array_filter($pairedSessions, fn($s) => $s['status'] === 'completed')),
+                'active_sessions' => count(array_filter($pairedSessions, fn($s) => $s['status'] === 'active')),
+                'total_actions' => 0,
+                'total_logs' => 0,
+                'unique_users' => 0,
+                'today_logs' => 0,
+            ];
+        }
         
-        // Get unique actions for filter dropdown
-        $actionTypes = SystemLog::where('log_type', 'action')
-            ->distinct()
-            ->pluck('action');
+        // Get unique actions for filter dropdown - with safe error handling
+        try {
+            $actionTypes = SystemLog::where('log_type', 'action')
+                ->distinct()
+                ->pluck('action');
+        } catch (\Exception $e) {
+            $actionTypes = collect([]);
+        }
         
-        // Get unique users for filter dropdown
-        $users = SystemLog::with('causer')
-            ->get()
-            ->filter(function($log) {
-                return $log->causer && $log->causer->name;
-            })
-            ->pluck('causer.name')
-            ->unique()
-            ->values();
+        // Get unique users for filter dropdown - with safe error handling
+        $users = collect([]);
+        try {
+            $users = SystemLog::with('causer')
+                ->get()
+                ->filter(function($log) {
+                    try {
+                        return $log->causer && $log->causer->name;
+                    } catch (\Exception $e) {
+                        return false;
+                    }
+                })
+                ->pluck('causer.name')
+                ->unique()
+                ->values();
+        } catch (\Exception $e) {
+            \Log::warning('Failed to get unique users for filter: ' . $e->getMessage());
+        }
         
         return Inertia::render('Admin/Logs/Index', [
             'sessions' => $pairedSessions,
@@ -182,15 +223,20 @@ class LogController extends Controller
         
         foreach ($logs as $log) {
             // Safely get user name
-            $causer = $log->causer;
             $userName = 'System';
             $userEmail = 'N/A';
             
-            if ($causer) {
-                if (get_class($causer) === 'App\Models\User' || get_class($causer) === 'App\Models\OrganizationUser') {
-                    $userName = $causer->name ?? 'System';
-                    $userEmail = $causer->email ?? 'N/A';
+            try {
+                $causer = $log->causer;
+                if ($causer) {
+                    $causerClass = get_class($causer);
+                    if ($causerClass === 'App\Models\User' || $causerClass === 'App\Models\OrganizationUser') {
+                        $userName = $causer->name ?? 'System';
+                        $userEmail = $causer->email ?? 'N/A';
+                    }
                 }
+            } catch (\Exception $e) {
+                // If error, keep default values
             }
             
             $action = strtolower($log->action);
@@ -219,16 +265,20 @@ class LogController extends Controller
                     // Calculate duration
                     $duration = null;
                     if ($loginEvent->created_at && $log->created_at) {
-                        $loginTime = Carbon::parse($loginEvent->created_at);
-                        $logoutTime = Carbon::parse($log->created_at);
-                        $diff = $loginTime->diff($logoutTime);
-                        
-                        $duration = '';
-                        if ($diff->d > 0) $duration .= $diff->d . 'd ';
-                        if ($diff->h > 0) $duration .= $diff->h . 'h ';
-                        if ($diff->i > 0) $duration .= $diff->i . 'm ';
-                        if ($diff->s > 0) $duration .= $diff->s . 's';
-                        if (empty($duration)) $duration = '0s';
+                        try {
+                            $loginTime = Carbon::parse($loginEvent->created_at);
+                            $logoutTime = Carbon::parse($log->created_at);
+                            $diff = $loginTime->diff($logoutTime);
+                            
+                            $duration = '';
+                            if ($diff->d > 0) $duration .= $diff->d . 'd ';
+                            if ($diff->h > 0) $duration .= $diff->h . 'h ';
+                            if ($diff->i > 0) $duration .= $diff->i . 'm ';
+                            if ($diff->s > 0) $duration .= $diff->s . 's';
+                            if (empty($duration)) $duration = '0s';
+                        } catch (\Exception $e) {
+                            $duration = 'N/A';
+                        }
                     }
                     
                     $sessions[] = [
@@ -246,6 +296,7 @@ class LogController extends Controller
                     ];
                     $loginEvent = null;
                 } else {
+                    // Orphaned logout (no matching login)
                     $sessions[] = [
                         'session_id' => 'SESS-' . str_pad(++$sessionCount, 4, '0', STR_PAD_LEFT),
                         'user_name' => $userName,
@@ -265,15 +316,20 @@ class LogController extends Controller
         
         // Add any remaining login event (active session)
         if ($loginEvent) {
-            $causer = $loginEvent->causer;
             $userName = 'System';
             $userEmail = 'N/A';
             
-            if ($causer) {
-                if (get_class($causer) === 'App\Models\User' || get_class($causer) === 'App\Models\OrganizationUser') {
-                    $userName = $causer->name ?? 'System';
-                    $userEmail = $causer->email ?? 'N/A';
+            try {
+                $causer = $loginEvent->causer;
+                if ($causer) {
+                    $causerClass = get_class($causer);
+                    if ($causerClass === 'App\Models\User' || $causerClass === 'App\Models\OrganizationUser') {
+                        $userName = $causer->name ?? 'System';
+                        $userEmail = $causer->email ?? 'N/A';
+                    }
                 }
+            } catch (\Exception $e) {
+                // Keep default values
             }
             
             $sessions[] = [
@@ -299,15 +355,20 @@ class LogController extends Controller
      */
     private function createIncompleteSession($loginEvent, $sessionCount)
     {
-        $causer = $loginEvent->causer;
         $userName = 'System';
         $userEmail = 'N/A';
         
-        if ($causer) {
-            if (get_class($causer) === 'App\Models\User' || get_class($causer) === 'App\Models\OrganizationUser') {
-                $userName = $causer->name ?? 'System';
-                $userEmail = $causer->email ?? 'N/A';
+        try {
+            $causer = $loginEvent->causer;
+            if ($causer) {
+                $causerClass = get_class($causer);
+                if ($causerClass === 'App\Models\User' || $causerClass === 'App\Models\OrganizationUser') {
+                    $userName = $causer->name ?? 'System';
+                    $userEmail = $causer->email ?? 'N/A';
+                }
             }
+        } catch (\Exception $e) {
+            // Keep default values
         }
         
         return [
@@ -408,15 +469,20 @@ class LogController extends Controller
                 ]);
                 
                 foreach ($actions as $log) {
-                    $causer = $log->causer;
                     $userName = 'System';
                     $userEmail = 'N/A';
                     
-                    if ($causer) {
-                        if (get_class($causer) === 'App\Models\User' || get_class($causer) === 'App\Models\OrganizationUser') {
-                            $userName = $causer->name ?? 'System';
-                            $userEmail = $causer->email ?? 'N/A';
+                    try {
+                        $causer = $log->causer;
+                        if ($causer) {
+                            $causerClass = get_class($causer);
+                            if ($causerClass === 'App\Models\User' || $causerClass === 'App\Models\OrganizationUser') {
+                                $userName = $causer->name ?? 'System';
+                                $userEmail = $causer->email ?? 'N/A';
+                            }
                         }
+                    } catch (\Exception $e) {
+                        // Keep default values
                     }
                     
                     fputcsv($file, [
@@ -426,7 +492,7 @@ class LogController extends Controller
                         $log->description,
                         $log->ip_address,
                         $this->getDeviceInfo($log->user_agent),
-                        $log->created_at->format('Y-m-d H:i:s'),
+                        $log->created_at ? $log->created_at->format('Y-m-d H:i:s') : now()->format('Y-m-d H:i:s'),
                     ]);
                 }
                 
@@ -453,12 +519,17 @@ class LogController extends Controller
      */
     public function getAuthLogs(Request $request)
     {
-        $logs = SystemLog::with('causer')
-            ->where('log_type', 'auth')
-            ->orderBy('created_at', 'desc')
-            ->paginate(50);
+        try {
+            $logs = SystemLog::with('causer')
+                ->where('log_type', 'auth')
+                ->orderBy('created_at', 'desc')
+                ->paginate(50);
             
-        return response()->json($logs);
+            return response()->json($logs);
+        } catch (\Exception $e) {
+            \Log::error('Failed to get auth logs: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to fetch logs'], 500);
+        }
     }
     
     /**
@@ -466,11 +537,16 @@ class LogController extends Controller
      */
     public function getActionLogs(Request $request)
     {
-        $logs = SystemLog::with('causer')
-            ->where('log_type', 'action')
-            ->orderBy('created_at', 'desc')
-            ->paginate(50);
+        try {
+            $logs = SystemLog::with('causer')
+                ->where('log_type', 'action')
+                ->orderBy('created_at', 'desc')
+                ->paginate(50);
             
-        return response()->json($logs);
+            return response()->json($logs);
+        } catch (\Exception $e) {
+            \Log::error('Failed to get action logs: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to fetch logs'], 500);
+        }
     }
 }
