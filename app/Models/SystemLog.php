@@ -28,6 +28,10 @@ class SystemLog extends Model
         'created_at' => 'datetime',
     ];
 
+    /**
+     * Get the causer (user) that performed the action.
+     * This uses polymorphic relationship.
+     */
     public function causer()
     {
         return $this->morphTo();

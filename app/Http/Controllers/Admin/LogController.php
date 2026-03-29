@@ -90,13 +90,37 @@ class LogController extends Controller
         }
         
         $actionLogs = $actionQuery->get()->map(function($log) {
+            // Safely get causer information
+            $causer = $log->causer;
+            $userName = 'System';
+            $userEmail = 'N/A';
+            $userRole = 'system';
+            
+            if ($causer) {
+                // Check if it's a User (admin) or OrganizationUser
+                if (get_class($causer) === 'App\Models\User') {
+                    $userName = $causer->name ?? 'Admin';
+                    $userEmail = $causer->email ?? 'N/A';
+                    $userRole = $causer->role ?? 'admin';
+                } elseif (get_class($causer) === 'App\Models\OrganizationUser') {
+                    $userName = $causer->name ?? 'Organization User';
+                    $userEmail = $causer->email ?? 'N/A';
+                    $userRole = $causer->role ?? 'organization';
+                } else {
+                    // Fallback for any other type
+                    $userName = 'User';
+                    $userEmail = 'N/A';
+                    $userRole = 'user';
+                }
+            }
+            
             return [
                 'id' => $log->id,
                 'action' => $log->action,
                 'description' => $log->description,
-                'user_name' => $log->causer ? $log->causer->name : 'System',
-                'user_email' => $log->causer ? $log->causer->email : 'N/A',
-                'user_role' => $log->causer && isset($log->causer->role) ? $log->causer->role : ($log->causer ? ($log->causer->role ?? 'user') : 'system'),
+                'user_name' => $userName,
+                'user_email' => $userEmail,
+                'user_role' => $userRole,
                 'ip_address' => $log->ip_address,
                 'device' => $this->getDeviceInfo($log->user_agent),
                 'created_at' => $log->created_at->format('Y-m-d H:i:s'),
@@ -111,7 +135,7 @@ class LogController extends Controller
             'active_sessions' => count(array_filter($pairedSessions, fn($s) => $s['status'] === 'active')),
             'total_actions' => SystemLog::where('log_type', 'action')->count(),
             'total_logs' => SystemLog::count(),
-            'unique_users' => SystemLog::distinct('causer_id')->count('causer_id'),
+            'unique_users' => SystemLog::whereNotNull('causer_id')->distinct('causer_id')->count('causer_id'),
             'today_logs' => SystemLog::whereDate('created_at', today())->count(),
         ];
         
@@ -123,8 +147,10 @@ class LogController extends Controller
         // Get unique users for filter dropdown
         $users = SystemLog::with('causer')
             ->get()
+            ->filter(function($log) {
+                return $log->causer && $log->causer->name;
+            })
             ->pluck('causer.name')
-            ->filter()
             ->unique()
             ->values();
         
@@ -155,13 +181,23 @@ class LogController extends Controller
         $sessionCount = 0;
         
         foreach ($logs as $log) {
-            $userName = $log->causer ? $log->causer->name : 'System';
+            // Safely get user name
+            $causer = $log->causer;
+            $userName = 'System';
+            $userEmail = 'N/A';
+            
+            if ($causer) {
+                if (get_class($causer) === 'App\Models\User' || get_class($causer) === 'App\Models\OrganizationUser') {
+                    $userName = $causer->name ?? 'System';
+                    $userEmail = $causer->email ?? 'N/A';
+                }
+            }
+            
             $action = strtolower($log->action);
             
             // New user detected - handle any pending login
             if ($currentUser != $userName) {
                 if ($loginEvent) {
-                    // This case shouldn't happen normally, but handle it just in case
                     $sessions[] = $this->createIncompleteSession($loginEvent, $sessionCount);
                     $sessionCount++;
                 }
@@ -171,7 +207,6 @@ class LogController extends Controller
             
             // Check if it's a login event
             if (strpos($action, 'login') !== false && strpos($action, 'failed') === false) {
-                // If there's already a pending login, create an incomplete session
                 if ($loginEvent) {
                     $sessions[] = $this->createIncompleteSession($loginEvent, $sessionCount);
                     $sessionCount++;
@@ -198,12 +233,12 @@ class LogController extends Controller
                     
                     $sessions[] = [
                         'session_id' => 'SESS-' . str_pad(++$sessionCount, 4, '0', STR_PAD_LEFT),
-                        'user_name' => $currentUser,
-                        'user_email' => $loginEvent->causer ? $loginEvent->causer->email : 'N/A',
-                        'login_time' => $loginEvent->created_at->format('Y-m-d H:i:s'),
-                        'login_time_formatted' => $loginEvent->created_at->format('h:i:s A'),
-                        'logout_time' => $log->created_at->format('Y-m-d H:i:s'),
-                        'logout_time_formatted' => $log->created_at->format('h:i:s A'),
+                        'user_name' => $userName,
+                        'user_email' => $userEmail,
+                        'login_time' => $loginEvent->created_at ? $loginEvent->created_at->format('Y-m-d H:i:s') : null,
+                        'login_time_formatted' => $loginEvent->created_at ? $loginEvent->created_at->format('h:i:s A') : null,
+                        'logout_time' => $log->created_at ? $log->created_at->format('Y-m-d H:i:s') : null,
+                        'logout_time_formatted' => $log->created_at ? $log->created_at->format('h:i:s A') : null,
                         'ip_address' => $loginEvent->ip_address,
                         'device' => $this->getDeviceInfo($loginEvent->user_agent),
                         'duration' => $duration,
@@ -211,15 +246,14 @@ class LogController extends Controller
                     ];
                     $loginEvent = null;
                 } else {
-                    // Orphaned logout (no matching login)
                     $sessions[] = [
                         'session_id' => 'SESS-' . str_pad(++$sessionCount, 4, '0', STR_PAD_LEFT),
                         'user_name' => $userName,
-                        'user_email' => $log->causer ? $log->causer->email : 'N/A',
+                        'user_email' => $userEmail,
                         'login_time' => null,
                         'login_time_formatted' => null,
-                        'logout_time' => $log->created_at->format('Y-m-d H:i:s'),
-                        'logout_time_formatted' => $log->created_at->format('h:i:s A'),
+                        'logout_time' => $log->created_at ? $log->created_at->format('Y-m-d H:i:s') : null,
+                        'logout_time_formatted' => $log->created_at ? $log->created_at->format('h:i:s A') : null,
                         'ip_address' => $log->ip_address,
                         'device' => $this->getDeviceInfo($log->user_agent),
                         'duration' => null,
@@ -231,12 +265,23 @@ class LogController extends Controller
         
         // Add any remaining login event (active session)
         if ($loginEvent) {
+            $causer = $loginEvent->causer;
+            $userName = 'System';
+            $userEmail = 'N/A';
+            
+            if ($causer) {
+                if (get_class($causer) === 'App\Models\User' || get_class($causer) === 'App\Models\OrganizationUser') {
+                    $userName = $causer->name ?? 'System';
+                    $userEmail = $causer->email ?? 'N/A';
+                }
+            }
+            
             $sessions[] = [
                 'session_id' => 'SESS-' . str_pad(++$sessionCount, 4, '0', STR_PAD_LEFT),
-                'user_name' => $currentUser,
-                'user_email' => $loginEvent->causer ? $loginEvent->causer->email : 'N/A',
-                'login_time' => $loginEvent->created_at->format('Y-m-d H:i:s'),
-                'login_time_formatted' => $loginEvent->created_at->format('h:i:s A'),
+                'user_name' => $userName,
+                'user_email' => $userEmail,
+                'login_time' => $loginEvent->created_at ? $loginEvent->created_at->format('Y-m-d H:i:s') : null,
+                'login_time_formatted' => $loginEvent->created_at ? $loginEvent->created_at->format('h:i:s A') : null,
                 'logout_time' => null,
                 'logout_time_formatted' => null,
                 'ip_address' => $loginEvent->ip_address,
@@ -254,12 +299,23 @@ class LogController extends Controller
      */
     private function createIncompleteSession($loginEvent, $sessionCount)
     {
+        $causer = $loginEvent->causer;
+        $userName = 'System';
+        $userEmail = 'N/A';
+        
+        if ($causer) {
+            if (get_class($causer) === 'App\Models\User' || get_class($causer) === 'App\Models\OrganizationUser') {
+                $userName = $causer->name ?? 'System';
+                $userEmail = $causer->email ?? 'N/A';
+            }
+        }
+        
         return [
             'session_id' => 'SESS-' . str_pad($sessionCount + 1, 4, '0', STR_PAD_LEFT),
-            'user_name' => $loginEvent->causer ? $loginEvent->causer->name : 'System',
-            'user_email' => $loginEvent->causer ? $loginEvent->causer->email : 'N/A',
-            'login_time' => $loginEvent->created_at->format('Y-m-d H:i:s'),
-            'login_time_formatted' => $loginEvent->created_at->format('h:i:s A'),
+            'user_name' => $userName,
+            'user_email' => $userEmail,
+            'login_time' => $loginEvent->created_at ? $loginEvent->created_at->format('Y-m-d H:i:s') : null,
+            'login_time_formatted' => $loginEvent->created_at ? $loginEvent->created_at->format('h:i:s A') : null,
             'logout_time' => null,
             'logout_time_formatted' => null,
             'ip_address' => $loginEvent->ip_address,
@@ -274,6 +330,7 @@ class LogController extends Controller
      */
     private function getDeviceInfo($userAgent)
     {
+        if (empty($userAgent)) return 'Unknown';
         if (strpos($userAgent, 'Windows') !== false) return 'Windows';
         if (strpos($userAgent, 'Mac') !== false) return 'macOS';
         if (strpos($userAgent, 'Linux') !== false) return 'Linux';
@@ -351,9 +408,20 @@ class LogController extends Controller
                 ]);
                 
                 foreach ($actions as $log) {
+                    $causer = $log->causer;
+                    $userName = 'System';
+                    $userEmail = 'N/A';
+                    
+                    if ($causer) {
+                        if (get_class($causer) === 'App\Models\User' || get_class($causer) === 'App\Models\OrganizationUser') {
+                            $userName = $causer->name ?? 'System';
+                            $userEmail = $causer->email ?? 'N/A';
+                        }
+                    }
+                    
                     fputcsv($file, [
-                        $log->causer ? $log->causer->name : 'System',
-                        $log->causer ? $log->causer->email : 'N/A',
+                        $userName,
+                        $userEmail,
                         $log->action,
                         $log->description,
                         $log->ip_address,
@@ -374,7 +442,6 @@ class LogController extends Controller
      */
     public function clear(Request $request)
     {
-        // Security: Admin cannot delete logs
         return response()->json([
             'success' => false,
             'message' => 'Log deletion is not allowed for security reasons. Logs are permanent for audit purposes.',

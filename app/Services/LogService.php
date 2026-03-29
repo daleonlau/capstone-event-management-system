@@ -103,14 +103,6 @@ class LogService
                 }
             }
             
-            // Log to Laravel log for debugging
-            \Log::info('Creating log:', [
-                'type' => $logType,
-                'action' => $action,
-                'user_id' => $logData['causer_id'] ?? null,
-                'user_type' => $logData['causer_type'] ?? null,
-            ]);
-            
             return SystemLog::create($logData);
         } catch (\Exception $e) {
             \Log::error('Failed to create log: ' . $e->getMessage());
