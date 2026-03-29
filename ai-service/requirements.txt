@@ -7,3 +7,5 @@ joblib==1.4.2
 pydantic==2.10.6
 python-multipart==0.0.20
 mysql-connector-python==9.1.0
+
+
