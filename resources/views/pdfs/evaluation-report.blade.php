@@ -440,6 +440,26 @@
             margin-top: 5px;
             text-align: center;
         }
+        
+        .satisfaction-score {
+            text-align: center;
+            margin: 15px 0;
+            padding: 15px;
+            background-color: #f0fdf4;
+            border-radius: 8px;
+        }
+        
+        .satisfaction-score .score {
+            font-size: 32px;
+            font-weight: bold;
+            color: #1a472a;
+        }
+        
+        .satisfaction-score .interpretation {
+            font-size: 14px;
+            font-weight: bold;
+            margin-top: 5px;
+        }
     </style>
 </head>
 <body>
@@ -547,31 +567,21 @@
 
             <table class="likert-table">
                 <thead>
-                    <tr><th>Scale</th><th>Average Rating</th><th>Interpretation</th><th>Verbal Interpretation</th> </>
+                    <tr><th>Scale</th><th>Average Rating</th><th>Interpretation</th><th>Verbal Interpretation</th></tr>
                 </thead>
                 <tbody>
-                    <tr><td class="text-center">5<\/td><td class="text-center">4.50 – 5.00<\/td><td class="text-center">Very Satisfied<\/td><td class="text-center">Outstanding<\/td> \]
-                    <tr><td class="text-center">4<\/td><td class="text-center">3.50 – 4.49<\/td><td class="text-center">Satisfied<\/td><td class="text-center">Very Satisfactory<\/td> \]
-                    <tr><td class="text-center">3<\/td><td class="text-center">2.50 – 3.49<\/td><td class="text-center">Neither Satisfied nor Dissatisfied<\/td><td class="text-center">Satisfactory<\/td> \]
-                    <tr><td class="text-center">2<\/td><td class="text-center">1.50 – 2.49<\/td><td class="text-center">Dissatisfied<\/td><td class="text-center">Poor<\/td> \]
-                    <tr><td class="text-center">1<\/td><td class="text-center">1.00 – 1.49<\/td><td class="text-center">Very Dissatisfied<\/td><td class="text-center">Very Poor<\/td> \]
+                    <tr><td class="text-center">5</td><td class="text-center">4.50 – 5.00</td><td class="text-center">Very Satisfied</td><td class="text-center">Outstanding</td></tr>
+                    <tr><td class="text-center">4</td><td class="text-center">3.50 – 4.49</td><td class="text-center">Satisfied</td><td class="text-center">Very Satisfactory</td></tr>
+                    <tr><td class="text-center">3</td><td class="text-center">2.50 – 3.49</td><td class="text-center">Neither Satisfied nor Dissatisfied</td><td class="text-center">Satisfactory</td></tr>
+                    <tr><td class="text-center">2</td><td class="text-center">1.50 – 2.49</td><td class="text-center">Dissatisfied</td><td class="text-center">Poor</td></tr>
+                    <tr><td class="text-center">1</td><td class="text-center">1.00 – 1.49</td><td class="text-center">Very Dissatisfied</td><td class="text-center">Very Poor</td></tr>
                 </tbody>
-              </table>
+            </table>
             <div class="table-caption">Table 1. 5-points Likert Scale</div>
 
             @php
-                // Calculate overall satisfaction for this day
-                $dayOverallAverage = 0;
-                $categoryCount = 0;
-                foreach($dateData['category_scores'] as $category => $data) {
-                    if($category != 'Other' && isset($data['average'])) {
-                        $dayOverallAverage += $data['average'];
-                        $categoryCount++;
-                    }
-                }
-                $dayOverallAverage = $categoryCount > 0 ? $dayOverallAverage / $categoryCount : 0;
-                
                 // Get interpretation for the day
+                $dayOverallAverage = $dateData['overall_satisfaction'] ?? 0;
                 if($dayOverallAverage >= 4.50) $dayInterpretation = 'Outstanding';
                 elseif($dayOverallAverage >= 3.50) $dayInterpretation = 'Very Satisfactory';
                 elseif($dayOverallAverage >= 2.50) $dayInterpretation = 'Satisfactory';
@@ -579,9 +589,9 @@
                 else $dayInterpretation = 'Very Poor';
             @endphp
 
-            <div class="text-center" style="margin: 15px 0; padding: 12px; background-color: #f0fdf4; border-radius: 8px;">
-                <div style="font-size: 24px; font-weight: bold; color: #1a472a;">{{ number_format($dayOverallAverage, 2) }}/5.0</div>
-                <div style="font-size: 11px; font-weight: bold;">{{ strtoupper($dayInterpretation) }}</div>
+            <div class="satisfaction-score">
+                <div class="score">{{ number_format($dayOverallAverage, 2) }}/5.0</div>
+                <div class="interpretation">{{ strtoupper($dayInterpretation) }}</div>
             </div>
 
             <!-- PART I: Profile of Respondents for this day -->
@@ -662,7 +672,7 @@
                         <div class="subsection-header">{{ $category }}</div>
                         <table class="data-table">
                             <thead>
-                                <tr><th>Indicators</th><th width="15%">Mean</th><th width="25%">Interpretation</th> </>
+                                <tr><th>Indicators</th><th width="15%">Mean</th><th width="25%">Interpretation</th></tr>
                             </thead>
                             <tbody>
                                 @foreach($data['questions'] as $indicator => $mean)
