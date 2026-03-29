@@ -378,7 +378,7 @@
               <svg v-else class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              Refresh List
+              Sync with Latest Students
             </button>
           </div>
         </div>
@@ -779,19 +779,21 @@ async function markAsFinished() {
 async function refreshEligibleStudents() {
   refreshing.value = true;
   try {
-    const response = await axios.post(`/president/events/${props.event.id}/refresh-students`);
+    // Call the new sync-students endpoint that properly adds/removes students
+    const response = await axios.post(`/president/events/${props.event.id}/sync-students`);
     if (response.data.success) {
       eligibleStudents.value = response.data.students;
       if (props.stats) {
         props.stats.total_students = response.data.total;
       }
-      showToastMessage('Student list refreshed successfully', 'success');
+      // Show detailed success message
+      alert(`✅ Student list updated!\n\nAdded: ${response.data.added} new students\nRemoved: ${response.data.removed} ineligible students\nTotal eligible: ${response.data.total}`);
     } else {
-      showToastMessage(response.data.error || 'Failed to refresh students', 'error');
+      alert(response.data.error || 'Failed to refresh students');
     }
   } catch (error) {
     console.error('Error refreshing students:', error);
-    showToastMessage(error.response?.data?.error || 'Failed to refresh students', 'error');
+    alert(error.response?.data?.error || 'Failed to refresh students');
   } finally {
     refreshing.value = false;
   }

@@ -176,6 +176,7 @@ Route::middleware(['org_user:president'])->prefix('president')->name('president.
     Route::post('/events/{event}/mark-finished', [PresidentEventController::class, 'markAsFinished'])->name('events.mark-finished');
     Route::post('/events/{event}/request-evaluation', [PresidentEventController::class, 'requestEvaluation'])->name('events.request-evaluation');
     Route::post('/events/{event}/refresh-students', [PresidentEventController::class, 'refreshEligibleStudents'])->name('events.refresh-students');
+    Route::post('/events/{event}/sync-students', [PresidentEventController::class, 'syncAllEligibleStudents'])->name('events.sync-students');
     
     // Students
     Route::get('/students', [PresidentStudentController::class, 'index'])->name('students.index');
