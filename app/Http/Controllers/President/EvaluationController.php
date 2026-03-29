@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\President;
 
 use App\Http\Controllers\Controller;
-use App\Models\Event;
 use App\Models\Evaluation;
 use App\Models\EvaluationResponse;
 use App\Models\EvaluationQuestion;
@@ -62,6 +61,27 @@ class EvaluationController extends Controller
         }]);
 
         $responses = EvaluationResponse::where('evaluation_id', $evaluation->id)->get();
+        
+        // ==================== CALCULATE OVERALL SATISFACTION FROM RAW RESPONSES ====================
+        $totalRatingSum = 0;
+        $totalRatingCount = 0;
+        
+        foreach ($responses as $response) {
+            $likert = $response->likert_responses;
+            if (is_string($likert)) {
+                $likert = json_decode($likert, true);
+            }
+            if (is_array($likert)) {
+                foreach ($likert as $rating) {
+                    if (is_numeric($rating)) {
+                        $totalRatingSum += $rating;
+                        $totalRatingCount++;
+                    }
+                }
+            }
+        }
+        
+        $overallSatisfaction = $totalRatingCount > 0 ? round($totalRatingSum / $totalRatingCount, 2) : 0;
         
         // Get all AI insights (overall and per date)
         $allAiInsights = AIAnalysis::where('evaluation_id', $evaluation->id)
@@ -213,6 +233,7 @@ class EvaluationController extends Controller
                 })->values(),
                 'responses_count' => $evaluation->total_responses,
                 'created_at' => $evaluation->created_at->format('Y-m-d H:i'),
+                'overall_satisfaction' => $overallSatisfaction,
             ],
             'stats' => $stats,
             'comments' => $comments,

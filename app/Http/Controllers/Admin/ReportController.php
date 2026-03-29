@@ -103,6 +103,29 @@ class ReportController extends Controller
                 return response()->json(['error' => 'No responses found for this evaluation.'], 400);
             }
             
+            // ==================== CALCULATE OVERALL SATISFACTION FROM RAW RESPONSES ====================
+            $totalRatingSum = 0;
+            $totalRatingCount = 0;
+            $categoryTotals = [];
+            $categoryCounts = [];
+            
+            foreach ($allResponses as $response) {
+                $likert = $response->likert_responses;
+                if (is_string($likert)) {
+                    $likert = json_decode($likert, true);
+                }
+                if (is_array($likert)) {
+                    foreach ($likert as $questionId => $rating) {
+                        if (is_numeric($rating)) {
+                            $totalRatingSum += $rating;
+                            $totalRatingCount++;
+                        }
+                    }
+                }
+            }
+            
+            $overallSatisfactionFromRaw = $totalRatingCount > 0 ? round($totalRatingSum / $totalRatingCount, 2) : 0;
+            
             // Get event dates
             $eventDates = $evaluation->event_dates ?: [];
             
@@ -246,8 +269,9 @@ class ReportController extends Controller
                 $totalComments = $totalCommentCount;
             }
             
-            // Calculate overall satisfaction
-            $overallSatisfaction = $overallInsights ? $overallInsights->predicted_satisfaction : 3.0;
+            // USE RAW OVERALL SATISFACTION FROM RESPONSES, NOT AI PREDICTED
+            $overallSatisfaction = $overallSatisfactionFromRaw;
+            
             $responseRate = $totalResp > 0 ? round(($evaluation->total_responses / $totalResp) * 100, 1) : 0;
             
             // Get event details
@@ -274,6 +298,9 @@ class ReportController extends Controller
                 }
             }
             
+            // Get interpretation based on mean score
+            $satisfactionInterpretation = $this->getInterpretation($overallSatisfaction);
+            
             // Prepare data for PDF
             $data = [
                 'evaluation' => $evaluation,
@@ -285,7 +312,7 @@ class ReportController extends Controller
                 'total_responses' => $evaluation->total_responses,
                 'response_rate' => $responseRate,
                 'overall_satisfaction' => $overallSatisfaction,
-                'satisfaction_interpretation' => $this->getInterpretation($overallSatisfaction),
+                'satisfaction_interpretation' => $satisfactionInterpretation,
                 'gender_counts' => $gender_counts,
                 'age_groups' => $age_groups,
                 'title_counts' => $title_counts,
@@ -478,6 +505,25 @@ class ReportController extends Controller
                     $neutralPercentage = round((count($finalNeutralComments) / $totalDateComments) * 100, 1);
                 }
                 
+                // Calculate overall satisfaction for this date from raw responses
+                $dateTotalRatingSum = 0;
+                $dateTotalRatingCount = 0;
+                foreach ($dateResponses as $response) {
+                    $likert = $response->likert_responses;
+                    if (is_string($likert)) {
+                        $likert = json_decode($likert, true);
+                    }
+                    if (is_array($likert)) {
+                        foreach ($likert as $rating) {
+                            if (is_numeric($rating)) {
+                                $dateTotalRatingSum += $rating;
+                                $dateTotalRatingCount++;
+                            }
+                        }
+                    }
+                }
+                $dateOverallSatisfaction = $dateTotalRatingCount > 0 ? round($dateTotalRatingSum / $dateTotalRatingCount, 2) : 0;
+                
                 $perDateData[] = [
                     'date' => $date,
                     'date_index' => $dateIndex,
@@ -493,6 +539,7 @@ class ReportController extends Controller
                     'strengths' => $dateStrengths,
                     'weaknesses' => $dateWeaknesses,
                     'recommendations' => $dateRecommendations,
+                    'overall_satisfaction' => $dateOverallSatisfaction,
                     'sentiment' => [
                         'positive_comments' => $finalPositiveComments,
                         'negative_comments' => $finalNegativeComments,
