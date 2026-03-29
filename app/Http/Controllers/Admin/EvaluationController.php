@@ -502,6 +502,27 @@ class EvaluationController extends Controller
 
         $responses = EvaluationResponse::where('evaluation_id', $evaluation->id)->get();
         
+        // ==================== CALCULATE OVERALL SATISFACTION FROM RAW RESPONSES ====================
+        $totalRatingSum = 0;
+        $totalRatingCount = 0;
+        
+        foreach ($responses as $response) {
+            $likert = $response->likert_responses;
+            if (is_string($likert)) {
+                $likert = json_decode($likert, true);
+            }
+            if (is_array($likert)) {
+                foreach ($likert as $rating) {
+                    if (is_numeric($rating)) {
+                        $totalRatingSum += $rating;
+                        $totalRatingCount++;
+                    }
+                }
+            }
+        }
+        
+        $overallSatisfaction = $totalRatingCount > 0 ? round($totalRatingSum / $totalRatingCount, 2) : 0;
+        
         $event = $evaluation->event;
         $eventDates = $evaluation->event_dates ?: [];
         $numberOfDates = count($eventDates);
@@ -529,6 +550,29 @@ class EvaluationController extends Controller
             $dateExpected = $totalStudents + $dateGuests;
             $dateResponseRate = $dateExpected > 0 ? round(($dateResponses / $dateExpected) * 100, 1) : 0;
             
+            // Calculate per-date satisfaction from raw responses
+            $dateResponsesData = EvaluationResponse::where('evaluation_id', $evaluation->id)
+                ->where('event_date', $date)
+                ->get();
+            
+            $dateTotalRatingSum = 0;
+            $dateTotalRatingCount = 0;
+            foreach ($dateResponsesData as $resp) {
+                $likert = $resp->likert_responses;
+                if (is_string($likert)) {
+                    $likert = json_decode($likert, true);
+                }
+                if (is_array($likert)) {
+                    foreach ($likert as $rating) {
+                        if (is_numeric($rating)) {
+                            $dateTotalRatingSum += $rating;
+                            $dateTotalRatingCount++;
+                        }
+                    }
+                }
+            }
+            $dateOverallSatisfaction = $dateTotalRatingCount > 0 ? round($dateTotalRatingSum / $dateTotalRatingCount, 2) : 0;
+            
             $perDateStats[] = [
                 'date' => $date,
                 'date_index' => $index + 1,
@@ -538,6 +582,7 @@ class EvaluationController extends Controller
                 'response_rate' => $dateResponseRate,
                 'students' => $totalStudents,
                 'guests' => $dateGuests,
+                'overall_satisfaction' => $dateOverallSatisfaction,
             ];
             
             $totalResponsesOverall += $dateResponses;
@@ -549,6 +594,26 @@ class EvaluationController extends Controller
             $dateExpected = $totalStudents + $totalGuests;
             $dateResponseRate = $dateExpected > 0 ? round(($dateResponses / $dateExpected) * 100, 1) : 0;
             
+            // Calculate satisfaction from all responses
+            $allResponsesData = EvaluationResponse::where('evaluation_id', $evaluation->id)->get();
+            $allRatingSum = 0;
+            $allRatingCount = 0;
+            foreach ($allResponsesData as $resp) {
+                $likert = $resp->likert_responses;
+                if (is_string($likert)) {
+                    $likert = json_decode($likert, true);
+                }
+                if (is_array($likert)) {
+                    foreach ($likert as $rating) {
+                        if (is_numeric($rating)) {
+                            $allRatingSum += $rating;
+                            $allRatingCount++;
+                        }
+                    }
+                }
+            }
+            $dateOverallSatisfaction = $allRatingCount > 0 ? round($allRatingSum / $allRatingCount, 2) : 0;
+            
             $perDateStats[] = [
                 'date' => $event->event_date_start,
                 'date_index' => 1,
@@ -558,6 +623,7 @@ class EvaluationController extends Controller
                 'response_rate' => $dateResponseRate,
                 'students' => $totalStudents,
                 'guests' => $totalGuests,
+                'overall_satisfaction' => $dateOverallSatisfaction,
             ];
             
             $totalResponsesOverall = $dateResponses;
@@ -631,6 +697,7 @@ class EvaluationController extends Controller
             'status' => $evaluation->status,
             'total_responses' => $evaluation->total_responses,
             'overall_response_rate' => $overallResponseRate,
+            'overall_satisfaction' => $overallSatisfaction,
         ]);
 
         return Inertia::render('Admin/Evaluations/Show', [
@@ -648,6 +715,7 @@ class EvaluationController extends Controller
                 'total_responses_overall' => $totalResponsesOverall,
                 'total_expected_overall' => $totalExpectedOverall,
                 'overall_response_rate' => $overallResponseRate,
+                'overall_satisfaction' => $overallSatisfaction,
                 'students_count' => $totalStudents,
                 'guests_count' => $totalGuests,
                 'number_of_dates' => $numberOfDates,
