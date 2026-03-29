@@ -286,3 +286,32 @@ Route::get('/debug-session', function() {
         'auth_web' => auth()->user(),
     ]);
 })->middleware('auth');
+
+
+// TEMPORARY ROUTES - Remove after use
+Route::get('/migrate-fresh', function() {
+    try {
+        \Artisan::call('migrate:fresh', ['--force' => true]);
+        return "✅ Database reset completed!<br><br>" . nl2br(\Artisan::output());
+    } catch (\Exception $e) {
+        return "❌ Error: " . $e->getMessage();
+    }
+});
+
+Route::get('/run-seeders', function() {
+    try {
+        \Artisan::call('db:seed', ['--force' => true]);
+        return "✅ Seeders completed!<br><br>" . nl2br(\Artisan::output());
+    } catch (\Exception $e) {
+        return "❌ Error: " . $e->getMessage();
+    }
+});
+
+Route::get('/check-db', function() {
+    try {
+        \DB::connection()->getPdo();
+        return "✅ Database connection successful!";
+    } catch (\Exception $e) {
+        return "❌ Database connection failed: " . $e->getMessage();
+    }
+});
