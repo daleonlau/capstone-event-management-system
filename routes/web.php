@@ -314,4 +314,18 @@ Route::get('/check-db', function() {
     } catch (\Exception $e) {
         return "❌ Database connection failed: " . $e->getMessage();
     }
+
+});
+
+
+Route::get('/test-email', function() {
+    try {
+        \Mail::raw('Test email from EventFlow on Railway!', function($message) {
+            $message->to('daleoncarpio@gmail.com')
+                    ->subject('Test Email from EventFlow');
+        });
+        return "✅ Email sent successfully! Check your inbox.";
+    } catch (\Exception $e) {
+        return "❌ Error: " . $e->getMessage();
+    }
 });
