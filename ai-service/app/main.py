@@ -225,6 +225,9 @@ class ModelManager:
                 'neutral_comments': []
             }
         
+        # Log sample comments for debugging
+        logger.info(f"📝 Sample comments (first 3): {comments[:3]}")
+        
         # Comprehensive positive keywords
         positive_keywords = [
             'good', 'great', 'excellent', 'awesome', 'nice', 'love', 'perfect', 'fantastic',
@@ -394,18 +397,6 @@ def extract_question_scores(data: Dict[str, Any]) -> Dict[int, float]:
     
     return question_scores
 
-
-def calculate_raw_average(question_scores: Dict[int, float]) -> float:
-    """Calculate the raw average of all question scores"""
-    if not question_scores:
-        return 2.5
-    
-    total_score = sum(question_scores.values())
-    total_count = len(question_scores)
-    
-    return round(total_score / total_count, 2)
-
-
 def calculate_category_scores(question_scores: Dict[int, float]) -> Dict[str, float]:
     """Calculate category scores using dynamic mapping"""
     category_scores = {}
@@ -416,7 +407,6 @@ def calculate_category_scores(question_scores: Dict[int, float]) -> Dict[str, fl
             category_scores[category] = score
     
     return category_scores
-
 
 def identify_low_scoring_questions(question_scores: Dict[int, float]) -> List[Dict[str, Any]]:
     """Identify questions scoring below 3.5"""
@@ -440,12 +430,9 @@ def identify_low_scoring_questions(question_scores: Dict[int, float]) -> List[Di
     low_scoring.sort(key=lambda x: x['score'])
     return low_scoring
 
-
 def calculate_overall_satisfaction(category_scores: Dict[str, float]) -> float:
-    """Calculate overall satisfaction (average of category scores)"""
     valid_scores = [s for s in category_scores.values() if s > 0]
     return round(np.mean(valid_scores), 2) if valid_scores else 2.5
-
 
 def calculate_feature_importance(category_scores: Dict[str, float]) -> Dict[str, float]:
     importance = {}
@@ -454,7 +441,6 @@ def calculate_feature_importance(category_scores: Dict[str, float]) -> Dict[str,
             weight = CATEGORY_WEIGHTS.get(category, 0.1)
             importance[category] = round(weight * (score / 5) * 100, 1)
     return importance
-
 
 def identify_strengths_weaknesses(category_scores: Dict[str, float], low_scoring_questions: List[Dict[str, Any]]) -> Tuple[List[str], List[str]]:
     strengths = []
@@ -476,7 +462,6 @@ def identify_strengths_weaknesses(category_scores: Dict[str, float], low_scoring
         weaknesses.append(f"{status_icon} {q['text']}: {q['score']}/5.0 - Needs improvement")
     
     return strengths, weaknesses
-
 
 def generate_recommendations(category_scores: Dict[str, float], feature_importance: Dict[str, float], low_scoring_questions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     recommendations = []
@@ -549,7 +534,6 @@ def generate_recommendations(category_scores: Dict[str, float], feature_importan
     
     return sorted(recommendations, key=lambda x: {'high': 0, 'medium': 1, 'low': 2}.get(x['priority'], 3))
 
-
 def calculate_what_if_analysis(category_scores: Dict[str, float], feature_importance: Dict[str, float], low_scoring_questions: List[Dict[str, Any]]) -> Tuple[Dict, Dict]:
     current = calculate_overall_satisfaction(category_scores)
     
@@ -612,21 +596,19 @@ async def analyze_evaluation(evaluation: EvaluationData):
     """Analyze evaluation data with enhanced sentiment analysis"""
     logger.info(f"📥 Received evaluation with {evaluation.total_respondents} responses")
     logger.info(f"📝 Comments received - positive: {len(evaluation.positive_comments)}, suggestion: {len(evaluation.suggestion_comments)}")
+    logger.info(f"📝 Sample positive comments: {evaluation.positive_comments[:2] if evaluation.positive_comments else 'none'}")
+    logger.info(f"📝 Sample suggestion comments: {evaluation.suggestion_comments[:2] if evaluation.suggestion_comments else 'none'}")
     
     try:
         # Combine all comments for sentiment analysis
         all_comments = (evaluation.positive_comments or []) + (evaluation.suggestion_comments or [])
+        logger.info(f"📝 Total comments for analysis: {len(all_comments)}")
         
         # Extract question scores
         question_scores = extract_question_scores(evaluation.data)
         logger.info(f"📊 Found {len(question_scores)} question scores")
         
-        # ==================== CALCULATE RAW AVERAGE ====================
-        # This is the actual overall satisfaction from raw responses
-        raw_overall_satisfaction = calculate_raw_average(question_scores)
-        logger.info(f"📊 RAW OVERALL SATISFACTION: {raw_overall_satisfaction} from {len(question_scores)} ratings")
-        
-        # Calculate category scores (for category breakdown and analysis)
+        # Calculate category scores dynamically
         category_scores = calculate_category_scores(question_scores)
         logger.info(f"📊 Category scores: {category_scores}")
         
@@ -635,11 +617,25 @@ async def analyze_evaluation(evaluation: EvaluationData):
         logger.info(f"⚠️ Found {len(low_scoring_questions)} low-scoring questions")
         
         # Calculate metrics
-        success_probability = round(raw_overall_satisfaction / 5, 2)
+        overall_satisfaction = calculate_overall_satisfaction(category_scores)
+        success_probability = round(overall_satisfaction / 5, 2)
         feature_importance = calculate_feature_importance(category_scores)
         
         # Analyze sentiment with comments
         sentiment_results = model_manager.analyze_sentiment(all_comments)
+        
+        logger.info(f"📊 SENTIMENT RESULTS: {sentiment_results['positive_percentage']}% positive, "
+                   f"{sentiment_results['negative_percentage']}% negative, "
+                   f"{sentiment_results['neutral_percentage']}% neutral")
+        logger.info(f"📊 COMMENT COUNTS: Positive: {len(sentiment_results['positive_comments'])}, "
+                   f"Negative: {len(sentiment_results['negative_comments'])}, "
+                   f"Neutral: {len(sentiment_results['neutral_comments'])}")
+        
+        # Blend with sentiment
+        if sentiment_results['total_comments'] > 0:
+            blended = (overall_satisfaction * 0.7) + (sentiment_results['sentiment_score'] * 5 * 0.3)
+            overall_satisfaction = round(blended, 2)
+            success_probability = round(overall_satisfaction / 5, 2)
         
         # Identify strengths and weaknesses
         strengths, weaknesses = identify_strengths_weaknesses(category_scores, low_scoring_questions)
@@ -647,16 +643,16 @@ async def analyze_evaluation(evaluation: EvaluationData):
         # Generate recommendations
         recommendations = generate_recommendations(category_scores, feature_importance, low_scoring_questions)
         
-        # What-if analysis (using category scores)
+        # What-if analysis
         optimistic, targeted = calculate_what_if_analysis(category_scores, feature_importance, low_scoring_questions)
         
         # Generate summary
-        if raw_overall_satisfaction >= 4.0:
-            summary = f"🎉 Excellent event! Overall satisfaction is {raw_overall_satisfaction}/5.0. "
-        elif raw_overall_satisfaction >= 3.0:
-            summary = f"📊 Good event with room for improvement. Overall satisfaction is {raw_overall_satisfaction}/5.0. "
+        if overall_satisfaction >= 4.0:
+            summary = f"🎉 Excellent event! Overall satisfaction is {overall_satisfaction}/5.0. "
+        elif overall_satisfaction >= 3.0:
+            summary = f"📊 Good event with room for improvement. Overall satisfaction is {overall_satisfaction}/5.0. "
         else:
-            summary = f"⚠️ Event needs significant improvement. Overall satisfaction is {raw_overall_satisfaction}/5.0. "
+            summary = f"⚠️ Event needs significant improvement. Overall satisfaction is {overall_satisfaction}/5.0. "
         
         summary += f"Based on {evaluation.total_respondents} responses ({evaluation.response_rate*100:.0f}% response rate). "
         
@@ -681,7 +677,7 @@ async def analyze_evaluation(evaluation: EvaluationData):
         response_data = InsightResponse(
             summary=summary,
             analyzed_at=datetime.now().isoformat(),
-            predicted_satisfaction=raw_overall_satisfaction,  # NOW USING RAW AVERAGE
+            predicted_satisfaction=overall_satisfaction,
             success_probability=success_probability,
             response_rate=evaluation.response_rate,
             total_respondents=evaluation.total_respondents,
@@ -705,7 +701,7 @@ async def analyze_evaluation(evaluation: EvaluationData):
             year_level_analysis=[]
         )
         
-        logger.info(f"📤 RETURNING RESPONSE - Predicted satisfaction: {raw_overall_satisfaction} (raw average)")
+        logger.info(f"📤 RETURNING RESPONSE - Positive comments in response: {len(response_data.positive_comments)}")
         
         return response_data
         
@@ -769,4 +765,4 @@ async def test_comments(data: dict):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=8001)
