@@ -29,7 +29,7 @@ class EvaluationRequest extends Model
 
     protected $casts = [
         'topics' => 'array',
-        'event_dates' => 'array',
+        'event_dates' => 'array', // This will store as JSON
         'activity_date' => 'date',
         'has_food' => 'boolean',
     ];

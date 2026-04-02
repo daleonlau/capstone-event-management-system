@@ -168,11 +168,11 @@
             </div>
             <div class="bg-gray-50 rounded-xl p-4">
               <p class="text-sm text-gray-500">Start Date</p>
-              <p class="text-lg font-semibold text-gray-800">{{ formatDate(event.event_date_start) }}</p>
+              <p class="text-lg font-semibold text-gray-800">{{ formatDateForDisplay(event.event_date_start) }}</p>
             </div>
             <div class="bg-gray-50 rounded-xl p-4">
               <p class="text-sm text-gray-500">End Date</p>
-              <p class="text-lg font-semibold text-gray-800">{{ formatDate(event.event_date_end) }}</p>
+              <p class="text-lg font-semibold text-gray-800">{{ formatDateForDisplay(event.event_date_end) }}</p>
             </div>
             <div class="bg-gray-50 rounded-xl p-4">
               <p class="text-sm text-gray-500">Event Fee</p>
@@ -316,7 +316,7 @@
           </svg>
           <div class="flex-1">
             <p class="text-sm font-medium text-gray-700">Document uploaded</p>
-            <p class="text-xs text-gray-500">Uploaded on {{ formatDate(event.updated_at) }}</p>
+            <p class="text-xs text-gray-500">Uploaded on {{ formatDateForDisplay(event.updated_at) }}</p>
           </div>
           <a :href="`/storage/${event.signed_document_path}`" target="_blank" 
              class="px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 text-sm flex items-center gap-2">
@@ -464,7 +464,7 @@
                   {{ guest.status }}
                 </span>
                 <p class="text-xs text-gray-500 mt-1">
-                  Added: {{ formatDate(guest.created_at) }}
+                  Added: {{ formatDateForDisplay(guest.created_at) }}
                 </p>
               </div>
             </div>
@@ -505,7 +505,7 @@
         </div>
       </div>
 
-      <!-- Request Evaluation Modal - FIXED: Display dates directly from event -->
+      <!-- Request Evaluation Modal - FIXED: Simple date handling -->
       <Teleport to="body">
         <div v-if="showRequestModal" class="fixed inset-0 z-50 overflow-y-auto">
           <div class="fixed inset-0 bg-black/40 backdrop-blur-sm" @click="showRequestModal = false"></div>
@@ -528,7 +528,7 @@
                   <input v-model="requestForm.title" type="text" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500" required />
                 </div>
 
-                <!-- Display Inclusive Dates - FIXED: Use the actual event dates without any conversion -->
+                <!-- Display Inclusive Dates - Simple date extraction -->
                 <div class="bg-blue-50 rounded-lg p-4 border border-blue-200">
                   <div class="flex items-center gap-2 mb-3">
                     <svg class="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -542,11 +542,11 @@
                       <span class="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-xs font-bold text-blue-700">
                         {{ idx + 1 }}
                       </span>
-                      <span class="text-sm text-gray-700">{{ displayDate(date) }}</span>
+                      <span class="text-sm text-gray-700">{{ formatReadableDate(date) }}</span>
                     </div>
                   </div>
                   <p class="text-xs text-blue-600 mt-2">
-                    These dates are from your event's start and end dates ({{ event.event_date_start }} to {{ event.event_date_end }}).
+                    These dates are from your event ({{ getDateOnly(event.event_date_start) }} to {{ getDateOnly(event.event_date_end) }}).
                     Students will be able to submit separate evaluations for each day.
                   </p>
                 </div>
@@ -686,24 +686,40 @@ const showRequestModal = ref(false);
 const refreshing = ref(false);
 const eligibleStudents = ref(props.eligibleStudents || []);
 
-// FIXED: Generate date range directly from event dates without timezone conversion
+// Helper function to extract only YYYY-MM-DD from any date format
+function getDateOnly(dateValue) {
+  if (!dateValue) return '';
+  
+  // If it's a string, try to extract just the date part
+  if (typeof dateValue === 'string') {
+    // If it's already YYYY-MM-DD format
+    if (dateValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      return dateValue;
+    }
+    // If it's ISO format with time (YYYY-MM-DDTHH:MM:SS)
+    return dateValue.split('T')[0];
+  }
+  
+  return dateValue;
+}
+
+// Generate date range from event start and end dates
 const eventDateRange = computed(() => {
-  if (!props.event.event_date_start || !props.event.event_date_end) {
+  const startStr = getDateOnly(props.event.event_date_start);
+  const endStr = getDateOnly(props.event.event_date_end);
+  
+  if (!startStr || !endStr) {
     return [];
   }
   
+  const startParts = startStr.split('-').map(Number);
+  const endParts = endStr.split('-').map(Number);
+  
   const dates = [];
-  const start = props.event.event_date_start;
-  const end = props.event.event_date_end;
   
-  // Parse the dates by splitting the string to avoid timezone issues
-  const startParts = start.split('-').map(Number);
-  const endParts = end.split('-').map(Number);
-  
-  const startDate = new Date(Date.UTC(startParts[0], startParts[1] - 1, startParts[2]));
+  // Create date objects using UTC
+  const currentDate = new Date(Date.UTC(startParts[0], startParts[1] - 1, startParts[2]));
   const endDate = new Date(Date.UTC(endParts[0], endParts[1] - 1, endParts[2]));
-  
-  const currentDate = new Date(startDate);
   
   while (currentDate <= endDate) {
     const year = currentDate.getUTCFullYear();
@@ -716,8 +732,8 @@ const eventDateRange = computed(() => {
   return dates;
 });
 
-// FIXED: Display date function that preserves the exact date
-function displayDate(dateString) {
+// Format date for readable display
+function formatReadableDate(dateString) {
   if (!dateString) return 'N/A';
   const parts = dateString.split('-');
   if (parts.length !== 3) return dateString;
@@ -729,6 +745,14 @@ function displayDate(dateString) {
     day: 'numeric',
     timeZone: 'UTC'
   });
+}
+
+// Format date for display in event header
+function formatDateForDisplay(dateValue) {
+  if (!dateValue) return 'N/A';
+  const dateOnly = getDateOnly(dateValue);
+  if (!dateOnly) return 'N/A';
+  return formatReadableDate(dateOnly);
 }
 
 const requestForm = useForm({
@@ -854,15 +878,6 @@ function getCourseName(courseId) {
   if (!props.courses || !Array.isArray(props.courses)) return `Course ID: ${courseId}`;
   const course = props.courses.find(c => c.id === courseId);
   return course ? course.name : `Course ID: ${courseId}`;
-}
-
-function formatDate(date) {
-  if (!date) return 'N/A';
-  return new Date(date).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
 }
 
 function formatApprovalStatus(status) {
