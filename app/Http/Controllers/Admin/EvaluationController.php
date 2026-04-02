@@ -1274,6 +1274,144 @@ class EvaluationController extends Controller
         return response()->json($stats);
     }
 
+    
+    public function getEligibilityInfo(Evaluation $evaluation)
+    {
+        $event = $evaluation->event;
+        $eventDates = $evaluation->event_dates ?: [];
+        
+        $departments = Department::whereIn('id', $event->departments ?? [])->pluck('name');
+        $courses = Course::whereIn('id', $event->courses ?? [])->pluck('name');
+        $yearLevels = $event->year_levels ?? [];
+        
+        $totalStudents = EventStudent::where('event_id', $event->id)->count();
+        $totalGuests = EventGuest::where('event_id', $event->id)->count();
+        
+        $perDateExpected = [];
+        foreach ($eventDates as $date) {
+            $dateGuests = EventGuest::where('event_id', $event->id)
+                ->where(function($query) use ($date) {
+                    if (Schema::hasColumn('event_guests', 'event_date')) {
+                        $query->where('event_date', $date);
+                    }
+                })
+                ->count();
+            $perDateExpected[$date] = $totalStudents + $dateGuests;
+        }
+        
+        $totalExpectedOverall = ($totalStudents * max(count($eventDates), 1)) + $totalGuests;
+
+        return response()->json([
+            'departments' => $departments,
+            'courses' => $courses,
+            'yearLevels' => $yearLevels,
+            'event_dates' => $eventDates,
+            'total_students' => $totalStudents,
+            'total_guests' => $totalGuests,
+            'total_expected_overall' => $totalExpectedOverall,
+            'per_date_expected' => $perDateExpected,
+            'number_of_dates' => count($eventDates),
+        ]);
+    }
+
+    public function downloadCsvTemplate(Evaluation $evaluation)
+    {
+        $event = $evaluation->event;
+        $eventDates = $evaluation->event_dates ?: [];
+        
+        // ==================== BUILD HEADERS BY CATEGORY ORDER ====================
+        $headers = [
+            'student_id', 'email', 'name', 'age', 'sex', 'agency_office',
+            'position', 'respondent_type', 'title_prefix', 'event_date'
+        ];
+        
+        $formType = $evaluation->form_type;
+        if (in_array($formType, ['type1', 'type3', 'type4'])) {
+            $headers[] = 'speaker_topic';
+            $headers[] = 'speaker_name';
+        }
+        
+        // Get categories with their questions ordered properly
+        $categories = $evaluation->categories()
+            ->with(['questions' => function($q) {
+                $q->where('question_type', 'likert')->orderBy('order');
+            }])
+            ->orderBy('order')
+            ->get();
+        
+        // Add questions to headers in category order
+        foreach ($categories as $category) {
+            foreach ($category->questions as $question) {
+                $headers[] = $question->question_text;
+            }
+        }
+        
+        // Add comment questions
+        $commentQuestions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
+            ->where('question_type', 'comment')
+            ->orderBy('order')
+            ->get();
+        
+        foreach ($commentQuestions as $question) {
+            $headers[] = $question->question_text;
+        }
+        
+        // ==================== BUILD SAMPLE ROW ====================
+        $sampleRow = [
+            'STUDENT-001',
+            'student@example.com',
+            'Juan Dela Cruz',
+            '20',
+            'Male',
+            'Office Name',
+            'Student',
+            'Student',
+            'Mr.',
+            $eventDates[0] ?? date('Y-m-d'),
+        ];
+        
+        if (in_array($formType, ['type1', 'type3', 'type4'])) {
+            $sampleRow[] = 'Sample Topic';
+            $sampleRow[] = 'Sample Speaker Name';
+        }
+        
+        // Add sample ratings for each likert question (4 = Satisfied)
+        foreach ($categories as $category) {
+            foreach ($category->questions as $question) {
+                $sampleRow[] = '4';
+            }
+        }
+        
+        // Add sample comments
+        foreach ($commentQuestions as $question) {
+            $sampleRow[] = 'Sample comment here';
+        }
+        
+        $callback = function() use ($headers, $sampleRow, $eventDates) {
+            $file = fopen('php://output', 'w');
+            fwrite($file, "\xEF\xBB\xBF");
+            fputcsv($file, $headers);
+            fputcsv($file, $sampleRow);
+            fwrite($file, "# Note: event_date must be one of these dates: " . implode(', ', $eventDates) . "\n");
+            fclose($file);
+        };
+        
+        $filename = 'evaluation_' . $evaluation->id . '_template.csv';
+        
+        $this->logAction('download_csv_template', 'Downloaded CSV template for evaluation: ' . $evaluation->title, [
+            'evaluation_id' => $evaluation->id,
+            'title' => $evaluation->title,
+        ]);
+        
+        return response()->stream($callback, 200, [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ]);
+    }
+
+    /**
+     * Get raw responses - ORDERED BY CATEGORY
+     */
     public function getRawResponses(Evaluation $evaluation, Request $request)
     {
         $eventDate = $request->get('event_date');
@@ -1286,10 +1424,21 @@ class EvaluationController extends Controller
         
         $responses = $query->orderBy('created_at', 'desc')->get();
         
-        $likertQuestions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
-            ->where('question_type', 'likert')
+        // Get categories with their questions in order
+        $categories = $evaluation->categories()
+            ->with(['questions' => function($q) {
+                $q->where('question_type', 'likert')->orderBy('order');
+            }])
             ->orderBy('order')
             ->get();
+        
+        // Build likert questions list in category order
+        $likertQuestions = [];
+        foreach ($categories as $category) {
+            foreach ($category->questions as $question) {
+                $likertQuestions[] = $question;
+            }
+        }
         
         $commentQuestions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
             ->where('question_type', 'comment')
@@ -1347,7 +1496,6 @@ class EvaluationController extends Controller
             return $row;
         });
         
-        // Log raw responses export
         $this->logAction('export_raw_responses', 'Exported raw responses for evaluation: ' . $evaluation->title, [
             'evaluation_id' => $evaluation->id,
             'title' => $evaluation->title,
@@ -1356,128 +1504,6 @@ class EvaluationController extends Controller
         ]);
         
         return response()->json($formattedResponses);
-    }
-    
-    public function getEligibilityInfo(Evaluation $evaluation)
-    {
-        $event = $evaluation->event;
-        $eventDates = $evaluation->event_dates ?: [];
-        
-        $departments = Department::whereIn('id', $event->departments ?? [])->pluck('name');
-        $courses = Course::whereIn('id', $event->courses ?? [])->pluck('name');
-        $yearLevels = $event->year_levels ?? [];
-        
-        $totalStudents = EventStudent::where('event_id', $event->id)->count();
-        $totalGuests = EventGuest::where('event_id', $event->id)->count();
-        
-        $perDateExpected = [];
-        foreach ($eventDates as $date) {
-            $dateGuests = EventGuest::where('event_id', $event->id)
-                ->where(function($query) use ($date) {
-                    if (Schema::hasColumn('event_guests', 'event_date')) {
-                        $query->where('event_date', $date);
-                    }
-                })
-                ->count();
-            $perDateExpected[$date] = $totalStudents + $dateGuests;
-        }
-        
-        $totalExpectedOverall = ($totalStudents * max(count($eventDates), 1)) + $totalGuests;
-
-        return response()->json([
-            'departments' => $departments,
-            'courses' => $courses,
-            'yearLevels' => $yearLevels,
-            'event_dates' => $eventDates,
-            'total_students' => $totalStudents,
-            'total_guests' => $totalGuests,
-            'total_expected_overall' => $totalExpectedOverall,
-            'per_date_expected' => $perDateExpected,
-            'number_of_dates' => count($eventDates),
-        ]);
-    }
-
-    public function downloadCsvTemplate(Evaluation $evaluation)
-    {
-        $event = $evaluation->event;
-        $eventDates = $evaluation->event_dates ?: [];
-        
-        $headers = [
-            'student_id', 'email', 'name', 'age', 'sex', 'agency_office',
-            'position', 'respondent_type', 'title_prefix', 'event_date'
-        ];
-        
-        $formType = $evaluation->form_type;
-        if (in_array($formType, ['type1', 'type3', 'type4'])) {
-            $headers[] = 'speaker_topic';
-            $headers[] = 'speaker_name';
-        }
-        
-        $likertQuestions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
-            ->where('question_type', 'likert')
-            ->orderBy('order')
-            ->get();
-            
-        foreach ($likertQuestions as $question) {
-            $headers[] = $question->question_text;
-        }
-        
-        $commentQuestions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
-            ->where('question_type', 'comment')
-            ->orderBy('order')
-            ->get();
-            
-        foreach ($commentQuestions as $question) {
-            $headers[] = $question->question_text;
-        }
-        
-        $sampleRow = [
-            'STUDENT-001',
-            'student@example.com',
-            'Juan Dela Cruz',
-            '20',
-            'Male',
-            'Office Name',
-            'Student',
-            'Student',
-            'Mr.',
-            $eventDates[0] ?? date('Y-m-d'),
-        ];
-        
-        if (in_array($formType, ['type1', 'type3', 'type4'])) {
-            $sampleRow[] = 'Sample Topic';
-            $sampleRow[] = 'Sample Speaker Name';
-        }
-        
-        foreach ($likertQuestions as $question) {
-            $sampleRow[] = '4';
-        }
-        
-        foreach ($commentQuestions as $question) {
-            $sampleRow[] = 'Sample comment here';
-        }
-        
-        $callback = function() use ($headers, $sampleRow, $eventDates) {
-            $file = fopen('php://output', 'w');
-            fwrite($file, "\xEF\xBB\xBF");
-            fputcsv($file, $headers);
-            fputcsv($file, $sampleRow);
-            fwrite($file, "# Note: event_date must be one of these dates: " . implode(', ', $eventDates) . "\n");
-            fclose($file);
-        };
-        
-        $filename = 'evaluation_' . $evaluation->id . '_template.csv';
-        
-        // Log template download
-        $this->logAction('download_csv_template', 'Downloaded CSV template for evaluation: ' . $evaluation->title, [
-            'evaluation_id' => $evaluation->id,
-            'title' => $evaluation->title,
-        ]);
-        
-        return response()->stream($callback, 200, [
-            'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
-        ]);
     }
 
     public function bulkUpload(Request $request, Evaluation $evaluation)

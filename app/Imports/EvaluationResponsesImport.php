@@ -29,6 +29,7 @@ class EvaluationResponsesImport implements ToModel, WithHeadingRow, WithValidati
     protected $likertQuestions = [];
     protected $commentQuestions = [];
     protected $questionIds = [];
+    protected $questionMap = []; // Map question text to question ID
     protected $expectedHeaders = [];
 
     public function __construct(Evaluation $evaluation)
@@ -37,23 +38,31 @@ class EvaluationResponsesImport implements ToModel, WithHeadingRow, WithValidati
         $this->eventId = $evaluation->event_id;
         $this->event = Event::find($this->eventId);
         
-        // Get all questions for this evaluation
-        $this->likertQuestions = $evaluation->questions()
-            ->where('question_type', 'likert')
+        // Get categories with their questions in order
+        $categories = $evaluation->categories()
+            ->with(['questions' => function($q) {
+                $q->where('question_type', 'likert')->orderBy('order');
+            }])
             ->orderBy('order')
             ->get();
         
-        $this->commentQuestions = $evaluation->questions()
+        // Build likert questions list in category order
+        $this->likertQuestions = [];
+        foreach ($categories as $category) {
+            foreach ($category->questions as $question) {
+                $this->likertQuestions[] = $question;
+                $this->questionMap[$question->question_text] = $question->id;
+            }
+        }
+        
+        // Get comment questions
+        $this->commentQuestions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
             ->where('question_type', 'comment')
             ->orderBy('order')
             ->get();
         
-        // Store question IDs in order
-        foreach ($this->likertQuestions as $q) {
-            $this->questionIds[] = $q->id;
-        }
-        foreach ($this->commentQuestions as $q) {
-            $this->questionIds[] = $q->id;
+        foreach ($this->commentQuestions as $question) {
+            $this->questionMap[$question->question_text] = $question->id;
         }
         
         // Build expected headers for reference
@@ -78,7 +87,7 @@ class EvaluationResponsesImport implements ToModel, WithHeadingRow, WithValidati
     }
 
     /**
-     * Map the row data by column position
+     * Map the row data by column headers (using heading row names)
      */
     public function prepareForValidation($data, $index)
     {
@@ -89,19 +98,13 @@ class EvaluationResponsesImport implements ToModel, WithHeadingRow, WithValidati
         
         $mappedData = [];
         
-        // Map standard fields by position (first 10 columns)
+        // Map standard fields
         $standardFields = ['student_id', 'email', 'name', 'age', 'sex', 'agency_office', 
                            'position', 'respondent_type', 'title_prefix', 'event_date'];
         
-        // Get all column values in order
-        $columns = array_values($data);
-        
-        // Map by position
-        foreach ($standardFields as $pos => $field) {
-            if (isset($columns[$pos])) {
-                $value = $columns[$pos];
-                
-                // Special handling for age - convert to string
+        foreach ($standardFields as $field) {
+            if (isset($data[$field])) {
+                $value = $data[$field];
                 if ($field === 'age' && is_numeric($value)) {
                     $mappedData[$field] = (string) $value;
                 } else {
@@ -110,34 +113,28 @@ class EvaluationResponsesImport implements ToModel, WithHeadingRow, WithValidati
             }
         }
         
-        // Map speaker fields (next 2 columns if applicable)
+        // Map speaker fields
         $formType = $this->evaluation->form_type;
-        $speakerOffset = 10;
         if (in_array($formType, ['type1', 'type3', 'type4'])) {
-            if (isset($columns[$speakerOffset])) {
-                $mappedData['speaker_topic'] = $columns[$speakerOffset];
-            }
-            if (isset($columns[$speakerOffset + 1])) {
-                $mappedData['speaker_name'] = $columns[$speakerOffset + 1];
-            }
-            $speakerOffset += 2;
+            $mappedData['speaker_topic'] = $data['speaker_topic'] ?? null;
+            $mappedData['speaker_name'] = $data['speaker_name'] ?? null;
         }
         
-        // Map likert questions by position
-        $likertOffset = $speakerOffset;
-        foreach ($this->likertQuestions as $pos => $question) {
-            if (isset($columns[$likertOffset + $pos])) {
-                $value = $columns[$likertOffset + $pos];
+        // Map likert questions by question text (using heading)
+        foreach ($this->likertQuestions as $question) {
+            $questionText = $question->question_text;
+            if (isset($data[$questionText])) {
+                $value = $data[$questionText];
                 $cleanedValue = $this->cleanNumericValue($value);
                 $mappedData["q_{$question->id}"] = $cleanedValue;
             }
         }
         
-        // Map comment questions by position
-        $commentOffset = $likertOffset + count($this->likertQuestions);
-        foreach ($this->commentQuestions as $pos => $question) {
-            if (isset($columns[$commentOffset + $pos])) {
-                $mappedData["c_{$question->id}"] = $columns[$commentOffset + $pos];
+        // Map comment questions
+        foreach ($this->commentQuestions as $question) {
+            $questionText = $question->question_text;
+            if (isset($data[$questionText])) {
+                $mappedData["c_{$question->id}"] = $data[$questionText];
             }
         }
         
