@@ -505,7 +505,7 @@
         </div>
       </div>
 
-      <!-- Request Evaluation Modal with INCLUSIVE DATES DISPLAY -->
+      <!-- Request Evaluation Modal with INCLUSIVE DATES DISPLAY (Fixed for Philippines Timezone) -->
       <Teleport to="body">
         <div v-if="showRequestModal" class="fixed inset-0 z-50 overflow-y-auto">
           <div class="fixed inset-0 bg-black/40 backdrop-blur-sm" @click="showRequestModal = false"></div>
@@ -528,7 +528,7 @@
                   <input v-model="requestForm.title" type="text" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500" required />
                 </div>
 
-                <!-- Display Inclusive Dates from Event -->
+                <!-- Display Inclusive Dates from Event - FIXED FOR PHILIPPINES TIMEZONE -->
                 <div class="bg-blue-50 rounded-lg p-4 border border-blue-200">
                   <div class="flex items-center gap-2 mb-3">
                     <svg class="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -542,7 +542,7 @@
                       <span class="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-xs font-bold text-blue-700">
                         {{ idx + 1 }}
                       </span>
-                      <span class="text-sm text-gray-700">{{ formatDate(date) }}</span>
+                      <span class="text-sm text-gray-700">{{ formatDatePhilippines(date) }}</span>
                     </div>
                   </div>
                   <p class="text-xs text-blue-600 mt-2">
@@ -629,7 +629,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import { Link, useForm, router } from '@inertiajs/vue3';
 import OrganizationUserLayout from '@/Layouts/OrganizationUserLayout.vue';
 import axios from 'axios';
@@ -686,27 +686,45 @@ const showRequestModal = ref(false);
 const refreshing = ref(false);
 const eligibleStudents = ref(props.eligibleStudents || []);
 
-// Generate inclusive dates from event start and end
+// Generate inclusive dates from event start and end (FIXED FOR PHILIPPINES TIMEZONE UTC+8)
 const inclusiveDates = ref([]);
+
+// Format date for Philippines display (YYYY-MM-DD to readable format)
+function formatDatePhilippines(dateString) {
+  if (!dateString) return 'N/A';
+  const date = new Date(dateString + 'T00:00:00+08:00');
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'Asia/Manila'
+  });
+}
 
 // Generate dates when component mounts or when event dates change
 function generateInclusiveDates() {
   if (props.event.event_date_start && props.event.event_date_end) {
-    const start = new Date(props.event.event_date_start);
-    const end = new Date(props.event.event_date_end);
+    // Use UTC+8 (Philippines) to prevent date shifting
+    const start = new Date(props.event.event_date_start + 'T00:00:00+08:00');
+    const end = new Date(props.event.event_date_end + 'T00:00:00+08:00');
     const dates = [];
     const currentDate = new Date(start);
     
     while (currentDate <= end) {
-      dates.push(new Date(currentDate).toISOString().split('T')[0]);
+      const year = currentDate.getFullYear();
+      const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+      const day = String(currentDate.getDate()).padStart(2, '0');
+      dates.push(`${year}-${month}-${day}`);
       currentDate.setDate(currentDate.getDate() + 1);
     }
     inclusiveDates.value = dates;
   }
 }
 
-// Call on mount
-generateInclusiveDates();
+// Call on mount and when event dates change
+onMounted(() => {
+  generateInclusiveDates();
+});
 
 const requestForm = useForm({
   title: props.event.event_name,
@@ -779,14 +797,12 @@ async function markAsFinished() {
 async function refreshEligibleStudents() {
   refreshing.value = true;
   try {
-    // Call the new sync-students endpoint that properly adds/removes students
     const response = await axios.post(`/president/events/${props.event.id}/sync-students`);
     if (response.data.success) {
       eligibleStudents.value = response.data.students;
       if (props.stats) {
         props.stats.total_students = response.data.total;
       }
-      // Show detailed success message
       alert(`✅ Student list updated!\n\nAdded: ${response.data.added} new students\nRemoved: ${response.data.removed} ineligible students\nTotal eligible: ${response.data.total}`);
     } else {
       alert(response.data.error || 'Failed to refresh students');
@@ -797,10 +813,6 @@ async function refreshEligibleStudents() {
   } finally {
     refreshing.value = false;
   }
-}
-
-function showToastMessage(message, type = 'success') {
-  alert(message);
 }
 
 function addTopic() {

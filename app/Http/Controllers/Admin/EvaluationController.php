@@ -1314,101 +1314,101 @@ class EvaluationController extends Controller
         ]);
     }
 
-    public function downloadCsvTemplate(Evaluation $evaluation)
-    {
-        $event = $evaluation->event;
-        $eventDates = $evaluation->event_dates ?: [];
-        
-        // ==================== BUILD HEADERS BY CATEGORY ORDER ====================
-        $headers = [
-            'student_id', 'email', 'name', 'age', 'sex', 'agency_office',
-            'position', 'respondent_type', 'title_prefix', 'event_date'
-        ];
-        
-        $formType = $evaluation->form_type;
-        if (in_array($formType, ['type1', 'type3', 'type4'])) {
-            $headers[] = 'speaker_topic';
-            $headers[] = 'speaker_name';
-        }
-        
-        // Get categories with their questions ordered properly
-        $categories = $evaluation->categories()
-            ->with(['questions' => function($q) {
-                $q->where('question_type', 'likert')->orderBy('order');
-            }])
-            ->orderBy('order')
-            ->get();
-        
-        // Add questions to headers in category order
-        foreach ($categories as $category) {
-            foreach ($category->questions as $question) {
-                $headers[] = $question->question_text;
-            }
-        }
-        
-        // Add comment questions
-        $commentQuestions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
-            ->where('question_type', 'comment')
-            ->orderBy('order')
-            ->get();
-        
-        foreach ($commentQuestions as $question) {
+    /**
+ * Download CSV template for bulk upload
+ */
+public function downloadCsvTemplate(Evaluation $evaluation)
+{
+    $event = $evaluation->event;
+    $eventDates = $evaluation->event_dates ?: [];
+    
+    // Format dates for Philippines timezone
+    $formattedEventDates = array_map(function($date) {
+        return Carbon::parse($date)->setTimezone('Asia/Manila')->format('Y-m-d');
+    }, $eventDates);
+    
+    $headers = [
+        'student_id', 'email', 'name', 'age', 'sex', 'agency_office',
+        'position', 'respondent_type', 'title_prefix', 'event_date'
+    ];
+    
+    $formType = $evaluation->form_type;
+    if (in_array($formType, ['type1', 'type3', 'type4'])) {
+        $headers[] = 'speaker_topic';
+        $headers[] = 'speaker_name';
+    }
+    
+    $categories = $evaluation->categories()
+        ->with(['questions' => function($q) {
+            $q->where('question_type', 'likert')->orderBy('order');
+        }])
+        ->orderBy('order')
+        ->get();
+    
+    foreach ($categories as $category) {
+        foreach ($category->questions as $question) {
             $headers[] = $question->question_text;
         }
-        
-        // ==================== BUILD SAMPLE ROW ====================
-        $sampleRow = [
-            'STUDENT-001',
-            'student@example.com',
-            'Juan Dela Cruz',
-            '20',
-            'Male',
-            'Office Name',
-            'Student',
-            'Student',
-            'Mr.',
-            $eventDates[0] ?? date('Y-m-d'),
-        ];
-        
-        if (in_array($formType, ['type1', 'type3', 'type4'])) {
-            $sampleRow[] = 'Sample Topic';
-            $sampleRow[] = 'Sample Speaker Name';
-        }
-        
-        // Add sample ratings for each likert question (4 = Satisfied)
-        foreach ($categories as $category) {
-            foreach ($category->questions as $question) {
-                $sampleRow[] = '4';
-            }
-        }
-        
-        // Add sample comments
-        foreach ($commentQuestions as $question) {
-            $sampleRow[] = 'Sample comment here';
-        }
-        
-        $callback = function() use ($headers, $sampleRow, $eventDates) {
-            $file = fopen('php://output', 'w');
-            fwrite($file, "\xEF\xBB\xBF");
-            fputcsv($file, $headers);
-            fputcsv($file, $sampleRow);
-            fwrite($file, "# Note: event_date must be one of these dates: " . implode(', ', $eventDates) . "\n");
-            fclose($file);
-        };
-        
-        $filename = 'evaluation_' . $evaluation->id . '_template.csv';
-        
-        $this->logAction('download_csv_template', 'Downloaded CSV template for evaluation: ' . $evaluation->title, [
-            'evaluation_id' => $evaluation->id,
-            'title' => $evaluation->title,
-        ]);
-        
-        return response()->stream($callback, 200, [
-            'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
-        ]);
     }
-
+    
+    $commentQuestions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
+        ->where('question_type', 'comment')
+        ->orderBy('order')
+        ->get();
+    
+    foreach ($commentQuestions as $question) {
+        $headers[] = $question->question_text;
+    }
+    
+    $sampleRow = [
+        'STUDENT-001',
+        'student@example.com',
+        'Juan Dela Cruz',
+        '20',
+        'Male',
+        'Office Name',
+        'Student',
+        'Student',
+        'Mr.',
+        $formattedEventDates[0] ?? date('Y-m-d'),
+    ];
+    
+    if (in_array($formType, ['type1', 'type3', 'type4'])) {
+        $sampleRow[] = 'Sample Topic';
+        $sampleRow[] = 'Sample Speaker Name';
+    }
+    
+    foreach ($categories as $category) {
+        foreach ($category->questions as $question) {
+            $sampleRow[] = '4';
+        }
+    }
+    
+    foreach ($commentQuestions as $question) {
+        $sampleRow[] = 'Sample comment here';
+    }
+    
+    $callback = function() use ($headers, $sampleRow, $formattedEventDates) {
+        $file = fopen('php://output', 'w');
+        fwrite($file, "\xEF\xBB\xBF");
+        fputcsv($file, $headers);
+        fputcsv($file, $sampleRow);
+        fwrite($file, "# Note: event_date must be one of these dates: " . implode(', ', $formattedEventDates) . "\n");
+        fclose($file);
+    };
+    
+    $filename = 'evaluation_' . $evaluation->id . '_template.csv';
+    
+    $this->logAction('download_csv_template', 'Downloaded CSV template for evaluation: ' . $evaluation->title, [
+        'evaluation_id' => $evaluation->id,
+        'title' => $evaluation->title,
+    ]);
+    
+    return response()->stream($callback, 200, [
+        'Content-Type' => 'text/csv',
+        'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+    ]);
+}
     /**
      * Get raw responses - ORDERED BY CATEGORY
      */

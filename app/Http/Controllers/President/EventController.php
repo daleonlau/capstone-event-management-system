@@ -595,73 +595,79 @@ class EventController extends Controller
         }
     }
 
-    public function requestEvaluation(Request $request, Event $event)
-    {
-        if ($event->user_id !== $this->organizationId) {
-            abort(403);
-        }
+    /**
+ * Request evaluation service for an event
+ */
+public function requestEvaluation(Request $request, Event $event)
+{
+    if ($event->user_id !== $this->organizationId) {
+        abort(403);
+    }
 
-        if (!$event->canRequestEvaluation()) {
-            return back()->with('error', 'This event cannot request evaluation service.');
-        }
+    if (!$event->canRequestEvaluation()) {
+        return back()->with('error', 'This event cannot request evaluation service.');
+    }
 
-        // Generate ALL inclusive dates between event_date_start and event_date_end
-        $inclusiveDates = [];
-        $start = Carbon::parse($event->event_date_start);
-        $end = Carbon::parse($event->event_date_end);
-        
-        for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
-            $inclusiveDates[] = $date->format('Y-m-d');
-        }
+    // Generate ALL inclusive dates between event_date_start and event_date_end
+    // FIX: Use Asia/Manila timezone to preserve Philippine dates
+    $inclusiveDates = [];
+    
+    // Set timezone to Asia/Manila (Philippines)
+    $start = Carbon::parse($event->event_date_start)->setTimezone('Asia/Manila')->startOfDay();
+    $end = Carbon::parse($event->event_date_end)->setTimezone('Asia/Manila')->startOfDay();
+    
+    for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
+        $inclusiveDates[] = $date->format('Y-m-d');
+    }
 
-        $request->validate([
-            'title' => 'required|string|max:255',
-            'venue' => 'required|string|max:255',
-            'speaker_name' => 'required|string|max:255',
-            'topics' => 'required|array|min:1',
-            'topics.*' => 'required|string',
-            'has_food' => 'boolean',
-            'notes' => 'nullable|string',
+    $request->validate([
+        'title' => 'required|string|max:255',
+        'venue' => 'required|string|max:255',
+        'speaker_name' => 'required|string|max:255',
+        'topics' => 'required|array|min:1',
+        'topics.*' => 'required|string',
+        'has_food' => 'boolean',
+        'notes' => 'nullable|string',
+    ]);
+
+    try {
+        $evaluationRequest = EvaluationRequest::create([
+            'event_id' => $event->id,
+            'organization_id' => $this->organizationId,
+            'requested_by' => Auth::guard('org_user')->id(),
+            'title' => $request->title,
+            'activity_date' => $event->event_date_start,
+            'event_dates' => $inclusiveDates,
+            'venue' => $request->venue,
+            'speaker_name' => $request->speaker_name,
+            'topics' => $request->topics,
+            'has_food' => $request->has_food ?? false,
+            'notes' => $request->notes,
+            'status' => 'pending',
         ]);
 
-        try {
-            $evaluationRequest = EvaluationRequest::create([
-                'event_id' => $event->id,
-                'organization_id' => $this->organizationId,
-                'requested_by' => Auth::guard('org_user')->id(),
-                'title' => $request->title,
-                'activity_date' => $event->event_date_start,
-                'event_dates' => $inclusiveDates,
-                'venue' => $request->venue,
-                'speaker_name' => $request->speaker_name,
-                'topics' => $request->topics,
-                'has_food' => $request->has_food ?? false,
-                'notes' => $request->notes,
-                'status' => 'pending',
-            ]);
+        $this->logAction('request_evaluation', 'Requested evaluation service for event: ' . $event->event_name, [
+            'event_id' => $event->id,
+            'event_name' => $event->event_name,
+            'evaluation_request_id' => $evaluationRequest->id,
+            'title' => $request->title,
+            'venue' => $request->venue,
+            'speaker_name' => $request->speaker_name,
+            'topics_count' => count($request->topics),
+            'event_dates_count' => count($inclusiveDates),
+        ]);
 
-            $this->logAction('request_evaluation', 'Requested evaluation service for event: ' . $event->event_name, [
-                'event_id' => $event->id,
-                'event_name' => $event->event_name,
-                'evaluation_request_id' => $evaluationRequest->id,
-                'title' => $request->title,
-                'venue' => $request->venue,
-                'speaker_name' => $request->speaker_name,
-                'topics_count' => count($request->topics),
-                'event_dates_count' => count($inclusiveDates),
-            ]);
-
-            return redirect()->route('president.events.show', $event->id)
-                ->with('success', 'Evaluation service request submitted successfully with ' . count($inclusiveDates) . ' event dates.');
-        } catch (\Exception $e) {
-            $this->logError('request_evaluation_failed', 'Failed to request evaluation: ' . $e->getMessage(), $e, [
-                'event_id' => $event->id,
-                'event_name' => $event->event_name,
-            ]);
-            
-            return back()->with('error', 'Failed to submit evaluation request.');
-        }
+        return redirect()->route('president.events.show', $event->id)
+            ->with('success', 'Evaluation service request submitted successfully with ' . count($inclusiveDates) . ' event dates.');
+    } catch (\Exception $e) {
+        $this->logError('request_evaluation_failed', 'Failed to request evaluation: ' . $e->getMessage(), $e, [
+            'event_id' => $event->id,
+            'event_name' => $event->event_name,
+        ]);
+        
+        return back()->with('error', 'Failed to submit evaluation request.');
     }
+}
 
     public function destroy(Event $event)
     {

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Carbon\Carbon;
 
 class EvaluationRequest extends Model
 {
@@ -13,7 +14,7 @@ class EvaluationRequest extends Model
         'requested_by',
         'title',
         'activity_date',
-        'event_dates', // NEW
+        'event_dates',
         'venue',
         'speaker_name',
         'topics',
@@ -26,10 +27,32 @@ class EvaluationRequest extends Model
 
     protected $casts = [
         'topics' => 'array',
-        'event_dates' => 'array', // NEW
+        'event_dates' => 'array',
         'activity_date' => 'date',
         'has_food' => 'boolean',
     ];
+
+    /**
+     * Get activity date formatted for Philippines timezone
+     */
+    public function getActivityDateAttribute($value)
+    {
+        if (!$value) return null;
+        return Carbon::parse($value)->setTimezone('Asia/Manila')->format('Y-m-d');
+    }
+
+    /**
+     * Get event dates formatted for Philippines timezone
+     */
+    public function getEventDatesAttribute($value)
+    {
+        $dates = json_decode($value, true);
+        if (!$dates) return [];
+        
+        return array_map(function($date) {
+            return Carbon::parse($date)->setTimezone('Asia/Manila')->format('Y-m-d');
+        }, $dates);
+    }
 
     public function event(): BelongsTo
     {
