@@ -505,7 +505,7 @@
         </div>
       </div>
 
-      <!-- Request Evaluation Modal with INCLUSIVE DATES DISPLAY (Fixed for Philippines Timezone) -->
+      <!-- Request Evaluation Modal - FIXED: Display dates directly from event -->
       <Teleport to="body">
         <div v-if="showRequestModal" class="fixed inset-0 z-50 overflow-y-auto">
           <div class="fixed inset-0 bg-black/40 backdrop-blur-sm" @click="showRequestModal = false"></div>
@@ -528,7 +528,7 @@
                   <input v-model="requestForm.title" type="text" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500" required />
                 </div>
 
-                <!-- Display Inclusive Dates from Event - FIXED FOR PHILIPPINES TIMEZONE -->
+                <!-- Display Inclusive Dates - FIXED: Use the actual event dates without any conversion -->
                 <div class="bg-blue-50 rounded-lg p-4 border border-blue-200">
                   <div class="flex items-center gap-2 mb-3">
                     <svg class="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -537,16 +537,16 @@
                     <span class="font-semibold text-blue-800">Event Inclusive Dates</span>
                   </div>
                   <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
-                    <div v-for="(date, idx) in inclusiveDates" :key="date" 
+                    <div v-for="(date, idx) in eventDateRange" :key="date" 
                          class="flex items-center gap-2 p-2 bg-white rounded-lg border border-blue-100">
                       <span class="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-xs font-bold text-blue-700">
                         {{ idx + 1 }}
                       </span>
-                      <span class="text-sm text-gray-700">{{ formatDatePhilippines(date) }}</span>
+                      <span class="text-sm text-gray-700">{{ displayDate(date) }}</span>
                     </div>
                   </div>
                   <p class="text-xs text-blue-600 mt-2">
-                    These dates are automatically generated from the event's start and end dates.
+                    These dates are from your event's start and end dates ({{ event.event_date_start }} to {{ event.event_date_end }}).
                     Students will be able to submit separate evaluations for each day.
                   </p>
                 </div>
@@ -629,7 +629,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed } from 'vue';
 import { Link, useForm, router } from '@inertiajs/vue3';
 import OrganizationUserLayout from '@/Layouts/OrganizationUserLayout.vue';
 import axios from 'axios';
@@ -686,45 +686,50 @@ const showRequestModal = ref(false);
 const refreshing = ref(false);
 const eligibleStudents = ref(props.eligibleStudents || []);
 
-// Generate inclusive dates from event start and end (FIXED FOR PHILIPPINES TIMEZONE UTC+8)
-const inclusiveDates = ref([]);
+// FIXED: Generate date range directly from event dates without timezone conversion
+const eventDateRange = computed(() => {
+  if (!props.event.event_date_start || !props.event.event_date_end) {
+    return [];
+  }
+  
+  const dates = [];
+  const start = props.event.event_date_start;
+  const end = props.event.event_date_end;
+  
+  // Parse the dates by splitting the string to avoid timezone issues
+  const startParts = start.split('-').map(Number);
+  const endParts = end.split('-').map(Number);
+  
+  const startDate = new Date(Date.UTC(startParts[0], startParts[1] - 1, startParts[2]));
+  const endDate = new Date(Date.UTC(endParts[0], endParts[1] - 1, endParts[2]));
+  
+  const currentDate = new Date(startDate);
+  
+  while (currentDate <= endDate) {
+    const year = currentDate.getUTCFullYear();
+    const month = String(currentDate.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(currentDate.getUTCDate()).padStart(2, '0');
+    dates.push(`${year}-${month}-${day}`);
+    currentDate.setUTCDate(currentDate.getUTCDate() + 1);
+  }
+  
+  return dates;
+});
 
-// Format date for Philippines display (YYYY-MM-DD to readable format)
-function formatDatePhilippines(dateString) {
+// FIXED: Display date function that preserves the exact date
+function displayDate(dateString) {
   if (!dateString) return 'N/A';
-  const date = new Date(dateString + 'T00:00:00+08:00');
+  const parts = dateString.split('-');
+  if (parts.length !== 3) return dateString;
+  
+  const date = new Date(Date.UTC(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2])));
   return date.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
-    timeZone: 'Asia/Manila'
+    timeZone: 'UTC'
   });
 }
-
-// Generate dates when component mounts or when event dates change
-function generateInclusiveDates() {
-  if (props.event.event_date_start && props.event.event_date_end) {
-    // Use UTC+8 (Philippines) to prevent date shifting
-    const start = new Date(props.event.event_date_start + 'T00:00:00+08:00');
-    const end = new Date(props.event.event_date_end + 'T00:00:00+08:00');
-    const dates = [];
-    const currentDate = new Date(start);
-    
-    while (currentDate <= end) {
-      const year = currentDate.getFullYear();
-      const month = String(currentDate.getMonth() + 1).padStart(2, '0');
-      const day = String(currentDate.getDate()).padStart(2, '0');
-      dates.push(`${year}-${month}-${day}`);
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
-    inclusiveDates.value = dates;
-  }
-}
-
-// Call on mount and when event dates change
-onMounted(() => {
-  generateInclusiveDates();
-});
 
 const requestForm = useForm({
   title: props.event.event_name,

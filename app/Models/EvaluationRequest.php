@@ -8,6 +8,8 @@ use Carbon\Carbon;
 
 class EvaluationRequest extends Model
 {
+    protected $table = 'evaluation_requests';
+    
     protected $fillable = [
         'event_id',
         'organization_id',
@@ -31,28 +33,6 @@ class EvaluationRequest extends Model
         'activity_date' => 'date',
         'has_food' => 'boolean',
     ];
-
-    /**
-     * Get activity date formatted for Philippines timezone
-     */
-    public function getActivityDateAttribute($value)
-    {
-        if (!$value) return null;
-        return Carbon::parse($value)->setTimezone('Asia/Manila')->format('Y-m-d');
-    }
-
-    /**
-     * Get event dates formatted for Philippines timezone
-     */
-    public function getEventDatesAttribute($value)
-    {
-        $dates = json_decode($value, true);
-        if (!$dates) return [];
-        
-        return array_map(function($date) {
-            return Carbon::parse($date)->setTimezone('Asia/Manila')->format('Y-m-d');
-        }, $dates);
-    }
 
     public function event(): BelongsTo
     {

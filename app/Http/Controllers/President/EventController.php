@@ -71,14 +71,10 @@ class EventController extends Controller
         }
     }
 
-    /**
-     * Get eligible students for an event based on criteria
-     */
     private function getEligibleStudentsForEvent(Event $event)
     {
         $query = Student::where('user_id', $this->organizationId);
         
-        // Filter by departments (convert IDs to names)
         if (!empty($event->departments) && is_array($event->departments)) {
             $departmentNames = Department::whereIn('id', $event->departments)->pluck('name')->toArray();
             if (!empty($departmentNames)) {
@@ -86,7 +82,6 @@ class EventController extends Controller
             }
         }
         
-        // Filter by courses (convert IDs to names)
         if (!empty($event->courses) && is_array($event->courses)) {
             $courseNames = Course::whereIn('id', $event->courses)->pluck('name')->toArray();
             if (!empty($courseNames)) {
@@ -94,7 +89,6 @@ class EventController extends Controller
             }
         }
         
-        // Filter by year levels
         if (!empty($event->year_levels) && is_array($event->year_levels)) {
             $query->whereIn('yearlevel', $event->year_levels);
         }
@@ -102,9 +96,6 @@ class EventController extends Controller
         return $query->get();
     }
 
-    /**
-     * Sync all eligible students for an event (add new, remove ineligible)
-     */
     public function syncAllEligibleStudents(Event $event)
     {
         if ($event->user_id !== $this->organizationId) {
@@ -112,24 +103,18 @@ class EventController extends Controller
         }
         
         try {
-            // Get all eligible students based on event criteria
             $eligibleStudents = $this->getEligibleStudentsForEvent($event);
             
-            // Get existing students in event_student
             $existingStudents = EventStudent::where('event_id', $event->id)
                 ->pluck('student_id')
                 ->toArray();
             
-            // Students to add (in eligible but not in existing)
             $studentsToAdd = array_diff($eligibleStudents->pluck('student_id')->toArray(), $existingStudents);
-            
-            // Students to remove (in existing but not eligible)
             $studentsToRemove = array_diff($existingStudents, $eligibleStudents->pluck('student_id')->toArray());
             
             $added = 0;
             $removed = 0;
             
-            // Add new eligible students
             foreach ($eligibleStudents as $student) {
                 if (in_array($student->student_id, $studentsToAdd)) {
                     EventStudent::updateOrCreate(
@@ -147,7 +132,6 @@ class EventController extends Controller
                 }
             }
             
-            // Remove ineligible students
             foreach ($studentsToRemove as $studentId) {
                 EventStudent::where('event_id', $event->id)
                     ->where('student_id', $studentId)
@@ -155,7 +139,6 @@ class EventController extends Controller
                 $removed++;
             }
             
-            // Log the sync
             $this->logAction('sync_event_students', 'Synced eligible students for event: ' . $event->event_name, [
                 'event_id' => $event->id,
                 'event_name' => $event->event_name,
@@ -164,7 +147,6 @@ class EventController extends Controller
                 'total_eligible' => $eligibleStudents->count(),
             ]);
             
-            // Get updated student list with payment status
             $updatedStudents = EventStudent::where('event_id', $event->id)
                 ->with('student')
                 ->get()
@@ -329,12 +311,12 @@ class EventController extends Controller
         if ($event->user_id !== $this->organizationId) {
             abort(403);
         }
-
+    
         $event->load('eventType');
         
         $departments = Department::all();
         $courses = Course::all();
-
+    
         $eligibleStudents = EventStudent::where('event_id', $event->id)
             ->with('student')
             ->get()
@@ -350,7 +332,7 @@ class EventController extends Controller
                     'amount_paid' => $es->amount_paid,
                 ];
             });
-
+    
         $eligibleGuests = EventGuest::where('event_id', $event->id)
             ->orderBy('created_at', 'desc')
             ->get()
@@ -366,12 +348,12 @@ class EventController extends Controller
                     'created_at' => $guest->created_at->format('Y-m-d'),
                 ];
             });
-
+    
         $totalEligibleStudents = $eligibleStudents->count();
         $totalEligibleGuests = $eligibleGuests->count();
         $paidCount = $eligibleStudents->where('status', 'Paid')->count();
         $pendingCount = $eligibleStudents->where('status', 'Pending')->count();
-
+    
         $stats = [
             'total_students' => $totalEligibleStudents,
             'total_guests' => $totalEligibleGuests,
@@ -382,16 +364,17 @@ class EventController extends Controller
             'evaluation_id' => $event->evaluations()->first()?->id,
             'can_be_finished' => $event->canBeFinished(),
         ];
-
+    
         $evaluationRequest = EvaluationRequest::where('event_id', $event->id)->first();
-
+    
         return Inertia::render('President/Events/Show', [
             'event' => [
                 'id' => $event->id,
                 'event_name' => $event->event_name,
                 'event_type' => $event->eventType,
-                'event_date_start' => $event->event_date_start,
-                'event_date_end' => $event->event_date_end,
+                // FIX: Format dates as Y-m-d without timezone
+                'event_date_start' => $event->event_date_start instanceof Carbon ? $event->event_date_start->format('Y-m-d') : date('Y-m-d', strtotime($event->event_date_start)),
+                'event_date_end' => $event->event_date_end instanceof Carbon ? $event->event_date_end->format('Y-m-d') : date('Y-m-d', strtotime($event->event_date_end)),
                 'description' => $event->description,
                 'payment' => $event->payment,
                 'event_fee' => $event->event_fee,
@@ -596,78 +579,79 @@ class EventController extends Controller
     }
 
     /**
- * Request evaluation service for an event
- */
-public function requestEvaluation(Request $request, Event $event)
-{
-    if ($event->user_id !== $this->organizationId) {
-        abort(403);
-    }
+     * Request evaluation service for an event - FIXED for Philippines timezone
+     */
+    public function requestEvaluation(Request $request, Event $event)
+    {
+        if ($event->user_id !== $this->organizationId) {
+            abort(403);
+        }
 
-    if (!$event->canRequestEvaluation()) {
-        return back()->with('error', 'This event cannot request evaluation service.');
-    }
+        if (!$event->canRequestEvaluation()) {
+            return back()->with('error', 'This event cannot request evaluation service.');
+        }
 
-    // Generate ALL inclusive dates between event_date_start and event_date_end
-    // FIX: Use Asia/Manila timezone to preserve Philippine dates
-    $inclusiveDates = [];
-    
-    // Set timezone to Asia/Manila (Philippines)
-    $start = Carbon::parse($event->event_date_start)->setTimezone('Asia/Manila')->startOfDay();
-    $end = Carbon::parse($event->event_date_end)->setTimezone('Asia/Manila')->startOfDay();
-    
-    for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
-        $inclusiveDates[] = $date->format('Y-m-d');
-    }
-
-    $request->validate([
-        'title' => 'required|string|max:255',
-        'venue' => 'required|string|max:255',
-        'speaker_name' => 'required|string|max:255',
-        'topics' => 'required|array|min:1',
-        'topics.*' => 'required|string',
-        'has_food' => 'boolean',
-        'notes' => 'nullable|string',
-    ]);
-
-    try {
-        $evaluationRequest = EvaluationRequest::create([
-            'event_id' => $event->id,
-            'organization_id' => $this->organizationId,
-            'requested_by' => Auth::guard('org_user')->id(),
-            'title' => $request->title,
-            'activity_date' => $event->event_date_start,
-            'event_dates' => $inclusiveDates,
-            'venue' => $request->venue,
-            'speaker_name' => $request->speaker_name,
-            'topics' => $request->topics,
-            'has_food' => $request->has_food ?? false,
-            'notes' => $request->notes,
-            'status' => 'pending',
-        ]);
-
-        $this->logAction('request_evaluation', 'Requested evaluation service for event: ' . $event->event_name, [
-            'event_id' => $event->id,
-            'event_name' => $event->event_name,
-            'evaluation_request_id' => $evaluationRequest->id,
-            'title' => $request->title,
-            'venue' => $request->venue,
-            'speaker_name' => $request->speaker_name,
-            'topics_count' => count($request->topics),
-            'event_dates_count' => count($inclusiveDates),
-        ]);
-
-        return redirect()->route('president.events.show', $event->id)
-            ->with('success', 'Evaluation service request submitted successfully with ' . count($inclusiveDates) . ' event dates.');
-    } catch (\Exception $e) {
-        $this->logError('request_evaluation_failed', 'Failed to request evaluation: ' . $e->getMessage(), $e, [
-            'event_id' => $event->id,
-            'event_name' => $event->event_name,
-        ]);
+        // Generate ALL inclusive dates between event_date_start and event_date_end
+        // FIX: Use UTC to preserve exact dates without timezone shifting
+        $inclusiveDates = [];
         
-        return back()->with('error', 'Failed to submit evaluation request.');
+        // Parse dates as UTC to prevent timezone conversion issues
+        $start = Carbon::parse($event->event_date_start . ' 00:00:00', 'UTC');
+        $end = Carbon::parse($event->event_date_end . ' 00:00:00', 'UTC');
+        
+        for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
+            $inclusiveDates[] = $date->format('Y-m-d');
+        }
+
+        $request->validate([
+            'title' => 'required|string|max:255',
+            'venue' => 'required|string|max:255',
+            'speaker_name' => 'required|string|max:255',
+            'topics' => 'required|array|min:1',
+            'topics.*' => 'required|string',
+            'has_food' => 'boolean',
+            'notes' => 'nullable|string',
+        ]);
+
+        try {
+            $evaluationRequest = EvaluationRequest::create([
+                'event_id' => $event->id,
+                'organization_id' => $this->organizationId,
+                'requested_by' => Auth::guard('org_user')->id(),
+                'title' => $request->title,
+                'activity_date' => $event->event_date_start,
+                'event_dates' => $inclusiveDates,
+                'venue' => $request->venue,
+                'speaker_name' => $request->speaker_name,
+                'topics' => $request->topics,
+                'has_food' => $request->has_food ?? false,
+                'notes' => $request->notes,
+                'status' => 'pending',
+            ]);
+
+            $this->logAction('request_evaluation', 'Requested evaluation service for event: ' . $event->event_name, [
+                'event_id' => $event->id,
+                'event_name' => $event->event_name,
+                'evaluation_request_id' => $evaluationRequest->id,
+                'title' => $request->title,
+                'venue' => $request->venue,
+                'speaker_name' => $request->speaker_name,
+                'topics_count' => count($request->topics),
+                'event_dates' => $inclusiveDates,
+                'event_dates_count' => count($inclusiveDates),
+            ]);
+
+            return redirect()->route('president.events.show', $event->id)
+                ->with('success', 'Evaluation service request submitted successfully with ' . count($inclusiveDates) . ' event dates.');
+        } catch (\Exception $e) {
+            $this->logError('request_evaluation_failed', 'Failed to request evaluation: ' . $e->getMessage(), $e, [
+                'event_id' => $event->id,
+                'event_name' => $event->event_name,
+            ]);
+            
+            return back()->with('error', 'Failed to submit evaluation request.');
+        }
     }
-}
 
     public function destroy(Event $event)
     {
@@ -943,9 +927,6 @@ public function requestEvaluation(Request $request, Event $event)
         ]);
     }
 
-    /**
-     * Helper method to log CRUD and critical actions only
-     */
     private function logAction($action, $description, $details = [])
     {
         try {
@@ -958,9 +939,6 @@ public function requestEvaluation(Request $request, Event $event)
         }
     }
     
-    /**
-     * Helper method to log errors
-     */
     private function logError($action, $description, $exception = null, $details = [])
     {
         try {
