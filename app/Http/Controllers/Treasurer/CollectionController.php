@@ -344,8 +344,8 @@ class CollectionController extends Controller
             
             if ($sendEmail && $student->email) {
                 try {
-                    // ✅ USE QUEUE INSTEAD OF SEND
-                    Mail::to($student->email)->queue(new PaymentReceiptMail($payment));
+                    // ✅ USE send INSTEAD OF SEND
+                    Mail::to($student->email)->send(new PaymentReceiptMail($payment));
                     
                     DB::table('event_student')
                         ->where('event_id', $event->id)
@@ -355,7 +355,7 @@ class CollectionController extends Controller
                     $emailSent = true;
                     
                     // Log email sent
-                    $this->logAction('send_payment_receipt', 'Sent payment receipt email to student (queued)', [
+                    $this->logAction('send_payment_receipt', 'Sent payment receipt email to student (sendd)', [
                         'event_id' => $event->id,
                         'event_name' => $event->event_name,
                         'student_id' => $student->student_id,
@@ -365,7 +365,7 @@ class CollectionController extends Controller
                     ]);
                 } catch (\Exception $e) {
                     Log::warning('Email queuing failed but payment was recorded: ' . $e->getMessage());
-                    $this->logError('email_queuing_failed', 'Failed to queue receipt email', $e, [
+                    $this->logError('email_queuing_failed', 'Failed to send receipt email', $e, [
                         'event_id' => $event->id,
                         'student_id' => $student->student_id,
                         'student_email' => $student->email,
@@ -684,10 +684,10 @@ class CollectionController extends Controller
                     ->first();
             }
 
-            // ✅ USE QUEUE INSTEAD OF SEND
-            Log::info('Queueing email to: ' . $student->email);
+            // ✅ USE send INSTEAD OF SEND
+            Log::info('sending email to: ' . $student->email);
             
-            Mail::to($student->email)->queue(new PaymentReceiptMail($payment));
+            Mail::to($student->email)->send(new PaymentReceiptMail($payment));
             
             // Update sent timestamp
             DB::table('event_student')
@@ -695,10 +695,10 @@ class CollectionController extends Controller
                 ->where('student_id', $studentId)
                 ->update(['receipt_sent_at' => now()]);
             
-            Log::info('Email queued successfully');
+            Log::info('Email sendd successfully');
             
             // Log email resend
-            $this->logAction('resend_payment_receipt', 'Resent payment receipt email to student (queued)', [
+            $this->logAction('resend_payment_receipt', 'Resent payment receipt email to student (sendd)', [
                 'event_id' => $eventId,
                 'student_id' => $studentId,
                 'student_name' => $student->firstname . ' ' . $student->lastname,
@@ -712,18 +712,18 @@ class CollectionController extends Controller
             ]);
             
         } catch (\Exception $e) {
-            Log::error('Failed to queue receipt email', [
+            Log::error('Failed to send receipt email', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
             
-            $this->logError('resend_receipt_email_failed', 'Failed to queue receipt email: ' . $e->getMessage(), $e, [
+            $this->logError('resend_receipt_email_failed', 'Failed to send receipt email: ' . $e->getMessage(), $e, [
                 'event_id' => $eventId,
                 'student_id' => $studentId,
             ]);
             
             return response()->json([
-                'error' => 'Failed to queue email: ' . $e->getMessage()
+                'error' => 'Failed to send email: ' . $e->getMessage()
             ], 500);
         }
     }
