@@ -582,15 +582,14 @@ class ReportController extends Controller
         return $perDateData;
     }
 
-    /**
-     * Calculate category scores from responses with FORCED Roman numeral order
-     */
     private function calculateCategoryScores($evaluation, $responses)
     {
         try {
-            // Get all questions with their categories
+            // Get all questions with their categories - ORDER BY category ID (insertion order)
             $questions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
-                ->with('category')
+                ->with(['category' => function($query) {
+                    $query->orderBy('id', 'asc'); // Force order by category ID (creation order)
+                }])
                 ->where('question_type', 'likert')
                 ->orderBy('order')
                 ->get();
@@ -604,37 +603,20 @@ class ReportController extends Controller
             $categoryCounts = [];
             $questionTotals = [];
             $questionCounts = [];
+            $categoryOrderList = []; // Track order of first appearance (by ID)
             
-            // Define the correct Roman numeral order (FORCED ORDER)
-            $romanOrder = [
-                'I. Information Dissemination',
-                'II. Secretariat',
-                'III. Facilities',
-                'IV. Design of the Event',
-                'V. Outcomes of the Event',
-                'VI. Food',
-                'VII. Resource Speaker',
-                'VIII. Traffic Management'
-            ];
-            
-            // Initialize structure for all categories in Roman order
-            foreach ($romanOrder as $categoryName) {
-                $categoryTotals[$categoryName] = 0;
-                $categoryCounts[$categoryName] = 0;
-                $questionTotals[$categoryName] = [];
-                $questionCounts[$categoryName] = [];
-            }
-            
-            // Also handle any other categories (like 'Other')
+            // Initialize structure - preserve insertion order from category ID
             foreach ($questions as $question) {
                 $categoryName = $question->category ? $question->category->category_name : 'Other';
                 $questionText = $question->question_text;
                 
+                // Record the order of first appearance based on category ID
                 if (!isset($categoryTotals[$categoryName])) {
                     $categoryTotals[$categoryName] = 0;
                     $categoryCounts[$categoryName] = 0;
                     $questionTotals[$categoryName] = [];
                     $questionCounts[$categoryName] = [];
+                    $categoryOrderList[] = $categoryName; // Preserve order
                 }
                 
                 $questionTotals[$categoryName][$questionText] = 0;
@@ -678,51 +660,27 @@ class ReportController extends Controller
                 }
             }
             
-            // Calculate averages in Roman order (FORCED ORDER)
+            // Calculate averages and maintain the original insertion order (by category ID)
             $result = [];
-            
-            // First add categories in the forced Roman order
-            foreach ($romanOrder as $categoryName) {
-                if (isset($categoryTotals[$categoryName]) && $categoryCounts[$categoryName] > 0) {
-                    $categoryAverage = $categoryTotals[$categoryName] / $categoryCounts[$categoryName];
-                    
-                    $questionsArray = [];
-                    if (isset($questionTotals[$categoryName])) {
-                        foreach ($questionTotals[$categoryName] as $questionText => $total) {
-                            $qCount = $questionCounts[$categoryName][$questionText] ?? 0;
-                            if ($qCount > 0) {
-                                $questionsArray[$questionText] = $total / $qCount;
-                            }
+            foreach ($categoryOrderList as $categoryName) {
+                $totalScore = $categoryTotals[$categoryName] ?? 0;
+                $count = $categoryCounts[$categoryName] ?? 0;
+                $categoryAverage = $count > 0 ? $totalScore / $count : 0;
+                
+                $questionsArray = [];
+                if (isset($questionTotals[$categoryName])) {
+                    foreach ($questionTotals[$categoryName] as $questionText => $total) {
+                        $qCount = $questionCounts[$categoryName][$questionText] ?? 0;
+                        if ($qCount > 0) {
+                            $questionsArray[$questionText] = $total / $qCount;
                         }
                     }
-                    
-                    $result[$categoryName] = [
-                        'average' => $categoryAverage,
-                        'questions' => $questionsArray
-                    ];
                 }
-            }
-            
-            // Then add any remaining categories not in Roman order (like 'Other')
-            foreach ($categoryTotals as $categoryName => $totalScore) {
-                if (!isset($result[$categoryName]) && $categoryCounts[$categoryName] > 0) {
-                    $categoryAverage = $totalScore / $categoryCounts[$categoryName];
-                    
-                    $questionsArray = [];
-                    if (isset($questionTotals[$categoryName])) {
-                        foreach ($questionTotals[$categoryName] as $questionText => $total) {
-                            $qCount = $questionCounts[$categoryName][$questionText] ?? 0;
-                            if ($qCount > 0) {
-                                $questionsArray[$questionText] = $total / $qCount;
-                            }
-                        }
-                    }
-                    
-                    $result[$categoryName] = [
-                        'average' => $categoryAverage,
-                        'questions' => $questionsArray
-                    ];
-                }
+                
+                $result[$categoryName] = [
+                    'average' => $categoryAverage,
+                    'questions' => $questionsArray
+                ];
             }
             
             return $result;
@@ -732,7 +690,6 @@ class ReportController extends Controller
             return [];
         }
     }
-
     /**
      * Regenerate report (even if already generated)
      */

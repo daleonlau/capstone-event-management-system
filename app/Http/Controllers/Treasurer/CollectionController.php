@@ -39,7 +39,6 @@ class CollectionController extends Controller
      */
     public function index()
     {
-        // Log all events first
         $allEvents = Event::where('user_id', $this->organizationId)
             ->with(['eventType'])
             ->get();
@@ -55,7 +54,6 @@ class CollectionController extends Controller
             ])
         ]);
     
-        // Now get only approved payment events
         $events = Event::where('user_id', $this->organizationId)
             ->where('approval_status', 'approved')
             ->where('payment', 'Payment')
@@ -72,7 +70,6 @@ class CollectionController extends Controller
         ]);
     
         $mappedEvents = $events->map(function ($event) {
-            // Convert course IDs to names for filtering
             $courseNames = [];
             if (!empty($event->courses) && is_array($event->courses)) {
                 $courseNames = Course::whereIn('id', $event->courses)
@@ -80,7 +77,6 @@ class CollectionController extends Controller
                     ->toArray();
             }
             
-            // Get target students count based on event filters
             $targetStudents = Student::where('user_id', $this->organizationId);
             
             if (!empty($courseNames)) {
@@ -92,12 +88,10 @@ class CollectionController extends Controller
             
             $targetCount = $targetStudents->count();
             
-            // Get paid students count
             $paidCount = EventStudent::where('event_id', $event->id)
                 ->where('status', 'Paid')
                 ->count();
             
-            // Get collected amount
             $collectedAmount = EventStudent::where('event_id', $event->id)
                 ->where('status', 'Paid')
                 ->sum('amount_paid');
@@ -130,7 +124,6 @@ class CollectionController extends Controller
      */
     public function show(Event $event, Request $request)
     {
-        // Check if event belongs to this organization
         if ($event->user_id !== $this->organizationId) {
             $this->logSecurity('unauthorized_event_access', 'Unauthorized attempt to view event collections', [
                 'event_id' => $event->id,
@@ -139,13 +132,11 @@ class CollectionController extends Controller
             abort(403);
         }
 
-        // Ensure this is a payment event
         if ($event->payment !== 'Payment') {
             return redirect()->route('treasurer.collections.index')
                 ->with('error', 'This event does not require payment collections.');
         }
 
-        // Convert course IDs to names
         $courseNames = [];
         if (!empty($event->courses) && is_array($event->courses)) {
             $courseNames = Course::whereIn('id', $event->courses)
@@ -153,10 +144,8 @@ class CollectionController extends Controller
                 ->toArray();
         }
 
-        // Get year levels
         $yearLevels = $event->year_levels ?? [];
         
-        // Build query for eligible students
         $query = Student::where('user_id', $this->organizationId);
 
         if (!empty($courseNames)) {
@@ -166,7 +155,6 @@ class CollectionController extends Controller
             $query->whereIn('yearlevel', $yearLevels);
         }
 
-        // Search functionality
         if ($request->search) {
             $search = $request->search;
             $query->where(function($q) use ($search) {
@@ -176,18 +164,10 @@ class CollectionController extends Controller
             });
         }
 
-        // Get total count before pagination
         $totalStudents = $query->count();
-
-        // Get students with pagination
         $students = $query->orderBy('created_at', 'desc')->paginate(15);
+        $payments = EventStudent::where('event_id', $event->id)->get()->keyBy('student_id');
 
-        // Get payment data from event_student
-        $payments = EventStudent::where('event_id', $event->id)
-            ->get()
-            ->keyBy('student_id');
-
-        // Map students with payment status and receipt info
         $students->getCollection()->transform(function ($student) use ($event, $payments) {
             $payment = $payments->get($student->student_id);
             
@@ -207,7 +187,6 @@ class CollectionController extends Controller
             ];
         });
 
-        // Get payment statistics
         $paidCount = EventStudent::where('event_id', $event->id)
             ->where('status', 'Paid')
             ->count();
@@ -255,28 +234,19 @@ class CollectionController extends Controller
     public function pay(Request $request, Event $event, $studentId)
     {
         try {
-            // Check if event belongs to this organization
             if ($event->user_id !== $this->organizationId) {
-                $this->logSecurity('unauthorized_payment', 'Unauthorized attempt to record payment', [
-                    'event_id' => $event->id,
-                    'event_name' => $event->event_name,
-                    'student_id' => $studentId,
-                ]);
                 return response()->json(['error' => 'Unauthorized access.'], 403);
             }
 
-            // Ensure this is a payment event
             if ($event->payment !== 'Payment') {
                 return response()->json(['error' => 'This event does not require payments.'], 400);
             }
 
-            // Validate request
             $request->validate([
                 'send_email' => 'nullable|boolean',
                 'notes' => 'nullable|string|max:255',
             ]);
 
-            // Check if student exists
             $student = Student::where('student_id', $studentId)
                 ->where('user_id', $this->organizationId)
                 ->first();
@@ -287,20 +257,20 @@ class CollectionController extends Controller
 
             DB::beginTransaction();
 
-            // Generate unique receipt number
-            $receiptNumber = $this->generateReceiptNumber();
+            $treasurer = Auth::guard('org_user')->user();
+            
+            if (!$treasurer) {
+                return response()->json(['error' => 'Treasurer not found.'], 401);
+            }
 
-            // Store old payment data if exists
+            $receiptNumber = $this->generateUniqueReceiptNumber();
+
             $oldPayment = EventStudent::where('event_id', $event->id)
                 ->where('student_id', $studentId)
                 ->first();
             
             $wasPreviouslyPaid = $oldPayment && $oldPayment->status === 'Paid';
 
-            // Get the currently logged-in treasurer
-            $treasurer = Auth::guard('org_user')->user();
-
-            // Use updateOrCreateComposite
             $payment = EventStudent::updateOrCreateComposite(
                 $event->id,
                 $studentId,
@@ -316,32 +286,18 @@ class CollectionController extends Controller
 
             DB::commit();
             
-            // Log payment recording
             $this->logAction('record_payment', 'Recorded payment for student: ' . $student->firstname . ' ' . $student->lastname, [
                 'event_id' => $event->id,
-                'event_name' => $event->event_name,
                 'student_id' => $student->student_id,
-                'student_name' => $student->firstname . ' ' . $student->lastname,
-                'student_email' => $student->email,
-                'amount' => $event->event_fee,
                 'receipt_number' => $receiptNumber,
-                'payment_notes' => $request->notes,
-                'was_previously_paid' => $wasPreviouslyPaid,
-                'payment_method' => 'cash',
                 'processed_by_treasurer' => $treasurer->name,
                 'treasurer_id' => $treasurer->id,
             ]);
 
-            // Generate PDF
             try {
                 $this->generateReceiptPDF($payment, $student, $event);
             } catch (\Exception $e) {
                 Log::warning('PDF generation failed but payment was recorded: ' . $e->getMessage());
-                $this->logError('pdf_generation_failed', 'PDF generation failed for receipt: ' . $receiptNumber, $e, [
-                    'event_id' => $event->id,
-                    'student_id' => $student->student_id,
-                    'receipt_number' => $receiptNumber,
-                ]);
             }
 
             $sendEmail = $request->has('send_email') ? filter_var($request->send_email, FILTER_VALIDATE_BOOLEAN) : true;
@@ -358,24 +314,14 @@ class CollectionController extends Controller
                     
                     $emailSent = true;
                     
-                    // Log email sent
                     $this->logAction('send_payment_receipt', 'Sent payment receipt email to student', [
-                        'event_id' => $event->id,
-                        'event_name' => $event->event_name,
                         'student_id' => $student->student_id,
-                        'student_name' => $student->firstname . ' ' . $student->lastname,
                         'student_email' => $student->email,
                         'receipt_number' => $receiptNumber,
                         'processed_by_treasurer' => $treasurer->name,
                     ]);
                 } catch (\Exception $e) {
                     Log::warning('Email sending failed but payment was recorded: ' . $e->getMessage());
-                    $this->logError('email_sending_failed', 'Failed to send receipt email', $e, [
-                        'event_id' => $event->id,
-                        'student_id' => $student->student_id,
-                        'student_email' => $student->email,
-                        'receipt_number' => $receiptNumber,
-                    ]);
                 }
             }
 
@@ -397,13 +343,6 @@ class CollectionController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Payment failed: ' . $e->getMessage());
-            
-            $this->logError('record_payment_failed', 'Failed to record payment: ' . $e->getMessage(), $e, [
-                'event_id' => $event->id ?? null,
-                'event_name' => $event->event_name ?? null,
-                'student_id' => $studentId,
-            ]);
-            
             return response()->json(['error' => 'Payment failed: ' . $e->getMessage()], 500);
         }
     }
@@ -411,96 +350,65 @@ class CollectionController extends Controller
     /**
      * Generate unique receipt number
      */
-    private function generateReceiptNumber()
+    private function generateUniqueReceiptNumber()
     {
         $year = date('Y');
         $month = date('m');
         $prefix = "REC-{$year}{$month}-";
         
-        // Get the latest receipt number for this month/year
         $lastReceipt = EventStudent::where('receipt_number', 'like', $prefix . '%')
-            ->orderBy('created_at', 'desc')
+            ->orderByRaw('CAST(SUBSTRING(receipt_number, -4) AS UNSIGNED) DESC')
             ->first();
 
         if ($lastReceipt && $lastReceipt->receipt_number) {
-            // Extract the number part (last 4 digits)
             $lastNumber = (int) substr($lastReceipt->receipt_number, -4);
-            $newNumber = str_pad($lastNumber + 1, 4, '0', STR_PAD_LEFT);
+            $newNumber = $lastNumber + 1;
         } else {
-            $newNumber = '0001';
+            $newNumber = 1;
         }
         
-        // Generate the full receipt number
-        $newReceiptNumber = $prefix . $newNumber;
-        
-        // Safety check - if this number already exists, keep incrementing
-        $counter = 0;
-        while (EventStudent::where('receipt_number', $newReceiptNumber)->exists() && $counter < 100) {
-            $newNumber = str_pad((int)$newNumber + 1, 4, '0', STR_PAD_LEFT);
-            $newReceiptNumber = $prefix . $newNumber;
-            $counter++;
-        }
+        $newReceiptNumber = $prefix . str_pad($newNumber, 4, '0', STR_PAD_LEFT);
         
         Log::info('Generated receipt number: ' . $newReceiptNumber);
         
         return $newReceiptNumber;
     }
 
-    /**
-     * Generate receipt PDF
-     */
     private function generateReceiptPDF($payment, $student, $event)
     {
         try {
             Log::info('Generating PDF for receipt: ' . $payment->receipt_number);
             
-            // Check if view exists
             if (!view()->exists('pdfs.receipt')) {
                 Log::error('PDF view not found');
                 return false;
             }
             
             $treasurer = Auth::guard('org_user')->user();
+            $organization = Organization::find($event->user_id);
             
-            // Load PDF view
             $pdf = Pdf::loadView('pdfs.receipt', [
                 'payment' => $payment,
                 'student' => $student,
                 'event' => $event,
                 'treasurer' => $treasurer,
+                'organization' => $organization,
+                'organizationName' => $organization ? $organization->name : 'Organization',
             ]);
             
             $pdf->setPaper('A4', 'portrait');
             
-            // Create receipts directory if it doesn't exist
             $receiptsDir = storage_path('app/public/receipts');
             if (!file_exists($receiptsDir)) {
                 mkdir($receiptsDir, 0755, true);
-                Log::info('Created receipts directory');
             }
             
-            // Check if directory is writable
-            if (!is_writable($receiptsDir)) {
-                Log::error('Receipts directory is not writable: ' . $receiptsDir);
-                return false;
-            }
-            
-            // Save PDF file
             $pdfFileName = 'receipt-' . $payment->receipt_number . '.pdf';
             $pdfPath = 'receipts/' . $pdfFileName;
             $fullPath = storage_path('app/public/' . $pdfPath);
             
-            $pdfOutput = $pdf->output();
-            $bytesWritten = file_put_contents($fullPath, $pdfOutput);
+            $pdf->save($fullPath);
             
-            if ($bytesWritten === false || $bytesWritten === 0) {
-                Log::error('Failed to write PDF file');
-                return false;
-            }
-            
-            Log::info('PDF saved successfully: ' . $fullPath . ' (' . $bytesWritten . ' bytes)');
-            
-            // Update PDF path in database
             DB::table('event_student')
                 ->where('event_id', $payment->event_id)
                 ->where('student_id', $payment->student_id)
@@ -510,7 +418,6 @@ class CollectionController extends Controller
             
         } catch (\Exception $e) {
             Log::error('PDF generation error: ' . $e->getMessage());
-            Log::error($e->getTraceAsString());
             return false;
         }
     }
@@ -538,14 +445,10 @@ class CollectionController extends Controller
                 return response()->json(['error' => 'Unauthorized access.'], 403);
             }
 
-            // If no PDF path, generate one on the fly
             if (!$payment->receipt_pdf_path || !file_exists(storage_path('app/public/' . $payment->receipt_pdf_path))) {
                 $student = Student::where('student_id', $studentId)->first();
                 $event = Event::find($eventId);
-                
                 $this->generateReceiptPDF($payment, $student, $event);
-                
-                // Refresh payment to get updated path
                 $payment = EventStudent::where('event_id', $eventId)
                     ->where('student_id', $studentId)
                     ->first();
@@ -561,7 +464,6 @@ class CollectionController extends Controller
                 return response()->json(['error' => 'Receipt file not found on disk.'], 404);
             }
 
-            // Log receipt download
             $this->logAction('download_receipt', 'Downloaded payment receipt', [
                 'event_id' => $eventId,
                 'student_id' => $studentId,
@@ -572,10 +474,6 @@ class CollectionController extends Controller
             
         } catch (\Exception $e) {
             Log::error('Download failed: ' . $e->getMessage());
-            $this->logError('receipt_download_failed', 'Failed to download receipt: ' . $e->getMessage(), $e, [
-                'event_id' => $eventId,
-                'student_id' => $studentId,
-            ]);
             return response()->json(['error' => 'Download failed: ' . $e->getMessage()], 500);
         }
     }
@@ -603,14 +501,10 @@ class CollectionController extends Controller
                 return response()->json(['error' => 'Unauthorized access.'], 403);
             }
 
-            // If no PDF path, generate one on the fly
             if (!$payment->receipt_pdf_path || !file_exists(storage_path('app/public/' . $payment->receipt_pdf_path))) {
                 $student = Student::where('student_id', $studentId)->first();
                 $event = Event::find($eventId);
-                
                 $this->generateReceiptPDF($payment, $student, $event);
-                
-                // Refresh payment to get updated path
                 $payment = EventStudent::where('event_id', $eventId)
                     ->where('student_id', $studentId)
                     ->first();
@@ -626,7 +520,6 @@ class CollectionController extends Controller
                 return response()->json(['error' => 'Receipt file not found on disk.'], 404);
             }
 
-            // Return PDF for viewing in browser
             return response()->file($fullPath, [
                 'Content-Type' => 'application/pdf',
                 'Content-Disposition' => 'inline; filename="receipt-' . $payment->receipt_number . '.pdf"'
@@ -634,10 +527,6 @@ class CollectionController extends Controller
             
         } catch (\Exception $e) {
             Log::error('View receipt failed: ' . $e->getMessage());
-            $this->logError('receipt_view_failed', 'Failed to view receipt: ' . $e->getMessage(), $e, [
-                'event_id' => $eventId,
-                'student_id' => $studentId,
-            ]);
             return response()->json(['error' => 'View receipt failed: ' . $e->getMessage()], 500);
         }
     }
@@ -649,21 +538,16 @@ class CollectionController extends Controller
     {
         try {
             Log::info('========== RESEND RECEIPT EMAIL STARTED ==========');
-            Log::info('Event ID: ' . $eventId);
-            Log::info('Student ID: ' . $studentId);
 
-            // Find the payment with all relationships loaded
             $payment = EventStudent::with(['event', 'student', 'treasurer'])
                 ->where('event_id', $eventId)
                 ->where('student_id', $studentId)
                 ->first();
 
             if (!$payment) {
-                Log::error('Payment not found');
                 return response()->json(['error' => 'Payment not found.'], 404);
             }
 
-            // Check if payment belongs to this organization
             if ($payment->event->user_id !== $this->organizationId) {
                 $this->logSecurity('unauthorized_email_resend', 'Unauthorized attempt to resend receipt email', [
                     'event_id' => $eventId,
@@ -675,42 +559,24 @@ class CollectionController extends Controller
 
             $student = $payment->student;
 
-            if (!$student) {
-                Log::error('Student not found');
-                return response()->json(['error' => 'Student not found.'], 404);
-            }
-
-            if (!$student->email) {
-                Log::error('Student has no email');
+            if (!$student || !$student->email) {
                 return response()->json(['error' => 'Student does not have an email address.'], 400);
             }
 
-            // Generate PDF if it doesn't exist
             if (!$payment->receipt_pdf_path || !file_exists(storage_path('app/public/' . $payment->receipt_pdf_path))) {
-                Log::info('Generating PDF for resend');
-                
                 $student = Student::where('student_id', $studentId)->first();
                 $event = Event::find($eventId);
-                
-                $pdfGenerated = $this->generateReceiptPDF($payment, $student, $event);
-                
-                if (!$pdfGenerated) {
-                    Log::warning('PDF generation failed, but will still try to send email');
-                }
-                
-                // Refresh payment to get updated path
+                $this->generateReceiptPDF($payment, $student, $event);
                 $payment = EventStudent::with(['event', 'student', 'treasurer'])
                     ->where('event_id', $eventId)
                     ->where('student_id', $studentId)
                     ->first();
             }
 
-            // Send the email
             Log::info('Sending email to: ' . $student->email);
             
             Mail::to($student->email)->send(new PaymentReceiptMail($payment));
             
-            // Update sent timestamp
             DB::table('event_student')
                 ->where('event_id', $eventId)
                 ->where('student_id', $studentId)
@@ -718,11 +584,9 @@ class CollectionController extends Controller
             
             Log::info('Email sent successfully');
             
-            // Log email resend
             $this->logAction('resend_payment_receipt', 'Resent payment receipt email to student', [
                 'event_id' => $eventId,
                 'student_id' => $studentId,
-                'student_name' => $student->firstname . ' ' . $student->lastname,
                 'student_email' => $student->email,
                 'receipt_number' => $payment->receipt_number,
             ]);
@@ -733,16 +597,7 @@ class CollectionController extends Controller
             ]);
             
         } catch (\Exception $e) {
-            Log::error('Failed to resend receipt email', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-            
-            $this->logError('resend_receipt_email_failed', 'Failed to resend receipt email: ' . $e->getMessage(), $e, [
-                'event_id' => $eventId,
-                'student_id' => $studentId,
-            ]);
-            
+            Log::error('Failed to resend receipt email: ' . $e->getMessage());
             return response()->json([
                 'error' => 'Failed to send email: ' . $e->getMessage()
             ], 500);
@@ -775,7 +630,6 @@ class CollectionController extends Controller
                 ->with('error', 'This event does not require payment collections.');
         }
 
-        // Convert course IDs to names for filtering
         $courseNames = [];
         if (!empty($event->courses) && is_array($event->courses)) {
             $courseNames = Course::whereIn('id', $event->courses)
@@ -783,7 +637,6 @@ class CollectionController extends Controller
                 ->toArray();
         }
 
-        // Get all eligible students
         $studentsQuery = Student::where('user_id', $this->organizationId);
 
         if (!empty($courseNames)) {
@@ -794,21 +647,16 @@ class CollectionController extends Controller
         }
 
         $totalStudents = $studentsQuery->count();
-
-        // Get payment statistics
         $payments = EventStudent::where('event_id', $event->id)->get();
         
         $paidCount = $payments->where('status', 'Paid')->count();
         $pendingCount = $payments->where('status', 'Pending')->count();
         $notPaidCount = $totalStudents - $paidCount - $pendingCount;
-        
         $totalCollected = $payments->where('status', 'Paid')->sum('amount_paid');
         $expectedTotal = $totalStudents * $event->event_fee;
 
-        // Get receipts count
         $receiptCount = $payments->whereNotNull('receipt_number')->count();
 
-        // Get payments by date for chart
         $paymentsByDate = EventStudent::where('event_id', $event->id)
             ->where('status', 'Paid')
             ->whereNotNull('updated_at')
@@ -817,7 +665,6 @@ class CollectionController extends Controller
             ->orderBy('date', 'asc')
             ->get();
 
-        // Log summary view
         $this->logAction('view_collection_summary', 'Viewed collection summary for event: ' . $event->event_name, [
             'event_id' => $event->id,
             'event_name' => $event->event_name,
@@ -851,9 +698,6 @@ class CollectionController extends Controller
         ]);
     }
 
-    /**
-     * Helper method to log CRUD and critical actions only
-     */
     private function logAction($action, $description, $details = [])
     {
         try {
@@ -866,9 +710,6 @@ class CollectionController extends Controller
         }
     }
     
-    /**
-     * Helper method to log errors
-     */
     private function logError($action, $description, $exception = null, $details = [])
     {
         try {
@@ -878,9 +719,6 @@ class CollectionController extends Controller
         }
     }
     
-    /**
-     * Helper method to log security events
-     */
     private function logSecurity($action, $description, $details = [])
     {
         try {

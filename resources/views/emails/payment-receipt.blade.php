@@ -24,10 +24,15 @@
             font-weight: bold;
             color: #10b981;
         }
-        .school-name {
+        .organization-name {
             font-size: 18px;
             font-weight: bold;
             color: #065f46;
+            margin: 5px 0;
+        }
+        .school-name {
+            font-size: 14px;
+            color: #047857;
             margin: 5px 0;
         }
         .receipt-title {
@@ -107,11 +112,20 @@
             color: #059669;
             margin-top: 10px;
         }
+        .org-footer {
+            background-color: #f0fdf4;
+            padding: 8px;
+            border-radius: 6px;
+            margin-top: 10px;
+            text-align: center;
+            font-size: 11px;
+        }
     </style>
 </head>
 <body>
     <div class="header">
-        <div class="logo">Event Flow</div>
+        <div class="logo">EventFlow</div>
+        <div class="organization-name">{{ $organizationName }}</div>
         <div class="school-name">Caraga State University - Cabadbaran Campus</div>
         <div class="receipt-title">OFFICIAL RECEIPT</div>
     </div>
@@ -171,6 +185,12 @@
         Thank you for your payment!
     </div>
 
+    <!-- Organization Footer -->
+    <div class="org-footer">
+        <strong>{{ $organizationName }}</strong><br>
+        This is an official receipt from {{ $organizationName }}. Please keep this for your records.
+    </div>
+
     <!-- Contact Info with Treasurer's Email -->
     <div class="contact-info">
         <p><strong>Processed by:</strong> {{ $treasurer->name ?? 'Treasurer' }}</p>
@@ -183,8 +203,8 @@
     </div>
 
     <div class="footer">
-        <p>This is an official receipt from Event Flow. Please keep this for your records.</p>
-        <p>For any inquiries, please contact the organization treasurer.</p>
+        <p>This is a system-generated receipt from Event Flow.</p>
+        <p>Generated on: {{ now()->format('F d, Y h:i A') }}</p>
     </div>
 </body>
-</html>
+</html> 

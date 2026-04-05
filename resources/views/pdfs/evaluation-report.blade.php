@@ -791,7 +791,7 @@
             </div>
 
             <div class="footer">
-                This is a system-generated report from CSUCC EMS. For official use only.<br>
+                This is a system-generated report from EventFLow. For official use only.<br>
                 Generated on {{ $report_date }}
             </div>
         @endforeach

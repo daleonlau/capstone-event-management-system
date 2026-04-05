@@ -3,6 +3,7 @@
 namespace App\Mail;
 
 use App\Models\EventStudent;
+use App\Models\Organization;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
@@ -18,6 +19,8 @@ class PaymentReceiptMail extends Mailable
     public $student;
     public $event;
     public $treasurer;
+    public $organization;
+    public $organizationName;
 
     public function __construct(EventStudent $payment)
     {
@@ -25,11 +28,15 @@ class PaymentReceiptMail extends Mailable
         $this->student = $payment->student;
         $this->event = $payment->event;
         $this->treasurer = $payment->treasurer;
+        
+        // Get organization details
+        $this->organization = Organization::find($payment->event->user_id);
+        $this->organizationName = $this->organization ? $this->organization->name : 'Organization';
     }
 
     public function envelope(): Envelope
     {
-        // Set reply-to based on the treasurer who processed the payment
+        // Set reply-to to the treasurer who processed the payment
         $replyToEmail = $this->treasurer?->email ?? config('mail.from.address');
         
         return new Envelope(
@@ -47,6 +54,8 @@ class PaymentReceiptMail extends Mailable
                 'student' => $this->student,
                 'event' => $this->event,
                 'treasurer' => $this->treasurer,
+                'organization' => $this->organization,
+                'organizationName' => $this->organizationName,
             ]
         );
     }
