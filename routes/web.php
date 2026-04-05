@@ -346,3 +346,37 @@ Route::get('/test-ai-direct', function() {
         return response()->json(['error' => $e->getMessage()], 500);
     }
 });
+
+Route::get('/debug-comments/{evaluationId}', function($evaluationId) {
+    $evaluation = App\Models\Evaluation::find($evaluationId);
+    
+    $query = App\Models\EvaluationResponse::where('evaluation_id', $evaluationId);
+    $responses = $query->get();
+    
+    $comments = [];
+    foreach ($responses as $response) {
+        $commentResponses = $response->comment_responses;
+        if (is_string($commentResponses)) {
+            $commentResponses = json_decode($commentResponses, true);
+        }
+        if (is_array($commentResponses)) {
+            foreach ($commentResponses as $comment) {
+                if (!empty($comment) && is_string($comment) && strlen(trim($comment)) > 0) {
+                    $comments[] = trim($comment);
+                }
+            }
+        }
+    }
+    
+    return response()->json([
+        'total_responses' => $responses->count(),
+        'comments_found' => count($comments),
+        'comments' => $comments,
+        'raw_responses' => $responses->map(function($r) {
+            return [
+                'id' => $r->id,
+                'comment_responses' => $r->comment_responses
+            ];
+        })
+    ]);
+});
