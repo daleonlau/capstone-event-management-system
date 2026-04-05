@@ -6,8 +6,6 @@
     <title inertia>{{ config('app.name', 'Laravel') }}</title>
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700&display=swap" rel="stylesheet" />
-    <meta name="csrf-token" content="{{ csrf_token() }}">
-    
     @vite('resources/js/app.js')
     @inertiaHead
 </head>

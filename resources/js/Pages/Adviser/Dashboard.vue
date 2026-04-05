@@ -172,15 +172,16 @@
         </div>
       </div>
 
-      <!-- ==================== AI INSIGHTS SECTION (ADDED) ==================== -->
-      <div v-if="aiInsightsList && aiInsightsList.length > 0">
-        <div class="flex items-center justify-between mb-5">
+      <!-- ==================== AI INSIGHTS SECTION ==================== -->
+      <!-- This is the button/section you were missing! -->
+      <div v-if="aiInsightsList && aiInsightsList.length > 0" class="mt-6">
+        <div class="flex items-center justify-between mb-4">
           <div>
             <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
               <span class="w-2 h-2 bg-purple-500 rounded-full"></span>
               AI-Powered Evaluation Insights
             </h2>
-            <p class="text-sm text-gray-500 mt-1">Click on any evaluation to view detailed AI analysis</p>
+            <p class="text-sm text-gray-500">Click on any evaluation card to view detailed AI analysis</p>
           </div>
           <Link href="/adviser/evaluations" class="text-sm text-purple-600 hover:text-purple-700">
             View all evaluations →
@@ -190,7 +191,7 @@
         <div class="grid grid-cols-1 gap-4">
           <div v-for="insight in aiInsightsList" :key="insight.id" 
                @click="openInsightModal(insight)"
-               class="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-all duration-200 cursor-pointer group">
+               class="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-all duration-200 cursor-pointer group border border-gray-100">
             <div class="p-5">
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-4 flex-1">
@@ -252,6 +253,17 @@
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- Show message when no insights available -->
+      <div v-else-if="stats.finished_events > 0 && aiInsightsList.length === 0" class="bg-white rounded-2xl shadow-lg p-12 text-center">
+        <div class="w-20 h-20 mx-auto bg-gray-100 rounded-full flex items-center justify-center mb-4">
+          <svg class="w-10 h-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+        </div>
+        <h3 class="text-base font-medium text-gray-900 mb-1">No AI Insights Available Yet</h3>
+        <p class="text-sm text-gray-500 max-w-md mx-auto">Complete evaluations for your finished events and generate AI insights to see analysis here.</p>
       </div>
 
       <!-- Approval Trends Chart -->
@@ -320,7 +332,7 @@
       </div>
     </div>
 
-    <!-- ==================== AI INSIGHTS MODAL (ADDED) ==================== -->
+    <!-- ==================== AI INSIGHTS MODAL ==================== -->
     <Teleport to="body">
       <div v-if="showInsightModal" class="fixed inset-0 z-50 overflow-y-auto" @click.self="closeInsightModal">
         <div class="fixed inset-0 bg-black/50 backdrop-blur-sm"></div>
@@ -369,9 +381,8 @@
               </nav>
             </div>
 
-            <!-- Content -->
+            <!-- Content - Overview Tab -->
             <div class="px-6 py-6 max-h-[65vh] overflow-y-auto">
-              <!-- Overview Tab -->
               <div v-if="modalTab === 'overview'" class="space-y-5">
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div class="bg-emerald-50 rounded-lg p-3 text-center">
@@ -521,7 +532,7 @@
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
                   <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                  <span class="text-xs text-gray-500">Analyzed: {{ formatAnalyzedDate(selectedInsight?.analyzed_at) }}</span>
+                  <span class="text-xs text-gray-500">Analyzed: {{ formatDate(selectedInsight?.analyzed_at) }}</span>
                 </div>
                 <button @click="closeInsightModal" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition text-sm">
                   Close
@@ -565,6 +576,7 @@ let approvalTrendsChartInstance = null;
 
 // Modal functions
 function openInsightModal(insight) {
+console.log('Opening modal for:', insight);
 selectedInsight.value = insight;
 modalTab.value = 'overview';
 showInsightModal.value = true;
@@ -576,7 +588,7 @@ selectedInsight.value = null;
 modalTab.value = 'overview';
 }
 
-// Helper functions for insights
+// Helper functions
 function getInsightDotColor(score) {
 if (score >= 4) return 'bg-green-500';
 if (score >= 3) return 'bg-yellow-500';
@@ -595,7 +607,7 @@ if (probability >= 0.4) return 'text-yellow-600';
 return 'text-red-600';
 }
 
-function formatAnalyzedDate(date) {
+function formatDate(date) {
 if (!date) return 'N/A';
 return new Date(date).toLocaleDateString('en-US', {
   year: 'numeric',

@@ -49,7 +49,7 @@ class DashboardController extends Controller
     {
         $user = Auth::guard('org_user')->user();
         
-        // ==================== BASIC STATS (Organization Only) ====================
+        // ==================== BASIC STATS ====================
         $totalEvents = Event::where('user_id', $this->organizationId)->count();
         $pendingEvents = Event::where('user_id', $this->organizationId)
             ->where('status', 'Pending')->count();
@@ -59,7 +59,6 @@ class DashboardController extends Controller
             ->where('status', 'Finished')->count();
         $totalStudents = Student::where('user_id', $this->organizationId)->count();
 
-        // Events by approval status
         $pendingDocument = Event::where('user_id', $this->organizationId)
             ->where('approval_status', 'pending_document')->count();
         $pendingApproval = Event::where('user_id', $this->organizationId)
@@ -97,7 +96,7 @@ class DashboardController extends Controller
                 ];
             });
 
-        // ==================== EVENT TRENDS (Last 6 months) ====================
+        // ==================== EVENT TRENDS ====================
         $eventTrends = Event::where('user_id', $this->organizationId)
             ->where('created_at', '>=', now()->subMonths(6))
             ->select(
@@ -108,86 +107,67 @@ class DashboardController extends Controller
             ->orderBy('month', 'asc')
             ->get();
 
-        // ==================== EVALUATION RESPONSE TRENDS ====================
-        $evaluationTrends = Evaluation::whereHas('event', function($q) {
-                $q->where('user_id', $this->organizationId);
-            })
-            ->where('created_at', '>=', now()->subMonths(6))
-            ->select(
-                DB::raw('DATE_FORMAT(created_at, "%Y-%m") as month'),
-                DB::raw('SUM(total_responses) as total_responses')
-            )
-            ->groupBy('month')
-            ->orderBy('month', 'asc')
-            ->get();
-
-        // ==================== AI INSIGHTS (Organization Only) ====================
+        // ==================== AI INSIGHTS - SIMPLIFIED ====================
+        // Just get ALL AI analyses for this organization's evaluations
         $aiInsightsList = [];
         
         try {
-            // Get finished events that have evaluations with responses
-            $finishedEventsWithEvals = Event::where('user_id', $this->organizationId)
-                ->where('status', 'Finished')
-                ->whereHas('evaluations', function($q) {
-                    $q->where('total_responses', '>', 0);
+            $analyses = AIAnalysis::whereHas('evaluation.event', function($q) {
+                    $q->where('user_id', $this->organizationId);
                 })
-                ->with(['evaluations'])
+                ->whereNull('event_date')
+                ->with(['evaluation.event'])
                 ->orderBy('created_at', 'desc')
                 ->get();
             
-            foreach ($finishedEventsWithEvals as $event) {
-                foreach ($event->evaluations as $evaluation) {
-                    // Get AI analysis for this evaluation
-                    $aiAnalysis = AIAnalysis::where('evaluation_id', $evaluation->id)
-                        ->whereNull('event_date')
-                        ->latest()
-                        ->first();
-                    
-                    if ($aiAnalysis) {
-                        // Safely decode JSON data
-                        $sentimentAnalysis = $this->safeJsonDecode($aiAnalysis->sentiment_analysis);
-                        $recommendations = $this->safeJsonDecode($aiAnalysis->recommendations);
-                        $strengths = $this->safeJsonDecode($aiAnalysis->strengths);
-                        $weaknesses = $this->safeJsonDecode($aiAnalysis->weaknesses);
-                        $categoryBreakdown = $this->safeJsonDecode($aiAnalysis->category_breakdown);
-                        
-                        // Calculate response rate
-                        $eventDates = $evaluation->event_dates ?: [];
-                        $totalStudentsCount = EventStudent::where('event_id', $event->id)->count();
-                        $totalGuestsCount = EventGuest::where('event_id', $event->id)->count();
-                        $totalExpected = ($totalStudentsCount * max(count($eventDates), 1)) + $totalGuestsCount;
-                        $responseRate = $totalExpected > 0 ? round(($evaluation->total_responses / $totalExpected) * 100, 1) : 0;
-                        
-                        $aiInsightsList[] = [
-                            'id' => $evaluation->id,
-                            'evaluation_id' => $evaluation->id,
-                            'event_id' => $event->id,
-                            'event_name' => $event->event_name,
-                            'evaluation_title' => $evaluation->title,
-                            'total_responses' => $evaluation->total_responses,
-                            'response_rate' => $responseRate,
-                            'analyzed_at' => $aiAnalysis->analyzed_at,
-                            'predicted_satisfaction' => $aiAnalysis->predicted_satisfaction,
-                            'success_probability' => $aiAnalysis->success_probability,
-                            'positive_percentage' => $sentimentAnalysis['positive_percentage'] ?? 0,
-                            'negative_percentage' => $sentimentAnalysis['negative_percentage'] ?? 0,
-                            'neutral_percentage' => $sentimentAnalysis['neutral_percentage'] ?? 0,
-                            'strengths' => array_slice($strengths, 0, 5),
-                            'weaknesses' => array_slice($weaknesses, 0, 5),
-                            'recommendations' => is_array($recommendations) ? array_slice($recommendations, 0, 5) : [],
-                            'category_breakdown' => $categoryBreakdown,
-                            'common_themes' => array_slice($sentimentAnalysis['common_themes'] ?? [], 0, 8),
-                            'sample_positive_comments' => array_slice($sentimentAnalysis['positive_comments'] ?? [], 0, 5),
-                            'sample_negative_comments' => array_slice($sentimentAnalysis['negative_comments'] ?? [], 0, 5),
-                        ];
-                    }
-                }
+            foreach ($analyses as $analysis) {
+                $evaluation = $analysis->evaluation;
+                $event = $evaluation->event;
+                
+                $sentimentAnalysis = $this->safeJsonDecode($analysis->sentiment_analysis);
+                $recommendations = $this->safeJsonDecode($analysis->recommendations);
+                $strengths = $this->safeJsonDecode($analysis->strengths);
+                $weaknesses = $this->safeJsonDecode($analysis->weaknesses);
+                $categoryBreakdown = $this->safeJsonDecode($analysis->category_breakdown);
+                
+                $eventDates = $evaluation->event_dates ?: [];
+                $totalStudentsCount = EventStudent::where('event_id', $event->id)->count();
+                $totalGuestsCount = EventGuest::where('event_id', $event->id)->count();
+                $totalExpected = ($totalStudentsCount * max(count($eventDates), 1)) + $totalGuestsCount;
+                $responseRate = $totalExpected > 0 ? round(($evaluation->total_responses / $totalExpected) * 100, 1) : 0;
+                
+                $aiInsightsList[] = [
+                    'id' => $evaluation->id,
+                    'evaluation_id' => $evaluation->id,
+                    'event_id' => $event->id,
+                    'event_name' => $event->event_name,
+                    'event_status' => $event->status,
+                    'evaluation_title' => $evaluation->title,
+                    'total_responses' => $evaluation->total_responses,
+                    'response_rate' => $responseRate,
+                    'analyzed_at' => $analysis->analyzed_at,
+                    'predicted_satisfaction' => $analysis->predicted_satisfaction ?? 0,
+                    'success_probability' => $analysis->success_probability ?? 0,
+                    'positive_percentage' => $sentimentAnalysis['positive_percentage'] ?? 0,
+                    'negative_percentage' => $sentimentAnalysis['negative_percentage'] ?? 0,
+                    'neutral_percentage' => $sentimentAnalysis['neutral_percentage'] ?? 0,
+                    'strengths' => array_slice($strengths, 0, 5),
+                    'weaknesses' => array_slice($weaknesses, 0, 5),
+                    'recommendations' => is_array($recommendations) ? array_slice($recommendations, 0, 5) : [],
+                    'category_breakdown' => $categoryBreakdown,
+                    'common_themes' => array_slice($sentimentAnalysis['common_themes'] ?? [], 0, 8),
+                    'sample_positive_comments' => array_slice($sentimentAnalysis['positive_comments'] ?? [], 0, 5),
+                    'sample_negative_comments' => array_slice($sentimentAnalysis['negative_comments'] ?? [], 0, 5),
+                ];
             }
+            
+            \Log::info('President Dashboard AI Insights Count: ' . count($aiInsightsList));
+            
         } catch (\Exception $e) {
             \Log::error('Failed to fetch AI insights for president: ' . $e->getMessage());
         }
 
-        // ==================== OVERALL SATISFACTION SCORE ====================
+        // ==================== OVERALL SATISFACTION ====================
         $overallSatisfaction = AIAnalysis::whereHas('evaluation.event', function($q) {
                 $q->where('user_id', $this->organizationId);
             })
@@ -199,7 +179,6 @@ class DashboardController extends Controller
         // ==================== RECENT ACTIVITIES ====================
         $recentActivities = collect();
         
-        // Add recent events
         Event::where('user_id', $this->organizationId)
             ->orderBy('created_at', 'desc')
             ->limit(3)
@@ -214,7 +193,6 @@ class DashboardController extends Controller
                 ]);
             });
 
-        // Add recent students
         Student::where('user_id', $this->organizationId)
             ->orderBy('created_at', 'desc')
             ->limit(2)
@@ -228,7 +206,6 @@ class DashboardController extends Controller
                 ]);
             });
 
-        // Add AI insight availability
         foreach (array_slice($aiInsightsList, 0, 2) as $insight) {
             $recentActivities->push([
                 'type' => 'insight_available',
@@ -239,7 +216,6 @@ class DashboardController extends Controller
             ]);
         }
 
-        // Sort activities by time
         $recentActivities = $recentActivities
             ->sortByDesc(function ($activity) {
                 return $activity['time'];
@@ -247,7 +223,6 @@ class DashboardController extends Controller
             ->values()
             ->take(5);
 
-        // ==================== CALCULATE RATES ====================
         $eventCompletionRate = $totalEvents > 0 ? round(($finishedEvents / $totalEvents) * 100, 1) : 0;
         $approvalRate = $totalEvents > 0 ? round(($approvedEvents / $totalEvents) * 100, 1) : 0;
 
@@ -270,7 +245,6 @@ class DashboardController extends Controller
             'recentEvents' => $recentEvents,
             'studentsByDepartment' => $studentsByDepartment,
             'eventTrends' => $eventTrends,
-            'evaluationTrends' => $evaluationTrends,
             'recentActivities' => $recentActivities,
             'aiInsightsList' => $aiInsightsList,
             'user' => [

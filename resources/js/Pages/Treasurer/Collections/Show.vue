@@ -457,13 +457,9 @@
             leave-to-class="opacity-0"
           >
             <div v-if="showPaymentModal" class="fixed inset-0 z-50 overflow-y-auto">
-              <!-- Blurry backdrop -->
               <div class="fixed inset-0 bg-black/40 backdrop-blur-sm transition-opacity" @click="showPaymentModal = false"></div>
-              
-              <!-- Modal container -->
               <div class="flex min-h-full items-center justify-center p-4">
                 <div class="relative w-full max-w-lg transform overflow-hidden rounded-2xl bg-white shadow-2xl transition-all">
-                  <!-- Header with gradient -->
                   <div class="bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-4">
                     <div class="flex items-center justify-between">
                       <h3 class="text-lg font-semibold text-white flex items-center gap-2">
@@ -479,10 +475,7 @@
                       </button>
                     </div>
                   </div>
-
-                  <!-- Modal Body -->
                   <div class="p-6">
-                    <!-- Warning Alert -->
                     <div class="mb-4 rounded-lg bg-yellow-50 p-4">
                       <div class="flex">
                         <div class="flex-shrink-0">
@@ -497,8 +490,6 @@
                         </div>
                       </div>
                     </div>
-
-                    <!-- Student Info Card -->
                     <div class="mb-4 rounded-lg bg-gray-50 p-4">
                       <div class="flex items-center gap-3">
                         <div class="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
@@ -511,15 +502,12 @@
                           <p class="text-sm text-gray-500">{{ selectedStudent?.student_id }}</p>
                         </div>
                       </div>
-                      
                       <div class="mt-3 space-y-1 text-sm">
                         <p><span class="text-gray-500">Program:</span> <span class="font-medium text-gray-900">{{ selectedStudent?.course }}</span></p>
                         <p><span class="text-gray-500">Year Level:</span> <span class="font-medium text-gray-900">{{ selectedStudent?.yearlevel }}</span></p>
                         <p><span class="text-gray-500">Email:</span> <span class="font-medium text-gray-900">{{ selectedStudent?.email || 'No email' }}</span></p>
                       </div>
                     </div>
-
-                    <!-- Payment Details -->
                     <div class="mb-4 rounded-lg bg-emerald-50 p-4">
                       <div class="flex items-center justify-between">
                         <span class="text-sm text-gray-600">Amount to Collect:</span>
@@ -530,8 +518,6 @@
                         <span class="rounded-full bg-emerald-100 px-3 py-1 text-sm font-medium text-emerald-700">Cash</span>
                       </div>
                     </div>
-
-                    <!-- Notes Field -->
                     <div class="mb-4">
                       <label class="mb-1 block text-sm font-medium text-gray-700">Notes (Optional)</label>
                       <textarea
@@ -541,8 +527,6 @@
                         placeholder="Add any notes about this payment..."
                       ></textarea>
                     </div>
-
-                    <!-- Email Option -->
                     <label class="mb-4 flex cursor-pointer items-center gap-3 rounded-lg bg-gray-50 p-3 hover:bg-gray-100">
                       <input
                         type="checkbox"
@@ -554,8 +538,6 @@
                       <span class="text-sm text-gray-700">Send receipt via email</span>
                     </label>
                   </div>
-
-                  <!-- Footer -->
                   <div class="flex justify-end gap-3 bg-gray-50 px-6 py-4">
                     <button
                       @click="showPaymentModal = false"
@@ -589,13 +571,9 @@
             leave-to-class="opacity-0"
           >
             <div v-if="showBulkPaymentModal" class="fixed inset-0 z-50 overflow-y-auto">
-              <!-- Blurry backdrop -->
               <div class="fixed inset-0 bg-black/40 backdrop-blur-sm transition-opacity" @click="showBulkPaymentModal = false"></div>
-              
-              <!-- Modal container -->
               <div class="flex min-h-full items-center justify-center p-4">
                 <div class="relative w-full max-w-lg transform overflow-hidden rounded-2xl bg-white shadow-2xl transition-all">
-                  <!-- Header -->
                   <div class="bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-4">
                     <div class="flex items-center justify-between">
                       <h3 class="text-lg font-semibold text-white flex items-center gap-2">
@@ -611,8 +589,6 @@
                       </button>
                     </div>
                   </div>
-
-                  <!-- Body -->
                   <div class="p-6">
                     <div class="mb-4 rounded-lg bg-yellow-50 p-4">
                       <div class="flex">
@@ -631,14 +607,12 @@
                         </div>
                       </div>
                     </div>
-
                     <div class="mb-4 rounded-lg bg-emerald-50 p-4">
                       <label class="flex cursor-pointer items-center gap-3">
                         <input type="checkbox" v-model="bulkSendEmail" class="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500">
                         <span class="text-sm font-medium text-gray-700">Send receipts via email to students</span>
                       </label>
                     </div>
-
                     <div class="rounded-lg bg-blue-50 p-4">
                       <p class="text-xs text-blue-700">
                         <span class="font-semibold">Note:</span> Receipts will be generated for all students. 
@@ -646,8 +620,6 @@
                       </p>
                     </div>
                   </div>
-
-                  <!-- Footer -->
                   <div class="flex justify-end gap-3 bg-gray-50 px-6 py-4">
                     <button
                       @click="showBulkPaymentModal = false"
@@ -708,11 +680,6 @@ import { ref, computed } from 'vue';
 import { Link, router } from '@inertiajs/vue3';
 import OrganizationUserLayout from '@/Layouts/OrganizationUserLayout.vue';
 import axios from 'axios';
-
-// Helper function to get CSRF token
-const getCsrfToken = () => {
-    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-};
 
 const props = defineProps({
   event: {
@@ -841,12 +808,6 @@ async function processSinglePayment() {
       {
         notes: paymentForm.value.notes,
         send_email: paymentForm.value.send_email
-      },
-      {
-        headers: {
-          'X-CSRF-TOKEN': getCsrfToken(),
-          'X-Requested-With': 'XMLHttpRequest'
-        }
       }
     );
     
@@ -884,12 +845,6 @@ async function processBulkPayment() {
       {
         student_ids: selectedStudents.value,
         send_email: bulkSendEmail.value
-      },
-      {
-        headers: {
-          'X-CSRF-TOKEN': getCsrfToken(),
-          'X-Requested-With': 'XMLHttpRequest'
-        }
       }
     );
     
@@ -931,17 +886,8 @@ async function resendReceipt(eventId, studentId) {
   if (!confirm(`Resend receipt email to ${student.email}?`)) return;
   
   try {
-    const response = await axios.post(
-      `/treasurer/receipts/${eventId}/${studentId}/resend`,
-      {},
-      {
-        headers: {
-          'X-CSRF-TOKEN': getCsrfToken(),
-          'X-Requested-With': 'XMLHttpRequest'
-        }
-      }
-    );
-    showToast('✅ Receipt email resent successfully', 'success');
+    const response = await axios.post(`/treasurer/receipts/${eventId}/${studentId}/resend`);
+    showToast('✅ Receipt email will be sent to ' + student.email, 'success');
   } catch (error) {
     console.error('Resend error:', error);
     const errorMessage = error.response?.data?.error || error.message || 'Unknown error occurred';
