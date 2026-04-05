@@ -31,16 +31,10 @@ class PaymentReceiptMail extends Mailable
     {
         // Set reply-to based on the treasurer who processed the payment
         $replyToEmail = $this->treasurer?->email ?? config('mail.from.address');
-        $replyToName = $this->treasurer?->name ?? config('mail.from.name');
         
         return new Envelope(
             subject: 'Payment Receipt #' . $this->payment->receipt_number . ' - ' . $this->event->event_name,
-            replyTo: [
-                [
-                    'address' => $replyToEmail,
-                    'name' => $replyToName,
-                ]
-            ],
+            replyTo: $replyToEmail
         );
     }
 

@@ -402,18 +402,20 @@ class CollectionController extends Controller
         }
     }
 
-    private function generateReceiptNumber()
+    /**
+ * Generate unique receipt number
+ */
+private function generateReceiptNumber()
 {
     $year = date('Y');
     $month = date('m');
     $prefix = "REC-{$year}{$month}-";
     
-    // Get the latest receipt number for this month/year
-    // Using created_at instead of id since event_student has composite key
-    $lastReceipt = EventStudent::where('receipt_number', 'like', $prefix . '%')
+    // Get the latest receipt number for this month/year using raw SQL to avoid issues
+    $lastReceipt = EventStudent::where('receipt_number', 'LIKE', $prefix . '%')
         ->orderBy('created_at', 'desc')
         ->first();
-
+    
     if ($lastReceipt && $lastReceipt->receipt_number) {
         // Extract the number part (last 4 digits)
         $lastNumber = (int) substr($lastReceipt->receipt_number, -4);
@@ -422,13 +424,20 @@ class CollectionController extends Controller
         $newNumber = '0001';
     }
     
-    // Safety check - ensure number is unique
-    $existingReceipt = EventStudent::where('receipt_number', $prefix . $newNumber)->first();
-    if ($existingReceipt) {
+    // Generate the full receipt number
+    $newReceiptNumber = $prefix . $newNumber;
+    
+    // Safety check - if this number already exists, keep incrementing until we find a free one
+    $counter = 0;
+    while (EventStudent::where('receipt_number', $newReceiptNumber)->exists() && $counter < 100) {
         $newNumber = str_pad((int)$newNumber + 1, 4, '0', STR_PAD_LEFT);
+        $newReceiptNumber = $prefix . $newNumber;
+        $counter++;
     }
     
-    return $prefix . $newNumber;
+    Log::info('Generated receipt number: ' . $newReceiptNumber);
+    
+    return $newReceiptNumber;
 }
 
     /**
