@@ -148,7 +148,7 @@
 </head>
 <body>
     <div class="header">
-        <div class="logo">CSUCC EMS</div>
+        <div class="logo">EventFlow</div>
         <div class="school-name">Caraga State University - Cabadbaran Campus</div>
         <div class="receipt-title">OFFICIAL RECEIPT</div>
     </div>
@@ -208,17 +208,13 @@
         Thank you for your payment!
     </div>
 
-    <div class="contact-info">
-        <p><strong>Processed by:</strong> {{ $treasurer->name ?? 'Treasurer' }}</p>
-        <p><strong>Email:</strong> {{ $treasurer->email ?? config('mail.from.address') }}</p>
-    </div>
 
     <div class="signature-line"></div>
     <div class="signature-name">{{ $treasurer->name ?? 'Treasurer' }}</div>
     <div class="signature-title">Treasurer / Finance Officer</div>
 
     <div class="footer">
-        <p>This is an official receipt from CSUCC EMS. Please keep this for your records.</p>
+        <p>This is an official receipt from EventFlow. Please keep this for your records.</p>
         <p>Generated on {{ now()->format('F d, Y h:i A') }}</p>
     </div>
 </body>
