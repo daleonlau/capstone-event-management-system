@@ -33,7 +33,7 @@
                 </svg>
               </div>
               <div>
-                <p class="text-sm text-gray-500">Departments</p>
+                <p class="text-sm text-gray-500">College</p>
                 <p class="text-2xl font-bold text-gray-800">{{ departmentCount }}</p>
               </div>
             </div>
@@ -47,7 +47,7 @@
                 </svg>
               </div>
               <div>
-                <p class="text-sm text-gray-500">Courses</p>
+                <p class="text-sm text-gray-500">Programs</p>
                 <p class="text-2xl font-bold text-gray-800">{{ courseCount }}</p>
               </div>
             </div>
@@ -83,7 +83,7 @@
             </div>
   
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Filter by Department</label>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Filter by College</label>
               <select
                 v-model="filters.department"
                 @change="applyFilters"
@@ -121,8 +121,8 @@
                   <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student ID</th>
                   <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
                   <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                  <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course</th>
-                  <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Department</th>
+                  <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Program</th>
+                  <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">College</th>
                   <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Year Level</th>
                 </tr>
               </thead>

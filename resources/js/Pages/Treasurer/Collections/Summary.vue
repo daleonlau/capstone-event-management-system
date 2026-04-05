@@ -58,7 +58,7 @@
                   </div>
                   <p class="text-sm text-gray-500 mb-1">Total Students</p>
                   <p class="text-3xl font-bold text-gray-800">{{ summary.total_students }}</p>
-                  <p class="text-xs text-gray-400 mt-2">Across all courses & years</p>
+                  <p class="text-xs text-gray-400 mt-2">Across all programs & years</p>
                 </div>
               </div>
     
@@ -288,7 +288,7 @@
               <!-- Course & Year Levels -->
               <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div v-if="event.courses?.length" class="bg-gray-50 rounded-xl p-4">
-                  <p class="text-xs text-gray-500 mb-2">Target Courses</p>
+                  <p class="text-xs text-gray-500 mb-2">Target Programs</p>
                   <div class="flex flex-wrap gap-2">
                     <span v-for="course in event.courses" :key="course" 
                           class="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs">

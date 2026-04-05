@@ -188,8 +188,8 @@
                   </svg>
                 </div>
                 <div>
-                  <h2 class="text-xl font-bold text-white">Departments & Courses</h2>
-                  <p class="text-blue-100 text-sm">Select which departments and courses this organization can serve</p>
+                  <h2 class="text-xl font-bold text-white">College & Programs</h2>
+                  <p class="text-blue-100 text-sm">Select which college and programs this organization can serve</p>
                 </div>
               </div>
             </div>
@@ -237,7 +237,7 @@
                   <svg class="w-8 h-8 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                   </svg>
-                  <p class="font-medium">No departments loaded</p>
+                  <p class="font-medium">No College loaded</p>
                   <p class="text-sm mt-1">Please run: php artisan db:seed --class=DepartmentCourseSeeder</p>
                 </div>
               </div>
@@ -565,12 +565,12 @@ function toggleDepartment(deptId) {
 
 const submit = () => {
   if (form.assigned_departments.length === 0) {
-    form.errors.assigned_departments = 'Please select at least one department.';
+    form.errors.assigned_departments = 'Please select at least one college.';
     return;
   }
   
   if (form.assigned_courses.length === 0) {
-    form.errors.assigned_courses = 'Please select at least one course.';
+    form.errors.assigned_courses = 'Please select at least one program.';
     return;
   }
   

@@ -48,11 +48,11 @@
               <p class="text-2xl font-bold text-gray-800">{{ organization.organization_users?.length || 0 }}</p>
             </div>
             <div class="bg-gray-50 rounded-xl p-4 hover:shadow-md transition">
-              <p class="text-sm text-gray-500">Assigned Departments</p>
+              <p class="text-sm text-gray-500">Assigned College</p>
               <p class="text-2xl font-bold text-gray-800">{{ organization.organization_settings?.assigned_departments?.length || 0 }}</p>
             </div>
             <div class="bg-gray-50 rounded-xl p-4 hover:shadow-md transition">
-              <p class="text-sm text-gray-500">Assigned Courses</p>
+              <p class="text-sm text-gray-500">Assigned Programs</p>
               <p class="text-2xl font-bold text-gray-800">{{ organization.organization_settings?.assigned_courses?.length || 0 }}</p>
             </div>
             <div class="bg-gray-50 rounded-xl p-4 hover:shadow-md transition">
@@ -84,7 +84,7 @@
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
             </svg>
-            Departments & Courses
+            College & Programs
           </button>
           <button 
             @click="activeTab = 'activity'" 
@@ -220,7 +220,7 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
             </svg>
           </span>
-          Assigned Departments & Courses
+          Assigned College & Programs
         </h2>
         
         <div v-if="organization.organization_settings" class="space-y-4">
@@ -234,7 +234,7 @@
             </div>
           </div>
           <div v-if="!organization.organization_settings.assigned_departments?.length" class="text-gray-500 text-center py-4">
-            No departments assigned to this organization.
+            No college assigned to this organization.
           </div>
         </div>
       </div>
@@ -526,12 +526,12 @@ function formatDate(date) {
 
 function getDepartmentName(deptId) {
   const dept = props.departments.find(d => d.id === deptId);
-  return dept ? dept.name : 'Unknown Department';
+  return dept ? dept.name : 'Unknown College';
 }
 
 function getCourseName(courseId) {
   const course = props.courses.find(c => c.id === courseId);
-  return course ? course.name : 'Unknown Course';
+  return course ? course.name : 'Unknown Program';
 }
 
 function getCoursesForDepartment(deptId) {

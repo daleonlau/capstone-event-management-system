@@ -234,7 +234,7 @@
                     :placeholder="isGuest ? 'Auto-filled from guest registration' : 'Auto-filled from student record'"
                   />
                   <p class="text-xs text-gray-400 mt-1">
-                    {{ isGuest ? 'This information is from your guest registration' : 'This is your department from student record' }}
+                    {{ isGuest ? 'This information is from your guest registration' : 'This is your college from student record' }}
                   </p>
                 </div>
                 

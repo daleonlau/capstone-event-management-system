@@ -37,7 +37,7 @@
                 <span class="label">Student Name:</span> {{ $student->firstname }} {{ $student->lastname }}
             </div>
             <div class="row">
-                <span class="label">Course/Year:</span> {{ $student->course }} - {{ $student->yearlevel }}
+                <span class="label">Program/Year:</span> {{ $student->course }} - {{ $student->yearlevel }}
             </div>
             <div class="row">
                 <span class="label">Event:</span> {{ $event->event_name }}

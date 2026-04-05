@@ -1,7 +1,8 @@
 <template>
   <OrganizationUserLayout>
-    <div class="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+    <div class="modern-dashboard">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
         <!-- Header -->
         <div class="mb-8">
           <div class="flex items-center gap-4 mb-4">
@@ -125,138 +126,129 @@
           </div>
         </div>
 
-        <!-- Date Tabs for Multiple Insights -->
-        <div v-if="availableDates.length > 0 || (aiInsights && !dateInsights.length)" class="bg-white rounded-2xl shadow-lg p-6 mb-8">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-semibold text-gray-800">Select Analysis View</h3>
+        <!-- Date Selector for Insights -->
+        <div v-if="availableDates.length > 0 || (aiInsights && !dateInsights.length)" class="date-selector">
+          <div class="date-selector-header">
+            <h3>Analysis View</h3>
           </div>
+          <div class="date-tabs">
+            <button
+              v-if="aiInsights"
+              @click="selectDate('overall')"
+              :class="['date-tab', { active: currentDate === 'overall' }]"
+            >
+              <span class="date-icon">📊</span>
+              <span class="date-label">Overall</span>
+              <span class="date-count">{{ aiInsights?.total_respondents || 0 }}</span>
+            </button>
+            <button
+              v-for="insight in dateInsights"
+              :key="insight.event_date"
+              @click="selectDate(insight.event_date)"
+              :class="['date-tab', { active: currentDate === insight.event_date }]"
+            >
+              <span class="date-icon">📅</span>
+              <span class="date-label">{{ formatDateOnly(insight.event_date) }}</span>
+              <span class="date-count">{{ insight.total_respondents || 0 }}</span>
+            </button>
+          </div>
+        </div>
+
+
+        <!-- AI Insights Section -->
+        <div v-if="currentInsight" class="space-y-6">
           
-          <div class="border-b border-gray-200">
-            <nav class="-mb-px flex space-x-8 overflow-x-auto">
-              <button
-                v-if="aiInsights"
-                @click="selectDate('overall')"
-                :class="[
-                  'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition',
-                  currentDate === 'overall'
-                    ? 'border-purple-500 text-purple-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                ]"
-              >
-                <div class="flex items-center gap-2">
-                  <span class="text-lg">📊</span>
-                  Overall Analysis
-                  <span class="text-xs bg-gray-100 px-2 py-0.5 rounded-full">
-                    {{ aiInsights?.total_respondents || 0 }} responses
+          <!-- Hero Score Card -->
+          <div class="hero-card" :class="getHeroClass(currentInsight.predicted_satisfaction)">
+            <div class="hero-bg"></div>
+            <div class="hero-content">
+              <div class="hero-left">
+                <span class="hero-badge">{{ currentDate === 'overall' ? 'Overall Rating' : formatDateOnly(currentDate) }}</span>
+                <div class="hero-score">
+                  <span class="score-number">{{ currentInsight.predicted_satisfaction || 0 }}</span>
+                  <span class="score-max">/5.0</span>
+                </div>
+                <div class="hero-rating">
+                  <span class="rating-badge" :class="getRatingBadgeClass(currentInsight.predicted_satisfaction)">
+                    {{ getInterpretationLabel(currentInsight.predicted_satisfaction) }}
                   </span>
+                  <span class="rating-verb">{{ getVerbalInterpretation(currentInsight.predicted_satisfaction) }}</span>
                 </div>
-              </button>
-              <button
-                v-for="insight in dateInsights"
-                :key="insight.event_date"
-                @click="selectDate(insight.event_date)"
-                :class="[
-                  'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition',
-                  currentDate === insight.event_date
-                    ? 'border-purple-500 text-purple-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                ]"
-              >
-                <div class="flex items-center gap-2">
-                  <span class="text-lg">📅</span>
-                  {{ formatDateOnly(insight.event_date) }}
-                  <span class="text-xs bg-gray-100 px-2 py-0.5 rounded-full">
-                    {{ insight.total_respondents || 0 }} responses
-                  </span>
-                </div>
-              </button>
-            </nav>
-          </div>
-        </div>
-
-        <!-- Category Performance Dashboard -->
-        <div class="bg-white rounded-2xl shadow-lg p-6 mb-8">
-          <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-            <svg class="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-            Category Performance Dashboard
-          </h3>
-          <div style="height: 350px;">
-            <canvas ref="categoryChart"></canvas>
-          </div>
-        </div>
-
-        <!-- AI Insights Section (if available) -->
-        <div v-if="currentInsight" class="space-y-8">
-          <!-- Executive Dashboard Header -->
-          <div class="bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 rounded-2xl shadow-xl p-6 text-white">
-            <div class="flex items-center justify-between mb-4">
-              <div>
-                <div class="flex items-center gap-2 mb-2">
-                  <span class="text-2xl">{{ currentDate === 'overall' ? '📊' : '📅' }}</span>
-                  <h2 class="text-2xl font-bold">
-                    {{ currentDate === 'overall' ? 'Overall Analysis' : `Analysis for ${formatDateOnly(currentDate)}` }}
-                  </h2>
-                </div>
-                <p class="text-purple-200 mt-1">{{ currentInsight.summary || 'Analysis complete' }}</p>
               </div>
-              <div class="text-right">
-                <p class="text-sm text-purple-200">Analyzed</p>
-                <p class="text-sm font-mono">{{ formatDate(currentInsight.analyzed_at) }}</p>
-              </div>
-            </div>
-            
-            <!-- KPI Cards -->
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
-              <div class="bg-white/10 backdrop-blur-sm rounded-xl p-4">
-                <p class="text-sm text-purple-200">Overall Satisfaction</p>
-                <p class="text-3xl font-bold">{{ currentInsight.predicted_satisfaction || 0 }}</p>
-                <div class="flex items-center gap-1 mt-1">
-                  <span class="text-xs text-purple-200">/5.0</span>
-                  <div class="flex-1 h-1 bg-purple-300/30 rounded-full ml-2">
-                    <div class="h-full bg-yellow-400 rounded-full" :style="{ width: ((currentInsight.predicted_satisfaction || 0) / 5 * 100) + '%' }"></div>
+              <div class="hero-stats">
+                <div class="stat-card">
+                  <div class="stat-icon">👥</div>
+                  <div class="stat-info">
+                    <div class="stat-value">{{ currentInsight.total_respondents || 0 }}</div>
+                    <div class="stat-label">Responses</div>
+                  </div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-icon">📊</div>
+                  <div class="stat-info">
+                    <div class="stat-value">{{ ((currentInsight.response_rate || 0) * 100).toFixed(0) }}%</div>
+                    <div class="stat-label">Response Rate</div>
+                  </div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-icon">🎯</div>
+                  <div class="stat-info">
+                    <div class="stat-value">{{ getSuccessRate(currentInsight.predicted_satisfaction) }}%</div>
+                    <div class="stat-label">Success Rate</div>
                   </div>
                 </div>
               </div>
-              <div class="bg-white/10 backdrop-blur-sm rounded-xl p-4">
-                <p class="text-sm text-purple-200">Success Probability</p>
-                <p class="text-3xl font-bold">{{ ((currentInsight.success_probability || 0) * 100).toFixed(0) }}%</p>
-                <div class="mt-2 h-1 bg-purple-300/30 rounded-full">
-                  <div class="h-full bg-green-400 rounded-full" :style="{ width: ((currentInsight.success_probability || 0) * 100) + '%' }"></div>
-                </div>
+            </div>
+            <div class="hero-progress">
+              <div class="progress-bar-bg">
+                <div class="progress-bar-fill" :style="{ width: ((currentInsight.predicted_satisfaction || 0) / 5 * 100) + '%' }"></div>
               </div>
-              <div class="bg-white/10 backdrop-blur-sm rounded-xl p-4">
-                <p class="text-sm text-purple-200">Response Rate</p>
-                <p class="text-3xl font-bold">{{ ((currentInsight.response_rate || 0) * 100).toFixed(1) }}%</p>
-                <div class="mt-2 h-1 bg-purple-300/30 rounded-full">
-                  <div class="h-full bg-blue-400 rounded-full" :style="{ width: ((currentInsight.response_rate || 0) * 100) + '%' }"></div>
-                </div>
-                <p class="text-xs text-purple-200 mt-1">{{ currentInsight.total_respondents || 0 }} respondents</p>
-              </div>
-              <div class="bg-white/10 backdrop-blur-sm rounded-xl p-4">
-                <p class="text-sm text-purple-200">Confidence Score</p>
-                <p class="text-3xl font-bold">{{ getConfidenceScore() }}%</p>
-                <div class="mt-2 h-1 bg-purple-300/30 rounded-full">
-                  <div class="h-full bg-emerald-400 rounded-full" :style="{ width: getConfidenceScore() + '%' }"></div>
-                </div>
-                <p class="text-xs text-purple-200 mt-1">Based on response rate</p>
+              <div class="progress-labels">
+                <span>Poor</span>
+                <span>Satisfactory</span>
+                <span>Very Satisfactory</span>
+                <span>Outstanding</span>
               </div>
             </div>
           </div>
+           <!-- Category Performance Chart -->
+        <div class="section-card">
+          <div class="section-header">
+            <div class="section-title">
+              <span class="title-icon">📈</span>
+              <h3>Category Performance</h3>
+            </div>
+            <p class="section-desc">Detailed breakdown of each evaluation category</p>
+          </div>
+          <div class="category-list">
+            <div v-for="(score, category) in displayCategoryBreakdown" :key="category" class="category-item">
+              <div class="category-header">
+                <span class="category-name">{{ simplifyCategoryName(category) }}</span>
+                <div class="category-score">
+                  <span class="score-value" :style="{ color: getScoreColor(score) }">{{ score }}</span>
+                  <span class="score-max">/5.0</span>
+                </div>
+              </div>
+              <div class="category-bar">
+                <div class="bar-bg">
+                  <div class="bar-fill" :style="{ width: (score / 5 * 100) + '%', backgroundColor: getScoreColor(score) }"></div>
+                </div>
+                <span class="bar-label">{{ getInterpretationLabel(score) }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
 
           <!-- Critical Factors -->
-          <div v-if="currentInsight.critical_factors && currentInsight.critical_factors.length > 0" class="bg-white rounded-2xl shadow-lg p-6">
-            <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <span class="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
-                <svg class="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              </span>
-              Critical Success Factors
-            </h3>
+          <div v-if="currentInsight.critical_factors && currentInsight.critical_factors.length > 0" class="section-card">
+            <div class="section-header">
+              <div class="section-title">
+                <span class="title-icon">⚠️</span>
+                <h3>Critical Success Factors</h3>
+              </div>
+            </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div v-for="(factor, idx) in currentInsight.critical_factors" :key="idx" class="p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <div v-for="(factor, idx) in currentInsight.critical_factors" :key="idx" class="p-4 bg-red-50 rounded-lg border border-red-200">
                 <div class="flex items-center justify-between mb-2">
                   <h4 class="font-semibold text-gray-800">{{ factor.category }}</h4>
                   <span class="text-sm font-bold text-red-600">Impact: {{ (factor.impact * 100).toFixed(0) }}%</span>
@@ -272,15 +264,14 @@
           </div>
 
           <!-- Low Scoring Questions -->
-          <div v-if="currentInsight.low_scoring_questions && currentInsight.low_scoring_questions.length > 0" class="bg-white rounded-2xl shadow-lg p-6">
-            <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <span class="w-8 h-8 bg-yellow-100 rounded-lg flex items-center justify-center">
-                <svg class="w-5 h-5 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </span>
-              Low Scoring Questions (Requires Attention)
-            </h3>
+          <div v-if="currentInsight.low_scoring_questions && currentInsight.low_scoring_questions.length > 0" class="section-card">
+            <div class="section-header">
+              <div class="section-title">
+                <span class="title-icon">📝</span>
+                <h3>Low Scoring Questions</h3>
+              </div>
+              <p class="section-desc">Questions that need immediate attention</p>
+            </div>
             <div class="space-y-3">
               <div v-for="(q, idx) in currentInsight.low_scoring_questions" :key="idx" class="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
                 <div class="flex items-center justify-between">
@@ -301,403 +292,260 @@
             </div>
           </div>
 
-          <!-- Strengths & Weaknesses Analysis -->
+          <!-- Strengths & Weaknesses Grid -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div class="bg-white rounded-2xl shadow-lg p-6 border-l-4 border-green-500">
-              <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                  <span class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                    <svg class="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                    </svg>
-                  </span>
-                  Strengths & Success Factors
-                </h3>
-                <span class="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">{{ currentInsight.strengths?.length || 0 }} factors</span>
-              </div>
-              <div class="space-y-3">
-                <div v-for="(strength, index) in currentInsight.strengths" :key="index"
-                     class="p-3 bg-green-50 rounded-lg hover:bg-green-100 transition">
-                  <p class="text-green-800">{{ strength }}</p>
+            <div class="section-card strengths">
+              <div class="section-header">
+                <div class="section-title">
+                  <span class="title-icon">✅</span>
+                  <h3>Strengths</h3>
                 </div>
-                <p v-if="!currentInsight.strengths?.length" class="text-gray-400 italic text-center py-4">No strengths identified</p>
+              </div>
+              <div class="strengths-list">
+                <div v-for="(item, idx) in currentInsight.strengths" :key="idx" class="strength-item">
+                  <span class="strength-dot"></span>
+                  <span>{{ item }}</span>
+                </div>
+                <div v-if="!currentInsight.strengths?.length" class="empty-state">No strengths identified</div>
               </div>
             </div>
 
-            <div class="bg-white rounded-2xl shadow-lg p-6 border-l-4 border-red-500">
-              <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                  <span class="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
-                    <svg class="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                  </span>
-                  Areas for Improvement
-                </h3>
-                <span class="text-xs text-red-600 bg-red-50 px-2 py-1 rounded-full">{{ currentInsight.weaknesses?.length || 0 }} areas</span>
-              </div>
-              <div class="space-y-3">
-                <div v-for="(weakness, index) in currentInsight.weaknesses" :key="index"
-                     class="p-3 bg-red-50 rounded-lg hover:bg-red-100 transition">
-                  <p class="text-red-800">{{ weakness }}</p>
+            <div class="section-card weaknesses">
+              <div class="section-header">
+                <div class="section-title">
+                  <span class="title-icon">⚠️</span>
+                  <h3>Areas for Improvement</h3>
                 </div>
-                <p v-if="!currentInsight.weaknesses?.length" class="text-gray-400 italic text-center py-4">No areas for improvement identified</p>
+              </div>
+              <div class="weaknesses-list">
+                <div v-for="(item, idx) in currentInsight.weaknesses" :key="idx" class="weakness-item">
+                  <span class="weakness-dot"></span>
+                  <span>{{ item }}</span>
+                </div>
+                <div v-if="!currentInsight.weaknesses?.length" class="empty-state">No weaknesses identified</div>
               </div>
             </div>
           </div>
 
-          <!-- Sentiment Analysis Dashboard -->
-          <div class="bg-white rounded-2xl shadow-lg p-6">
-            <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <span class="w-8 h-8 bg-pink-100 rounded-lg flex items-center justify-center">
-                <svg class="w-5 h-5 text-pink-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-              </span>
-              Sentiment Analysis Dashboard
-            </h3>
+          <!-- Priority Matrix -->
+          <div class="section-card">
+            <div class="section-header">
+              <div class="section-title">
+                <span class="title-icon">🎯</span>
+                <h3>Priority Matrix</h3>
+              </div>
+              <p class="section-desc">Quick overview of what needs attention</p>
+            </div>
+            <div class="priority-grid">
+              <div class="priority-card critical">
+                <div class="priority-icon">🔴</div>
+                <div class="priority-info">
+                  <div class="priority-label">Critical</div>
+                  <div class="priority-count">{{ priorityMatrix.critical.length }} issues</div>
+                </div>
+              </div>
+              <div class="priority-card important">
+                <div class="priority-icon">🟠</div>
+                <div class="priority-info">
+                  <div class="priority-label">Important</div>
+                  <div class="priority-count">{{ priorityMatrix.important.length }} issues</div>
+                </div>
+              </div>
+              <div class="priority-card urgent">
+                <div class="priority-icon">🟡</div>
+                <div class="priority-info">
+                  <div class="priority-label">Quick Wins</div>
+                  <div class="priority-count">{{ priorityMatrix.urgent.length }} issues</div>
+                </div>
+              </div>
+              <div class="priority-card monitor">
+                <div class="priority-icon">🟢</div>
+                <div class="priority-info">
+                  <div class="priority-label">Monitor</div>
+                  <div class="priority-count">{{ priorityMatrix.monitor.length }} areas</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Actionable Recommendations -->
+          <div class="section-card recommendations">
+            <div class="section-header">
+              <div class="section-title">
+                <span class="title-icon">💡</span>
+                <h3>Actionable Recommendations</h3>
+              </div>
+              <p class="section-desc">Based on participant feedback and scores</p>
+            </div>
+            <div class="recommendations-list">
+              <div v-for="(rec, idx) in currentInsight.recommendations" :key="idx" class="rec-card" :class="rec.priority">
+                <div class="rec-header">
+                  <div class="rec-priority" :class="rec.priority">
+                    <span class="priority-dot"></span>
+                    {{ (rec.priority || 'medium').toUpperCase() }} PRIORITY
+                  </div>
+                  <div class="rec-score">
+                    <span class="current">{{ rec.current_score }}/5.0</span>
+                    <span class="arrow">→</span>
+                    <span class="target">{{ rec.target_score }}/5.0</span>
+                  </div>
+                </div>
+                <div class="rec-body">
+                  <h4 class="rec-title">{{ rec.title }}</h4>
+                  <p class="rec-description">{{ rec.problem_statement }}</p>
+                  <div class="rec-actions">
+                    <div class="actions-title">Action Steps:</div>
+                    <ul class="actions-list">
+                      <li v-for="(action, aidx) in rec.action_items" :key="aidx">
+                        <span class="action-arrow">→</span>
+                        <span>{{ action }}</span>
+                      </li>
+                    </ul>
+                  </div>
+                  <div class="rec-footer">
+                    <span class="rec-outcome">🎯 {{ rec.expected_outcome }}</span>
+                  </div>
+                </div>
+              </div>
+              <div v-if="!currentInsight.recommendations?.length" class="empty-recommendations">
+                <span>🎉</span>
+                <p>All categories are performing well! No recommendations needed.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sentiment Analysis Section -->
+          <div class="section-card sentiment">
+            <div class="section-header">
+              <div class="section-title">
+                <span class="title-icon">💬</span>
+                <h3>Sentiment Analysis</h3>
+              </div>
+              <p class="section-desc">Based on participant comments</p>
+            </div>
             
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <div class="bg-green-50 rounded-xl p-4 text-center border border-green-200">
-                <p class="text-2xl font-bold text-green-600">{{ currentInsight.sentiment_analysis?.positive_percentage || 0 }}%</p>
-                <p class="text-sm text-gray-600">Positive Comments</p>
-                <p class="text-xs text-gray-500">{{ currentInsight.sentiment_analysis?.positive_comments?.length || 0 }} comments</p>
+            <!-- Sentiment Stats -->
+            <div class="sentiment-stats">
+              <div class="sentiment-stat positive">
+                <div class="sentiment-icon">😊</div>
+                <div class="sentiment-value">{{ positivePercentage }}%</div>
+                <div class="sentiment-label">Positive</div>
+                <div class="sentiment-count">{{ positiveCommentsList.length }} comments</div>
               </div>
-              <div class="bg-yellow-50 rounded-xl p-4 text-center border border-yellow-200">
-                <p class="text-2xl font-bold text-yellow-600">{{ currentInsight.sentiment_analysis?.neutral_percentage || 0 }}%</p>
-                <p class="text-sm text-gray-600">Neutral Comments</p>
-                <p class="text-xs text-gray-500">{{ currentInsight.sentiment_analysis?.neutral_comments?.length || 0 }} comments</p>
+              <div class="sentiment-stat neutral">
+                <div class="sentiment-icon">😐</div>
+                <div class="sentiment-value">{{ neutralPercentage }}%</div>
+                <div class="sentiment-label">Neutral</div>
+                <div class="sentiment-count">{{ neutralCommentsList.length }} comments</div>
               </div>
-              <div class="bg-red-50 rounded-xl p-4 text-center border border-red-200">
-                <p class="text-2xl font-bold text-red-600">{{ currentInsight.sentiment_analysis?.negative_percentage || 0 }}%</p>
-                <p class="text-sm text-gray-600">Negative Comments</p>
-                <p class="text-xs text-gray-500">{{ currentInsight.sentiment_analysis?.negative_comments?.length || 0 }} comments</p>
+              <div class="sentiment-stat negative">
+                <div class="sentiment-icon">😟</div>
+                <div class="sentiment-value">{{ negativePercentage }}%</div>
+                <div class="sentiment-label">Negative</div>
+                <div class="sentiment-count">{{ negativeCommentsList.length }} comments</div>
               </div>
             </div>
 
-            <!-- Sentiment Gauge Bar -->
-            <div class="mb-6">
-              <div class="flex justify-between mb-2 text-xs">
-                <span class="text-red-600">Negative</span>
-                <span class="text-yellow-600">Neutral</span>
-                <span class="text-green-600">Positive</span>
-              </div>
-              <div class="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
-                <div class="h-full flex">
-                  <div class="h-full bg-red-500" :style="{ width: (currentInsight.sentiment_analysis?.negative_percentage || 0) + '%' }"></div>
-                  <div class="h-full bg-yellow-500" :style="{ width: (currentInsight.sentiment_analysis?.neutral_percentage || 0) + '%' }"></div>
-                  <div class="h-full bg-green-500" :style="{ width: (currentInsight.sentiment_analysis?.positive_percentage || 0) + '%' }"></div>
-                </div>
-              </div>
-              <div class="flex justify-between mt-2 text-xs text-gray-500">
-                <span>{{ (currentInsight.sentiment_analysis?.negative_percentage || 0).toFixed(1) }}%</span>
-                <span>{{ (currentInsight.sentiment_analysis?.neutral_percentage || 0).toFixed(1) }}%</span>
-                <span>{{ (currentInsight.sentiment_analysis?.positive_percentage || 0).toFixed(1) }}%</span>
+            <!-- Sentiment Bar -->
+            <div class="sentiment-bar">
+              <div class="bar-positive" :style="{ width: positivePercentage + '%' }"></div>
+              <div class="bar-neutral" :style="{ width: neutralPercentage + '%' }"></div>
+              <div class="bar-negative" :style="{ width: negativePercentage + '%' }"></div>
+            </div>
+
+            <!-- Common Themes -->
+            <div v-if="commonThemes.length" class="common-themes">
+              <div class="themes-title">📌 Common Themes</div>
+              <div class="themes-tags">
+                <span v-for="theme in commonThemes" :key="theme" class="theme-tag">#{{ theme }}</span>
               </div>
             </div>
 
             <!-- Positive Comments -->
-            <div v-if="currentInsight.sentiment_analysis?.positive_comments?.length > 0" class="mb-6">
-              <h4 class="font-semibold text-green-700 mb-3 flex items-center gap-2">
-                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                </svg>
-                ✅ Positive Comments ({{ currentInsight.sentiment_analysis.positive_comments.length }})
-              </h4>
-              <div class="space-y-2">
-                <div v-for="(comment, idx) in paginatedPositiveComments" :key="idx"
-                     class="p-3 bg-green-50 rounded-lg border border-green-200">
-                  <p class="text-green-800">“{{ comment }}”</p>
+            <div v-if="positiveCommentsList.length" class="comment-section">
+              <button @click="showPositiveComments = !showPositiveComments" class="comment-toggle positive">
+                <span>{{ showPositiveComments ? '▼' : '▶' }}</span>
+                <span>✅ Positive Comments</span>
+                <span class="comment-count">{{ positiveCommentsList.length }}</span>
+              </button>
+              <div v-if="showPositiveComments" class="comment-list">
+                <div v-for="(comment, idx) in paginatedPositiveComments" :key="idx" class="comment-item positive">
+                  “{{ comment }}”
                 </div>
-              </div>
-              <div v-if="positiveTotalPages > 1" class="flex justify-center items-center gap-2 mt-4">
-                <button @click="positiveCurrentPage--" :disabled="positiveCurrentPage === 1" class="px-3 py-1 text-sm bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50">Previous</button>
-                <span class="text-sm text-gray-600">Page {{ positiveCurrentPage }} of {{ positiveTotalPages }}</span>
-                <button @click="positiveCurrentPage++" :disabled="positiveCurrentPage === positiveTotalPages" class="px-3 py-1 text-sm bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50">Next</button>
+                <div v-if="positiveTotalPages > 1" class="pagination">
+                  <button @click="positiveCurrentPage--" :disabled="positiveCurrentPage === 1" class="page-btn">← Prev</button>
+                  <span class="page-info">{{ positiveCurrentPage }} / {{ positiveTotalPages }}</span>
+                  <button @click="positiveCurrentPage++" :disabled="positiveCurrentPage === positiveTotalPages" class="page-btn">Next →</button>
+                </div>
               </div>
             </div>
 
             <!-- Negative Comments -->
-            <div v-if="currentInsight.sentiment_analysis?.negative_comments?.length > 0" class="mb-6">
-              <h4 class="font-semibold text-red-700 mb-3 flex items-center gap-2">
-                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-                ❌ Negative Comments ({{ currentInsight.sentiment_analysis.negative_comments.length }})
-              </h4>
-              <div class="space-y-2">
-                <div v-for="(comment, idx) in paginatedNegativeComments" :key="idx"
-                     class="p-3 bg-red-50 rounded-lg border border-red-200">
-                  <p class="text-red-800">“{{ comment }}”</p>
+            <div v-if="negativeCommentsList.length" class="comment-section">
+              <button @click="showNegativeComments = !showNegativeComments" class="comment-toggle negative">
+                <span>{{ showNegativeComments ? '▼' : '▶' }}</span>
+                <span>❌ Negative Comments</span>
+                <span class="comment-count">{{ negativeCommentsList.length }}</span>
+              </button>
+              <div v-if="showNegativeComments" class="comment-list">
+                <div v-for="(comment, idx) in paginatedNegativeComments" :key="idx" class="comment-item negative">
+                  “{{ comment }}”
                 </div>
-              </div>
-              <div v-if="negativeTotalPages > 1" class="flex justify-center items-center gap-2 mt-4">
-                <button @click="negativeCurrentPage--" :disabled="negativeCurrentPage === 1" class="px-3 py-1 text-sm bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50">Previous</button>
-                <span class="text-sm text-gray-600">Page {{ negativeCurrentPage }} of {{ negativeTotalPages }}</span>
-                <button @click="negativeCurrentPage++" :disabled="negativeCurrentPage === negativeTotalPages" class="px-3 py-1 text-sm bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50">Next</button>
+                <div v-if="negativeTotalPages > 1" class="pagination">
+                  <button @click="negativeCurrentPage--" :disabled="negativeCurrentPage === 1" class="page-btn">← Prev</button>
+                  <span class="page-info">{{ negativeCurrentPage }} / {{ negativeTotalPages }}</span>
+                  <button @click="negativeCurrentPage++" :disabled="negativeCurrentPage === negativeTotalPages" class="page-btn">Next →</button>
+                </div>
               </div>
             </div>
 
             <!-- Neutral Comments -->
-            <div v-if="currentInsight.sentiment_analysis?.neutral_comments?.length > 0">
-              <h4 class="font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                😐 Neutral Comments ({{ currentInsight.sentiment_analysis.neutral_comments.length }})
-              </h4>
-              <div class="space-y-2">
-                <div v-for="(comment, idx) in paginatedNeutralComments" :key="idx"
-                     class="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                  <p class="text-gray-700">“{{ comment }}”</p>
+            <div v-if="neutralCommentsList.length" class="comment-section">
+              <button @click="showNeutralComments = !showNeutralComments" class="comment-toggle neutral">
+                <span>{{ showNeutralComments ? '▼' : '▶' }}</span>
+                <span>😐 Neutral Comments</span>
+                <span class="comment-count">{{ neutralCommentsList.length }}</span>
+              </button>
+              <div v-if="showNeutralComments" class="comment-list">
+                <div v-for="(comment, idx) in paginatedNeutralComments" :key="idx" class="comment-item neutral">
+                  “{{ comment }}”
                 </div>
-              </div>
-              <div v-if="neutralTotalPages > 1" class="flex justify-center items-center gap-2 mt-4">
-                <button @click="neutralCurrentPage--" :disabled="neutralCurrentPage === 1" class="px-3 py-1 text-sm bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50">Previous</button>
-                <span class="text-sm text-gray-600">Page {{ neutralCurrentPage }} of {{ neutralTotalPages }}</span>
-                <button @click="neutralCurrentPage++" :disabled="neutralCurrentPage === neutralTotalPages" class="px-3 py-1 text-sm bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50">Next</button>
+                <div v-if="neutralTotalPages > 1" class="pagination">
+                  <button @click="neutralCurrentPage--" :disabled="neutralCurrentPage === 1" class="page-btn">← Prev</button>
+                  <span class="page-info">{{ neutralCurrentPage }} / {{ neutralTotalPages }}</span>
+                  <button @click="neutralCurrentPage++" :disabled="neutralCurrentPage === neutralTotalPages" class="page-btn">Next →</button>
+                </div>
               </div>
             </div>
 
-            <!-- Common Themes -->
-            <div v-if="currentInsight.sentiment_analysis?.common_themes?.length > 0" class="mt-6 pt-4 border-t border-gray-200">
-              <h4 class="font-semibold text-gray-700 mb-2">Common Themes</h4>
-              <div class="flex flex-wrap gap-2">
-                <span v-for="(theme, idx) in currentInsight.sentiment_analysis.common_themes" :key="idx"
-                      class="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-full text-sm">
-                  {{ theme }}
-                </span>
-              </div>
+            <div v-if="totalComments === 0" class="empty-sentiment">
+              <span>💬</span>
+              <p>No comments provided by participants</p>
             </div>
           </div>
 
-          <!-- Recommendations -->
-          <div class="bg-white rounded-2xl shadow-lg p-6">
-            <div class="flex items-center justify-between mb-6">
-              <h3 class="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                <span class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <svg class="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                  </svg>
-                </span>
-                AI-Powered Recommendations & Action Plan
-              </h3>
-            </div>
-            
-            <div class="space-y-4">
-              <div v-for="(rec, index) in currentInsight.recommendations" :key="index"
-                   class="rounded-xl overflow-hidden border transition-all hover:shadow-md"
-                   :class="getRecommendationBorderClass(rec.priority)">
-                
-                <div class="px-5 py-3 flex items-center justify-between" :class="getRecommendationHeaderClass(rec.priority)">
-                  <div class="flex items-center gap-3">
-                    <div class="w-2 h-2 rounded-full animate-pulse" :class="getPriorityDotClass(rec.priority)"></div>
-                    <span class="text-sm font-semibold uppercase" :class="getPriorityTextClass(rec.priority)">
-                      {{ (rec.priority || 'medium').toUpperCase() }} PRIORITY
-                    </span>
-                    <span class="text-xs bg-white/50 px-2 py-0.5 rounded-full">{{ rec.category }}</span>
-                  </div>
-                </div>
-                
-                <div class="p-5">
-                  <h4 class="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2">
-                    <span class="text-2xl">{{ getRecommendationIcon(rec.category) }}</span>
-                    {{ rec.title }}
-                  </h4>
-                  
-                  <p class="text-sm text-gray-600 mb-4">{{ rec.problem_statement }}</p>
-                  
-                  <div v-if="rec.action_items?.length" class="mb-4">
-                    <p class="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                      <svg class="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                      </svg>
-                      Action Items
-                    </p>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-                      <div v-for="(item, idx) in rec.action_items" :key="idx" 
-                           class="flex items-start gap-2 p-2 bg-gray-50 rounded-lg">
-                        <input type="checkbox" class="mt-1 w-4 h-4 text-emerald-600 rounded">
-                        <span class="text-sm text-gray-700">{{ item }}</span>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div v-if="rec.expected_outcome" class="mb-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl">
-                    <div class="flex items-center justify-between mb-2">
-                      <span class="text-sm font-semibold text-blue-800">Expected Outcome</span>
-                      <span class="text-sm font-bold text-blue-600">{{ calculateGainPercentage(rec.priority) }}% improvement</span>
-                    </div>
-                    <p class="text-sm text-blue-800 mb-2">{{ rec.expected_outcome }}</p>
-                    <div class="w-full bg-blue-200 rounded-full h-2">
-                      <div class="bg-blue-600 rounded-full h-2" :style="{ width: calculateGainPercentage(rec.priority) + '%' }"></div>
-                    </div>
-                  </div>
-                  
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                    <div v-if="rec.resources_needed?.length" class="p-3 bg-gray-50 rounded-lg">
-                      <p class="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1">
-                        <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                        </svg>
-                        Resources Needed
-                      </p>
-                      <div class="flex flex-wrap gap-1">
-                        <span v-for="(resource, idx) in rec.resources_needed" :key="idx"
-                              class="text-xs px-2 py-1 bg-white text-gray-600 rounded-full border">
-                          {{ resource }}
-                        </span>
-                      </div>
-                    </div>
-                    <div v-if="rec.success_metrics?.length" class="p-3 bg-gray-50 rounded-lg">
-                      <p class="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1">
-                        <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Success Metrics
-                      </p>
-                      <div class="flex flex-wrap gap-1">
-                        <span v-for="(metric, idx) in rec.success_metrics" :key="idx"
-                              class="text-xs px-2 py-1 bg-green-50 text-green-700 rounded-full">
-                          {{ metric }}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- What-If Analysis -->
-          <div v-if="currentInsight.what_if_analysis" class="bg-white rounded-2xl shadow-lg p-6">
-            <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <span class="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
-                <svg class="w-5 h-5 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                </svg>
-              </span>
-              What-If Analysis & Scenario Planning
-            </h3>
-            
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div v-if="currentInsight.what_if_analysis.targeted" class="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-5 border border-blue-200">
-                <div class="flex items-center gap-2 mb-3">
-                  <span class="text-2xl">🎯</span>
-                  <h4 class="font-bold text-blue-800">{{ currentInsight.what_if_analysis.targeted.scenario || 'Targeted Improvements' }}</h4>
-                </div>
-                <div class="flex items-center justify-between mb-3">
-                  <div>
-                    <p class="text-xs text-gray-500">Current Satisfaction</p>
-                    <p class="text-xl font-bold text-gray-700">{{ currentInsight.what_if_analysis.targeted.current_satisfaction || 0 }}</p>
-                  </div>
-                  <svg class="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                  </svg>
-                  <div>
-                    <p class="text-xs text-gray-500">Projected Satisfaction</p>
-                    <p class="text-xl font-bold text-blue-600">{{ currentInsight.what_if_analysis.targeted.projected_satisfaction || 0 }}</p>
-                  </div>
-                </div>
-                <div class="bg-white rounded-lg p-3 mb-3">
-                  <p class="text-sm font-medium text-blue-800">Potential Gain: +{{ currentInsight.what_if_analysis.targeted.gain || 0 }}</p>
-                  <div class="w-full bg-blue-200 rounded-full h-2 mt-2">
-                    <div class="bg-blue-600 rounded-full h-2" :style="{ width: ((currentInsight.what_if_analysis.targeted.gain || 0) / 5 * 100) + '%' }"></div>
-                  </div>
-                </div>
-                <div class="space-y-2">
-                  <p class="text-xs font-medium text-gray-600">Focus Areas:</p>
-                  <div v-for="imp in currentInsight.what_if_analysis.targeted.improvements" :key="imp.category" 
-                       class="flex items-center justify-between text-xs">
-                    <span class="text-gray-600">{{ imp.category }}</span>
-                    <span class="text-blue-600 font-medium">{{ imp.from }} → {{ imp.to }} (+{{ imp.gain }})</span>
-                  </div>
-                </div>
-              </div>
-              
-              <div v-if="currentInsight.what_if_analysis.optimistic" class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-5 border border-green-200">
-                <div class="flex items-center gap-2 mb-3">
-                  <span class="text-2xl">🚀</span>
-                  <h4 class="font-bold text-green-800">{{ currentInsight.what_if_analysis.optimistic.scenario || 'Optimistic Scenario' }}</h4>
-                </div>
-                <div class="flex items-center justify-between mb-3">
-                  <div>
-                    <p class="text-xs text-gray-500">Current Satisfaction</p>
-                    <p class="text-xl font-bold text-gray-700">{{ currentInsight.what_if_analysis.optimistic.current_satisfaction || 0 }}</p>
-                  </div>
-                  <svg class="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                  </svg>
-                  <div>
-                    <p class="text-xs text-gray-500">Projected Satisfaction</p>
-                    <p class="text-xl font-bold text-green-600">{{ currentInsight.what_if_analysis.optimistic.projected_satisfaction || 0 }}</p>
-                  </div>
-                </div>
-                <div class="bg-white rounded-lg p-3 mb-3">
-                  <p class="text-sm font-medium text-green-800">Potential Gain: +{{ currentInsight.what_if_analysis.optimistic.gain || 0 }}</p>
-                  <div class="w-full bg-green-200 rounded-full h-2 mt-2">
-                    <div class="bg-green-600 rounded-full h-2" :style="{ width: ((currentInsight.what_if_analysis.optimistic.gain || 0) / 5 * 100) + '%' }"></div>
-                  </div>
-                </div>
-                <p class="text-xs text-gray-500 mt-2">If all categories are improved to 4.0</p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Decision Summary Card -->
-          <div class="bg-gradient-to-r from-gray-800 to-gray-900 rounded-2xl shadow-xl p-6 text-white">
-            <div class="flex items-center gap-3 mb-4">
-              <svg class="w-8 h-8 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <h3 class="text-xl font-bold">Executive Decision Summary</h3>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <p class="text-sm text-gray-400">Priority Actions</p>
-                <p class="text-lg font-semibold">{{ currentInsight.recommendations?.length || 0 }} recommendations</p>
-                <p class="text-xs text-gray-400 mt-1">{{ getHighPriorityCount() }} high priority</p>
-              </div>
-              <div>
-                <p class="text-sm text-gray-400">Expected Improvement</p>
-                <p class="text-lg font-semibold text-green-400">+{{ getTotalPotentialGain() }}</p>
-                <p class="text-xs text-gray-400 mt-1">satisfaction points</p>
-              </div>
-              <div>
-                <p class="text-sm text-gray-400">Analysis Status</p>
-                <p class="text-lg font-semibold">AI-Powered</p>
-                <p class="text-xs text-gray-400 mt-1">{{ formatDate(currentInsight.analyzed_at) }}</p>
-              </div>
-            </div>
-          </div>
         </div>
 
         <!-- No AI Insights Message -->
-        <div v-else-if="evaluation.status === 'closed'" class="bg-white rounded-2xl shadow-lg p-12 text-center">
-          <svg class="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-          </svg>
-          <h3 class="text-lg font-medium text-gray-900 mb-2">No AI Insights Yet</h3>
-          <p class="text-gray-500">AI insights are being generated by QUAMS. Please check back later.</p>
+        <div v-else-if="evaluation.status === 'closed'" class="empty-state-card">
+          <div class="empty-icon">🤖</div>
+          <h3>No AI Insights Yet</h3>
+          <p>AI insights are being generated by QUAMS. Please check back later.</p>
         </div>
 
-        <!-- Results Section (Only show when no AI insights or for draft/active) -->
+        <!-- Raw Results Section (When no AI insights available) -->
         <div v-if="!currentInsight && evaluation.responses_count > 0 && evaluation.status !== 'draft'" class="space-y-8">
-          <div v-for="category in evaluation.categories" :key="category.id" 
-               class="bg-white rounded-2xl shadow-lg p-6">
+          <div v-for="category in evaluation.categories" :key="category.id" class="section-card">
             <h2 class="text-xl font-bold text-gray-800 mb-6 pb-2 border-b border-gray-200">{{ category.name }}</h2>
-            
             <div class="space-y-6">
               <div v-for="question in category.questions" :key="question.id" class="space-y-2">
                 <p class="font-medium text-gray-700">{{ question.text }}</p>
-                
                 <div v-if="stats && stats[question.id]" class="space-y-2">
                   <div class="flex items-center gap-4 mb-2">
                     <span class="text-sm text-gray-600">Average:</span>
                     <span class="text-2xl font-bold text-emerald-600">{{ stats[question.id].average }}</span>
                     <span class="text-sm text-gray-500">/ 5</span>
                   </div>
-
                   <div v-for="rating in [5,4,3,2,1]" :key="rating" class="flex items-center gap-2">
                     <span class="w-8 text-sm text-gray-600">{{ rating }}★</span>
                     <div class="flex-1 h-6 bg-gray-100 rounded-lg overflow-hidden">
@@ -716,14 +564,12 @@
             </div>
           </div>
 
-          <div v-if="evaluation.comments && evaluation.comments.length > 0" class="bg-white rounded-2xl shadow-lg p-6">
+          <div v-if="evaluation.comments && evaluation.comments.length > 0" class="section-card">
             <h2 class="text-xl font-bold text-gray-800 mb-6">Comments & Feedback</h2>
-            
             <div v-for="comment in evaluation.comments" :key="comment.id" class="mb-6 last:mb-0">
               <h3 class="font-medium text-gray-700 mb-3">{{ comment.text }}</h3>
               <div v-if="comments && comments[comment.id] && comments[comment.id].responses.length > 0" class="space-y-3">
-                <div v-for="(response, idx) in comments[comment.id].responses" :key="idx" 
-                     class="p-4 bg-gray-50 rounded-lg">
+                <div v-for="(response, idx) in comments[comment.id].responses" :key="idx" class="p-4 bg-gray-50 rounded-lg">
                   <p class="text-gray-700">{{ response }}</p>
                 </div>
               </div>
@@ -732,12 +578,10 @@
           </div>
         </div>
 
-        <div v-else-if="evaluation.responses_count === 0 && evaluation.status !== 'draft'" class="bg-white rounded-2xl shadow-lg p-12 text-center">
-          <svg class="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-          </svg>
-          <h3 class="text-lg font-medium text-gray-900 mb-2">No Responses Yet</h3>
-          <p class="text-gray-500">Share the QR code with students to start collecting feedback.</p>
+        <div v-else-if="evaluation.responses_count === 0 && evaluation.status !== 'draft'" class="empty-state-card">
+          <div class="empty-icon">📭</div>
+          <h3>No Responses Yet</h3>
+          <p>Share the QR code with students to start collecting feedback.</p>
         </div>
       </div>
     </div>
@@ -749,7 +593,6 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import OrganizationUserLayout from '@/Layouts/OrganizationUserLayout.vue';
 import QRCode from 'qrcode';
-import Chart from 'chart.js/auto';
 
 const props = defineProps({
   evaluation: {
@@ -786,62 +629,79 @@ const props = defineProps({
 const currentDate = ref('overall');
 const currentInsight = ref(null);
 
-// Pagination state
+// Comment visibility toggles
+const showPositiveComments = ref(false);
+const showNegativeComments = ref(false);
+const showNeutralComments = ref(false);
+
+// Pagination
 const COMMENTS_PER_PAGE = 10;
 const positiveCurrentPage = ref(1);
 const negativeCurrentPage = ref(1);
 const neutralCurrentPage = ref(1);
 
+// Comment lists
+const positiveCommentsList = ref([]);
+const negativeCommentsList = ref([]);
+const neutralCommentsList = ref([]);
+
 // Computed paginated comments
 const paginatedPositiveComments = computed(() => {
-  const comments = currentInsight.value?.sentiment_analysis?.positive_comments || [];
   const start = (positiveCurrentPage.value - 1) * COMMENTS_PER_PAGE;
-  const end = start + COMMENTS_PER_PAGE;
-  return comments.slice(start, end);
+  return positiveCommentsList.value.slice(start, start + COMMENTS_PER_PAGE);
 });
 
 const paginatedNegativeComments = computed(() => {
-  const comments = currentInsight.value?.sentiment_analysis?.negative_comments || [];
   const start = (negativeCurrentPage.value - 1) * COMMENTS_PER_PAGE;
-  const end = start + COMMENTS_PER_PAGE;
-  return comments.slice(start, end);
+  return negativeCommentsList.value.slice(start, start + COMMENTS_PER_PAGE);
 });
 
 const paginatedNeutralComments = computed(() => {
-  const comments = currentInsight.value?.sentiment_analysis?.neutral_comments || [];
   const start = (neutralCurrentPage.value - 1) * COMMENTS_PER_PAGE;
-  const end = start + COMMENTS_PER_PAGE;
-  return comments.slice(start, end);
+  return neutralCommentsList.value.slice(start, start + COMMENTS_PER_PAGE);
 });
 
-const positiveTotalPages = computed(() => {
-  const comments = currentInsight.value?.sentiment_analysis?.positive_comments || [];
-  return Math.ceil(comments.length / COMMENTS_PER_PAGE);
-});
+const positiveTotalPages = computed(() => Math.ceil(positiveCommentsList.value.length / COMMENTS_PER_PAGE));
+const negativeTotalPages = computed(() => Math.ceil(negativeCommentsList.value.length / COMMENTS_PER_PAGE));
+const neutralTotalPages = computed(() => Math.ceil(neutralCommentsList.value.length / COMMENTS_PER_PAGE));
 
-const negativeTotalPages = computed(() => {
-  const comments = currentInsight.value?.sentiment_analysis?.negative_comments || [];
-  return Math.ceil(comments.length / COMMENTS_PER_PAGE);
-});
+const totalComments = computed(() => positiveCommentsList.value.length + negativeCommentsList.value.length + neutralCommentsList.value.length);
 
-const neutralTotalPages = computed(() => {
-  const comments = currentInsight.value?.sentiment_analysis?.neutral_comments || [];
-  return Math.ceil(comments.length / COMMENTS_PER_PAGE);
-});
-
-const backUrl = computed(() => {
-  const userRole = usePage().props.auth?.user?.role;
-  if (userRole === 'adviser') {
-    return '/adviser/evaluations';
+// Priority Matrix
+const priorityMatrix = computed(() => {
+  const categories = displayCategoryBreakdown.value;
+  const matrix = { critical: [], important: [], urgent: [], monitor: [] };
+  
+  for (const [category, score] of Object.entries(categories)) {
+    const urgency = score < 2.5 ? 100 : (score < 3.0 ? 70 : (score < 3.5 ? 40 : 10));
+    const importance = getCategoryImportance(category);
+    
+    if (urgency >= 70 && importance >= 70) matrix.critical.push({ category, score });
+    else if (importance >= 70) matrix.important.push({ category, score });
+    else if (urgency >= 70) matrix.urgent.push({ category, score });
+    else matrix.monitor.push({ category, score });
   }
-  return '/president/evaluations';
+  return matrix;
 });
 
+// Sentiment percentages
+const positivePercentage = computed(() => currentInsight.value?.sentiment_analysis?.positive_percentage || 0);
+const negativePercentage = computed(() => currentInsight.value?.sentiment_analysis?.negative_percentage || 0);
+const neutralPercentage = computed(() => currentInsight.value?.sentiment_analysis?.neutral_percentage || 0);
+const commonThemes = computed(() => currentInsight.value?.sentiment_analysis?.common_themes || []);
+
+// Display category breakdown
+const displayCategoryBreakdown = computed(() => {
+  if (currentInsight.value?.category_breakdown && Object.keys(currentInsight.value.category_breakdown).length > 0) {
+    return currentInsight.value.category_breakdown;
+  }
+  return props.categoryBreakdown;
+});
+
+const backUrl = computed(() => '/president/evaluations');
 const qrCanvas = ref(null);
 const copied = ref(false);
 const evaluationUrl = ref('');
-const categoryChart = ref(null);
-let categoryChartInstance = null;
 
 const totalQuestions = computed(() => {
   let count = 0;
@@ -853,7 +713,71 @@ const totalQuestions = computed(() => {
   return count;
 });
 
-function formatDate(date) {
+// Helper Functions
+const getScoreColor = (score) => {
+  if (score >= 4.5) return '#10B981';
+  if (score >= 3.5) return '#34D399';
+  if (score >= 2.5) return '#FBBF24';
+  if (score >= 1.5) return '#F97316';
+  return '#EF4444';
+};
+
+const getHeroClass = (score) => {
+  if (score >= 4.5) return 'hero-excellent';
+  if (score >= 3.5) return 'hero-good';
+  if (score >= 2.5) return 'hero-average';
+  return 'hero-poor';
+};
+
+const getRatingBadgeClass = (score) => {
+  if (score >= 4.5) return 'badge-excellent';
+  if (score >= 3.5) return 'badge-good';
+  if (score >= 2.5) return 'badge-average';
+  return 'badge-poor';
+};
+
+const getInterpretationLabel = (score) => {
+  if (score >= 4.5) return 'Outstanding';
+  if (score >= 3.5) return 'Very Satisfactory';
+  if (score >= 2.5) return 'Satisfactory';
+  if (score >= 1.5) return 'Poor';
+  return 'Very Poor';
+};
+
+const getVerbalInterpretation = (score) => {
+  if (score >= 4.5) return 'Very Satisfied';
+  if (score >= 3.5) return 'Satisfied';
+  if (score >= 2.5) return 'Neither Satisfied nor Dissatisfied';
+  if (score >= 1.5) return 'Dissatisfied';
+  return 'Very Dissatisfied';
+};
+
+const getSuccessRate = (score) => {
+  if (score >= 4.5) return 95;
+  if (score >= 4.0) return 85;
+  if (score >= 3.5) return 75;
+  if (score >= 3.0) return 60;
+  if (score >= 2.5) return 45;
+  return 30;
+};
+
+const simplifyCategoryName = (name) => {
+  return name.replace(/^[IVX]+\.\s*/, '').substring(0, 35);
+};
+
+const getCategoryImportance = (category) => {
+  const importance = { 'Food': 95, 'Resource Speaker': 90, 'Outcomes': 85, 'Secretariat': 80, 'Facilities': 75, 'Design': 70, 'Information': 65 };
+  for (const [key, value] of Object.entries(importance)) {
+    if (category.includes(key)) return value;
+  }
+  return 50;
+};
+
+const getHighPriorityCount = () => {
+  return currentInsight.value?.recommendations?.filter(r => r.priority?.toLowerCase() === 'high').length || 0;
+};
+
+const formatDate = (date) => {
   if (!date) return '';
   return new Date(date).toLocaleString('en-US', {
     month: 'long',
@@ -862,9 +786,9 @@ function formatDate(date) {
     hour: '2-digit',
     minute: '2-digit'
   });
-}
+};
 
-function formatDateOnly(date) {
+const formatDateOnly = (date) => {
   if (!date) return '';
   if (date === 'overall') return 'Overall';
   try {
@@ -878,179 +802,62 @@ function formatDateOnly(date) {
   } catch (e) {
     return date;
   }
-}
+};
 
-function selectDate(date) {
+const updateSentimentData = () => {
+  // Get comments from sentiment_analysis or direct fields
+  positiveCommentsList.value = currentInsight.value?.sentiment_analysis?.positive_comments || 
+                               currentInsight.value?.positive_comments || [];
+  negativeCommentsList.value = currentInsight.value?.sentiment_analysis?.negative_comments || 
+                               currentInsight.value?.negative_comments || [];
+  neutralCommentsList.value = currentInsight.value?.sentiment_analysis?.neutral_comments || 
+                              currentInsight.value?.neutral_comments || [];
+  
+  // Reset pagination
+  positiveCurrentPage.value = 1;
+  negativeCurrentPage.value = 1;
+  neutralCurrentPage.value = 1;
+};
+
+const selectDate = (date) => {
   currentDate.value = date;
   if (date === 'overall') {
     currentInsight.value = props.aiInsights;
   } else {
     currentInsight.value = props.dateInsights.find(i => i.event_date === date);
   }
-  // Reset pagination
-  positiveCurrentPage.value = 1;
-  negativeCurrentPage.value = 1;
-  neutralCurrentPage.value = 1;
-  // Update chart
-  setTimeout(() => initCategoryChart(), 100);
-}
+  updateSentimentData();
+};
 
-function getConfidenceScore() {
-  const rate = currentInsight.value?.response_rate || 0;
-  if (rate >= 0.75) return 95;
-  if (rate >= 0.5) return 75;
-  if (rate >= 0.25) return 50;
-  return 30;
-}
-
-function getRecommendationBorderClass(priority) {
-  const priorityLower = priority ? priority.toString().toLowerCase() : 'medium';
-  const classes = {
-    'high': 'border-red-200',
-    'medium': 'border-yellow-200',
-    'low': 'border-blue-200'
-  };
-  return classes[priorityLower] || 'border-gray-200';
-}
-
-function getRecommendationHeaderClass(priority) {
-  const priorityLower = priority ? priority.toString().toLowerCase() : 'medium';
-  const classes = {
-    'high': 'bg-red-100',
-    'medium': 'bg-yellow-100',
-    'low': 'bg-blue-100'
-  };
-  return classes[priorityLower] || 'bg-gray-100';
-}
-
-function getPriorityDotClass(priority) {
-  const priorityLower = priority ? priority.toString().toLowerCase() : 'medium';
-  const classes = {
-    'high': 'bg-red-500',
-    'medium': 'bg-yellow-500',
-    'low': 'bg-blue-500'
-  };
-  return classes[priorityLower] || 'bg-gray-500';
-}
-
-function getPriorityTextClass(priority) {
-  const priorityLower = priority ? priority.toString().toLowerCase() : 'medium';
-  const classes = {
-    'high': 'text-red-700',
-    'medium': 'text-yellow-700',
-    'low': 'text-blue-700'
-  };
-  return classes[priorityLower] || 'text-gray-700';
-}
-
-function getRecommendationIcon(category) {
-  if (!category) return '📈';
-  if (category.includes('Information')) return '📢';
-  if (category.includes('Design')) return '🎯';
-  if (category.includes('Outcomes')) return '🎉';
-  if (category.includes('Secretariat')) return '👥';
-  if (category.includes('Facilities')) return '🏛️';
-  if (category.includes('Food')) return '🍽️';
-  if (category.includes('Speaker')) return '🎤';
-  if (category.includes('Traffic')) return '🚦';
-  return '📈';
-}
-
-function calculateGainPercentage(priority) {
-  const priorityMap = { high: 75, medium: 50, low: 25 };
-  return priorityMap[priority?.toLowerCase()] || 40;
-}
-
-function getHighPriorityCount() {
-  return currentInsight.value?.recommendations?.filter(r => r.priority?.toLowerCase() === 'high').length || 0;
-}
-
-function getTotalPotentialGain() {
-  const targeted = currentInsight.value?.what_if_analysis?.targeted?.gain || 0;
-  return targeted.toFixed(1);
-}
-
-function initCategoryChart() {
-  if (!currentInsight.value?.category_breakdown && !props.categoryBreakdown) return;
-  
-  const categories = Object.keys(currentInsight.value?.category_breakdown || props.categoryBreakdown);
-  const scores = Object.values(currentInsight.value?.category_breakdown || props.categoryBreakdown);
-  
-  if (categoryChartInstance) categoryChartInstance.destroy();
-  
-  if (categoryChart.value && categories.length > 0) {
-    categoryChartInstance = new Chart(categoryChart.value, {
-      type: 'bar',
-      data: {
-        labels: categories.map(c => c.replace(/^[IVX]+\.\s*/, '').substring(0, 25)),
-        datasets: [{
-          label: 'Score (out of 5)',
-          data: scores,
-          backgroundColor: scores.map(s => s >= 4 ? 'rgba(16, 185, 129, 0.8)' : 
-                                     s >= 3 ? 'rgba(245, 158, 11, 0.8)' : 
-                                     'rgba(239, 68, 68, 0.8)'),
-          borderColor: scores.map(s => s >= 4 ? 'rgb(16, 185, 129)' : 
-                                     s >= 3 ? 'rgb(245, 158, 11)' : 
-                                     'rgb(239, 68, 68)'),
-          borderWidth: 1,
-          borderRadius: 8
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: { callbacks: { label: (ctx) => `${ctx.raw}/5.0` } }
-        },
-        scales: {
-          y: { beginAtZero: true, max: 5, title: { display: true, text: 'Score (1-5)' } },
-          x: { ticks: { maxRotation: 45, minRotation: 45 } }
-        }
-      }
-    });
-  }
-}
-
-async function copyLink() {
+const copyLink = async () => {
   try {
     await navigator.clipboard.writeText(evaluationUrl.value);
     copied.value = true;
-    setTimeout(() => {
-      copied.value = false;
-    }, 2000);
+    setTimeout(() => { copied.value = false; }, 2000);
   } catch (err) {
     console.error('Failed to copy:', err);
   }
-}
+};
 
-function downloadQRCode() {
+const downloadQRCode = () => {
   if (qrCanvas.value) {
     const link = document.createElement('a');
     link.download = `qrcode-${props.evaluation.id}.png`;
     link.href = qrCanvas.value.toDataURL('image/png');
     link.click();
   }
-}
+};
 
-// Set initial current insight
+// Watch for changes
 watch(() => [props.aiInsights, props.dateInsights], () => {
   if (props.aiInsights) {
     selectDate('overall');
   } else if (props.dateInsights.length > 0) {
     selectDate(props.dateInsights[0].event_date);
-  } else {
-    currentInsight.value = null;
   }
 }, { immediate: true });
 
-// Watch for categoryBreakdown changes
-watch(() => props.categoryBreakdown, () => {
-  if (props.categoryBreakdown) {
-    setTimeout(() => initCategoryChart(), 100);
-  }
-});
-
+// Initialize QR code
 onMounted(async () => {
   evaluationUrl.value = props.evaluation.qr_code_url || 
     `${window.location.origin}/evaluations/${props.evaluation.id}/form`;
@@ -1060,28 +867,771 @@ onMounted(async () => {
       await QRCode.toCanvas(qrCanvas.value, evaluationUrl.value, {
         width: 200,
         margin: 1,
-        color: {
-          dark: '#000000',
-          light: '#ffffff'
-        }
+        color: { dark: '#000000', light: '#ffffff' }
       });
     } catch (err) {
       console.error('Failed to generate QR code:', err);
     }
   }
-  
-  if (props.categoryBreakdown) {
-    setTimeout(() => initCategoryChart(), 100);
-  }
 });
 </script>
 
 <style scoped>
+.modern-dashboard {
+  background: #f5f7fa;
+  min-height: 100vh;
+}
+
+/* Date Selector */
+.date-selector {
+  background: white;
+  border-radius: 20px;
+  padding: 20px 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.date-selector-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin: 0 0 16px 0;
+}
+
+.date-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.date-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 40px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #6c757d;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.date-tab:hover {
+  background: #e9ecef;
+}
+
+.date-tab.active {
+  background: #6366f1;
+  border-color: #6366f1;
+  color: white;
+}
+
+.date-count {
+  background: rgba(0,0,0,0.1);
+  padding: 2px 6px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.date-tab.active .date-count {
+  background: rgba(255,255,255,0.2);
+}
+
+/* Section Cards */
+.section-card {
+  background: white;
+  border-radius: 20px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.section-header {
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.title-icon {
+  font-size: 22px;
+}
+
+.section-title h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin: 0;
+}
+
+.section-desc {
+  font-size: 13px;
+  color: #94a3b8;
+  margin-top: 6px;
+  margin-left: 32px;
+}
+
+/* Category List */
+.category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.category-item {
+  width: 100%;
+}
+
+.category-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.category-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #334155;
+}
+
+.category-score .score-value {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.category-score .score-max {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.category-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.bar-bg {
+  flex: 1;
+  background: #e9ecef;
+  border-radius: 8px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 8px;
+  transition: width 0.5s ease;
+}
+
+.bar-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #94a3b8;
+  min-width: 90px;
+  text-align: right;
+}
+
+/* Hero Card */
+.hero-card {
+  position: relative;
+  border-radius: 24px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.hero-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.hero-excellent .hero-bg {
+  background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+}
+
+.hero-good .hero-bg {
+  background: linear-gradient(135deg, #34D399 0%, #10B981 100%);
+}
+
+.hero-average .hero-bg {
+  background: linear-gradient(135deg, #FBBF24 0%, #D97706 100%);
+}
+
+.hero-poor .hero-bg {
+  background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+}
+
+.hero-content {
+  position: relative;
+  padding: 32px;
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+.hero-left {
+  flex: 1;
+}
+
+.hero-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  color: white;
+  margin-bottom: 16px;
+}
+
+.hero-score {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.score-number {
+  font-size: 56px;
+  font-weight: 800;
+  color: white;
+  line-height: 1;
+}
+
+.score-max {
+  font-size: 20px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.7);
+}
+
+.hero-rating {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.rating-badge {
+  padding: 6px 14px;
+  border-radius: 40px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.badge-excellent {
+  background: #10B981;
+  color: white;
+}
+
+.badge-good {
+  background: #34D399;
+  color: white;
+}
+
+.badge-average {
+  background: #FBBF24;
+  color: #1a1a2e;
+}
+
+.badge-poor {
+  background: #EF4444;
+  color: white;
+}
+
+.rating-verb {
+  color: rgba(255,255,255,0.9);
+  font-size: 14px;
+}
+
+.hero-stats {
+  display: flex;
+  gap: 16px;
+}
+
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 16px;
+  backdrop-filter: blur(10px);
+}
+
+.stat-icon {
+  font-size: 24px;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: white;
+  line-height: 1.2;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: rgba(255,255,255,0.8);
+}
+
+.hero-progress {
+  position: relative;
+  padding: 0 32px 24px 32px;
+}
+
+.progress-bar-bg {
+  background: rgba(255,255,255,0.2);
+  border-radius: 10px;
+  height: 6px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: white;
+  border-radius: 10px;
+  transition: width 0.5s ease;
+}
+
+.progress-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-size: 10px;
+  color: rgba(255,255,255,0.6);
+}
+
+/* Strengths & Weaknesses */
+.strengths-list, .weaknesses-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.strength-item, .weakness-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: #334155;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-radius: 12px;
+}
+
+.strength-dot {
+  width: 8px;
+  height: 8px;
+  background: #10B981;
+  border-radius: 50%;
+}
+
+.weakness-dot {
+  width: 8px;
+  height: 8px;
+  background: #EF4444;
+  border-radius: 50%;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 32px;
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+/* Priority Grid */
+.priority-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 640px) {
+  .priority-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.priority-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 16px;
+}
+
+.priority-card.critical { background: #FEF2F2; }
+.priority-card.important { background: #FFF7ED; }
+.priority-card.urgent { background: #FEFCE8; }
+.priority-card.monitor { background: #ECFDF5; }
+
+.priority-icon {
+  font-size: 28px;
+}
+
+.priority-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.priority-count {
+  font-size: 11px;
+  color: #64748b;
+}
+
+/* Recommendations */
+.recommendations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.rec-card {
+  border-radius: 16px;
+  overflow: hidden;
+  background: white;
+  border: 1px solid #e9ecef;
+  transition: all 0.2s;
+}
+
+.rec-card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  transform: translateY(-2px);
+}
+
+.rec-card.high {
+  border-left: 4px solid #EF4444;
+}
+
+.rec-card.medium {
+  border-left: 4px solid #FBBF24;
+}
+
+.rec-card.low {
+  border-left: 4px solid #3B82F6;
+}
+
+.rec-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: #f8f9fa;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.rec-priority {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.rec-priority.high { color: #EF4444; }
+.rec-priority.medium { color: #FBBF24; }
+.rec-priority.low { color: #3B82F6; }
+
+.priority-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.rec-priority.high .priority-dot { background: #EF4444; }
+.rec-priority.medium .priority-dot { background: #FBBF24; }
+.rec-priority.low .priority-dot { background: #3B82F6; }
+
+.rec-score {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.rec-score .current { color: #EF4444; font-weight: 600; }
+.rec-score .target { color: #10B981; font-weight: 600; }
+.rec-score .arrow { color: #94a3b8; }
+
+.rec-body {
+  padding: 20px;
+}
+
+.rec-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1a1a2e;
+  margin: 0 0 8px 0;
+}
+
+.rec-description {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0 0 16px 0;
+  line-height: 1.5;
+}
+
+.rec-actions {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.actions-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 10px;
+}
+
+.actions-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.actions-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #475569;
+  margin-bottom: 8px;
+}
+
+.action-arrow {
+  color: #6366f1;
+}
+
+.rec-footer {
+  padding-top: 12px;
+  border-top: 1px solid #e9ecef;
+}
+
+.rec-outcome {
+  font-size: 12px;
+  font-weight: 500;
+  color: #10B981;
+}
+
+.empty-recommendations {
+  text-align: center;
+  padding: 40px;
+}
+
+.empty-recommendations span {
+  font-size: 48px;
+  display: block;
+  margin-bottom: 12px;
+}
+
+/* Sentiment Section */
+.sentiment-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.sentiment-stat {
+  text-align: center;
+  padding: 20px;
+  border-radius: 16px;
+}
+
+.sentiment-stat.positive { background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%); }
+.sentiment-stat.neutral { background: linear-gradient(135deg, #FEFCE8 0%, #FEF3C7 100%); }
+.sentiment-stat.negative { background: linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%); }
+
+.sentiment-icon { font-size: 32px; margin-bottom: 8px; }
+.sentiment-value { font-size: 28px; font-weight: 800; }
+.sentiment-stat.positive .sentiment-value { color: #10B981; }
+.sentiment-stat.neutral .sentiment-value { color: #FBBF24; }
+.sentiment-stat.negative .sentiment-value { color: #EF4444; }
+.sentiment-label { font-size: 12px; font-weight: 500; color: #64748b; }
+.sentiment-count { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+
+.sentiment-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.bar-positive { background: #10B981; }
+.bar-neutral { background: #FBBF24; }
+.bar-negative { background: #EF4444; }
+
+.common-themes {
+  margin-bottom: 24px;
+}
+
+.themes-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 12px;
+}
+
+.themes-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.theme-tag {
+  padding: 6px 14px;
+  background: #f0f0f0;
+  border-radius: 30px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #4a5568;
+}
+
+/* Comment Section */
+.comment-section {
+  margin-top: 20px;
+  border-top: 1px solid #e9ecef;
+  padding-top: 20px;
+}
+
+.comment-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 16px;
+  background: #f8f9fa;
+  border: none;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.comment-toggle.positive { color: #10B981; }
+.comment-toggle.negative { color: #EF4444; }
+.comment-toggle.neutral { color: #64748b; }
+
+.comment-count {
+  margin-left: auto;
+  background: rgba(0,0,0,0.05);
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+}
+
+.comment-list {
+  margin-top: 12px;
+  padding-left: 16px;
+}
+
+.comment-item {
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.comment-item.positive {
+  background: #ECFDF5;
+  color: #065F46;
+  border-left: 3px solid #10B981;
+}
+
+.comment-item.negative {
+  background: #FEF2F2;
+  color: #991B1B;
+  border-left: 3px solid #EF4444;
+}
+
+.comment-item.neutral {
+  background: #f8f9fa;
+  color: #4a5568;
+  border-left: 3px solid #cbd5e1;
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.page-btn {
+  padding: 6px 14px;
+  background: #f0f0f0;
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.page-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.page-info {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.empty-sentiment {
+  text-align: center;
+  padding: 40px;
+}
+
+/* Empty State */
+.empty-state-card {
+  background: white;
+  border-radius: 24px;
+  padding: 60px;
+  text-align: center;
+}
+
+.empty-icon {
+  font-size: 64px;
+  margin-bottom: 20px;
+}
+
+.empty-state-card h3 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin: 0 0 8px 0;
+}
+
+.empty-state-card p {
+  color: #64748b;
+}
+
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
-}
-.animate-spin {
-  animation: spin 1s linear infinite;
 }
 </style>

@@ -16,14 +16,14 @@
             </svg>
           </div>
           <div class="ml-3">
-            <h3 class="text-sm font-medium text-emerald-800">Your Organization's Assigned Departments & Courses</h3>
+            <h3 class="text-sm font-medium text-emerald-800">Your Organization's Assigned College & Programs</h3>
             <div class="mt-2 grid grid-cols-2 gap-4">
               <div>
-                <p class="text-xs font-semibold text-emerald-700">Available Departments:</p>
+                <p class="text-xs font-semibold text-emerald-700">Available College:</p>
                 <p class="text-xs text-emerald-600">{{ departmentNames }}</p>
               </div>
               <div>
-                <p class="text-xs font-semibold text-emerald-700">Available Courses:</p>
+                <p class="text-xs font-semibold text-emerald-700">Available Programs:</p>
                 <p class="text-xs text-emerald-600">{{ courseNames }}</p>
               </div>
             </div>
@@ -102,7 +102,7 @@
           <!-- Department Dropdown -->
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">
-              Department <span class="text-red-500">*</span>
+              College <span class="text-red-500">*</span>
             </label>
             <select
               v-model="form.department"
@@ -110,21 +110,21 @@
               :class="{ 'border-red-500': form.errors.department }"
               required
             >
-              <option value="">Select Department</option>
+              <option value="">Select College</option>
               <option v-for="dept in departments" :key="dept.id" :value="dept.name">
                 {{ dept.name }} ({{ dept.code }})
               </option>
             </select>
             <p v-if="form.errors.department" class="mt-1 text-sm text-red-600">{{ form.errors.department }}</p>
             <p v-if="departments.length === 0" class="mt-1 text-sm text-yellow-600">
-              No departments assigned to your organization. Please contact admin.
+              No College assigned to your organization. Please contact admin.
             </p>
           </div>
 
           <!-- Course Dropdown -->
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">
-              Course <span class="text-red-500">*</span>
+              Program <span class="text-red-500">*</span>
             </label>
             <select
               v-model="form.course"
@@ -132,14 +132,14 @@
               :class="{ 'border-red-500': form.errors.course }"
               required
             >
-              <option value="">Select Course</option>
+              <option value="">Select Program</option>
               <option v-for="course in filteredCourses" :key="course.id" :value="course.name">
                 {{ course.name }} ({{ course.code }})
               </option>
             </select>
             <p v-if="form.errors.course" class="mt-1 text-sm text-red-600">{{ form.errors.course }}</p>
             <p v-if="courses.length === 0" class="mt-1 text-sm text-yellow-600">
-              No courses assigned to your organization. Please contact admin.
+              No programs assigned to your organization. Please contact admin.
             </p>
           </div>
 

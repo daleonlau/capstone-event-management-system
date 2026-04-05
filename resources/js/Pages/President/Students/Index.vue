@@ -53,7 +53,7 @@
               </svg>
             </div>
             <div>
-              <p class="text-sm text-gray-500">Courses</p>
+              <p class="text-sm text-gray-500">Programs</p>
               <p class="text-2xl font-bold text-gray-800">{{ courses.length }}</p>
             </div>
           </div>
@@ -111,13 +111,13 @@
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Filter by Course</label>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Filter by Program</label>
             <select
               v-model="filters.course"
               @change="applyFilters"
               class="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
-              <option value="">All Courses</option>
+              <option value="">All Programs</option>
               <option v-for="course in courses" :key="course.id" :value="course.id">
                 {{ course.name }}
               </option>
@@ -149,7 +149,7 @@
                 <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student ID</th>
                 <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
                 <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course</th>
+                <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Program</th>
                 <th class="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Year Level</th>
                 <th class="px-6 py-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
@@ -233,7 +233,7 @@
                     <input v-model="editForm.email" type="email" class="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500" required />
                   </div>
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Course</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Program</label>
                     <select v-model="editForm.course" class="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500" required>
                       <option v-for="course in courses" :key="course.id" :value="course.name">{{ course.name }}</option>
                     </select>

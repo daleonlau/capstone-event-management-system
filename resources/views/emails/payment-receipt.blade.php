@@ -114,7 +114,7 @@
                 <td>{{ $student->firstname }} {{ $student->lastname }}</td>
             </tr>
             <tr>
-                <td>Course:</td>
+                <td>Program:</td>
                 <td>{{ $student->course }}</td>
             </tr>
             <tr>
@@ -122,7 +122,7 @@
                 <td>{{ $student->yearlevel }}</td>
             </tr>
             <tr>
-                <td>Department:</td>
+                <td>College:</td>
                 <td>{{ $student->department ?? 'N/A' }}</td>
             </tr>
             <tr>

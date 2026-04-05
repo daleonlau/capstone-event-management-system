@@ -57,8 +57,8 @@
               </div>
               <span class="text-3xl font-bold text-gray-800">{{ totalDepartments }}</span>
             </div>
-            <h3 class="text-gray-600 font-semibold text-lg">Departments Assigned</h3>
-            <p class="text-sm text-gray-400 mt-2">Total department assignments</p>
+            <h3 class="text-gray-600 font-semibold text-lg">College Assigned</h3>
+            <p class="text-sm text-gray-400 mt-2">Total college assignments</p>
           </div>
   
           <div class="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all duration-300 group">
@@ -70,8 +70,8 @@
               </div>
               <span class="text-3xl font-bold text-gray-800">{{ totalCourses }}</span>
             </div>
-            <h3 class="text-gray-600 font-semibold text-lg">Courses Assigned</h3>
-            <p class="text-sm text-gray-400 mt-2">Total course assignments</p>
+            <h3 class="text-gray-600 font-semibold text-lg">Programs Assigned</h3>
+            <p class="text-sm text-gray-400 mt-2">Total programs assignments</p>
           </div>
         </div>
   
@@ -153,11 +153,11 @@
                 </div>
                 <div class="text-center">
                   <p class="text-xl font-bold text-blue-600">{{ org.departments_count }}</p>
-                  <p class="text-xs text-gray-500">Departments</p>
+                  <p class="text-xs text-gray-500">College</p>
                 </div>
                 <div class="text-center">
                   <p class="text-xl font-bold text-orange-600">{{ org.courses_count }}</p>
-                  <p class="text-xs text-gray-500">Courses</p>
+                  <p class="text-xs text-gray-500">Programss</p>
                 </div>
               </div>
   

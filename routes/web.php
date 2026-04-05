@@ -97,10 +97,11 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
         Route::post('/{evaluation}/close', [AdminEvaluationController::class, 'close'])->name('close');
         Route::post('/{evaluation}/reopen', [AdminEvaluationController::class, 'reopen'])->name('reopen');
         
-        // AI Insights Routes - IMPORTANT: These must be defined before the {evaluation} parameter routes
+        // AI Insights Routes
         Route::post('/{evaluation}/generate-insights', [AdminEvaluationController::class, 'generateInsights'])->name('generate-insights');
         Route::get('/{evaluation}/ai-insights', [AdminEvaluationController::class, 'getAIInsights'])->name('ai-insights');
         
+        // Data export routes
         Route::get('/{evaluation}/raw-responses', [AdminEvaluationController::class, 'getRawResponses'])->name('raw-responses');
         Route::get('/{evaluation}/stats', [AdminEvaluationController::class, 'getStatsByDate'])->name('stats');
         Route::post('/{evaluation}/bulk-upload', [AdminEvaluationController::class, 'bulkUpload'])->name('bulk-upload');
@@ -287,7 +288,6 @@ Route::get('/debug-session', function() {
     ]);
 })->middleware('auth');
 
-
 // TEMPORARY ROUTES - Remove after use
 Route::get('/migrate-fresh', function() {
     try {
@@ -314,9 +314,7 @@ Route::get('/check-db', function() {
     } catch (\Exception $e) {
         return "❌ Database connection failed: " . $e->getMessage();
     }
-
 });
-
 
 Route::get('/test-email', function() {
     try {

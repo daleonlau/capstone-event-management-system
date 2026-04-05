@@ -83,11 +83,43 @@ class EvaluationController extends Controller
         
         $overallSatisfaction = $totalRatingCount > 0 ? round($totalRatingSum / $totalRatingCount, 2) : 0;
         
-        // Get all AI insights (overall and per date)
+        // ==================== GET ALL AI INSIGHTS WITH COMMENTS ====================
         $allAiInsights = AIAnalysis::where('evaluation_id', $evaluation->id)
             ->orderBy('event_date', 'asc')
             ->get()
             ->map(function ($insight) {
+                // Decode sentiment analysis if it exists
+                $sentimentAnalysis = json_decode($insight->sentiment_analysis, true) ?: [];
+                
+                // Get comments from separate columns (if they exist) or from sentiment_analysis
+                $positiveComments = [];
+                $negativeComments = [];
+                $neutralComments = [];
+                
+                // First try to get from separate columns
+                if ($insight->positive_comments) {
+                    $positiveComments = json_decode($insight->positive_comments, true) ?: [];
+                } elseif (isset($sentimentAnalysis['positive_comments'])) {
+                    $positiveComments = $sentimentAnalysis['positive_comments'];
+                }
+                
+                if ($insight->negative_comments) {
+                    $negativeComments = json_decode($insight->negative_comments, true) ?: [];
+                } elseif (isset($sentimentAnalysis['negative_comments'])) {
+                    $negativeComments = $sentimentAnalysis['negative_comments'];
+                }
+                
+                if ($insight->neutral_comments) {
+                    $neutralComments = json_decode($insight->neutral_comments, true) ?: [];
+                } elseif (isset($sentimentAnalysis['neutral_comments'])) {
+                    $neutralComments = $sentimentAnalysis['neutral_comments'];
+                }
+                
+                // Update sentiment analysis with comments from separate columns
+                $sentimentAnalysis['positive_comments'] = $positiveComments;
+                $sentimentAnalysis['negative_comments'] = $negativeComments;
+                $sentimentAnalysis['neutral_comments'] = $neutralComments;
+                
                 return [
                     'event_date' => $insight->event_date,
                     'summary' => $insight->summary,
@@ -101,10 +133,14 @@ class EvaluationController extends Controller
                     'analyzed_at' => $insight->analyzed_at,
                     'category_breakdown' => json_decode($insight->category_breakdown, true) ?: [],
                     'feature_importance' => json_decode($insight->feature_importance, true) ?: [],
-                    'sentiment_analysis' => json_decode($insight->sentiment_analysis, true) ?: [],
+                    'sentiment_analysis' => $sentimentAnalysis,
                     'what_if_analysis' => json_decode($insight->what_if_analysis, true) ?: [],
                     'critical_factors' => json_decode($insight->critical_factors, true) ?: [],
                     'low_scoring_questions' => json_decode($insight->low_scoring_questions, true) ?: [],
+                    // Direct comment fields for easier access
+                    'positive_comments' => $positiveComments,
+                    'negative_comments' => $negativeComments,
+                    'neutral_comments' => $neutralComments,
                 ];
             })->toArray();
         

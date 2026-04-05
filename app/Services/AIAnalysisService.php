@@ -17,15 +17,17 @@ class AIAnalysisService
 {
     protected string $apiUrl;
     protected int $timeout;
+    protected DSSService $dssService;
     
     const RESPONSE_THRESHOLD = 0.75;
     
-    public function __construct()
+    public function __construct(DSSService $dssService)
     {
+        $this->dssService = $dssService;
         $this->apiUrl = env('AI_SERVICE_URL', 'http://127.0.0.1:8001');
         $this->timeout = env('AI_SERVICE_TIMEOUT', 60);
         
-        Log::info('🔧 AIAnalysisService initialized', [
+        Log::info('AIAnalysisService initialized', [
             'api_url' => $this->apiUrl,
             'timeout' => $this->timeout
         ]);
@@ -141,7 +143,7 @@ class AIAnalysisService
         $normalizedDate = $eventDate ? $this->normalizeDate($eventDate) : null;
         $dateLabel = $normalizedDate ?? 'overall';
         
-        Log::info('========== 🚀 AI ANALYSIS STARTED ==========', [
+        Log::info('Starting AI analysis', [
             'evaluation_id' => $evaluation->id,
             'event_date' => $dateLabel,
             'form_type' => $evaluation->form_type,
@@ -149,310 +151,627 @@ class AIAnalysisService
         ]);
         
         if (!$force && !$this->meetsThreshold($evaluation, $normalizedDate)) {
-            Log::info('⏸️ Evaluation does not meet response threshold', [
+            Log::info('Evaluation does not meet response threshold', [
                 'evaluation_id' => $evaluation->id,
                 'event_date' => $dateLabel
             ]);
             return null;
         }
         
-        try {
-            $evaluationData = $this->prepareEvaluationData($evaluation, $normalizedDate);
-            
-            if (!$evaluationData || $evaluationData['total_respondents'] === 0) {
-                Log::error('❌ No evaluation data prepared', [
-                    'evaluation_id' => $evaluation->id,
-                    'event_date' => $dateLabel
-                ]);
-                return null;
-            }
-            
-            $payload = [
-                'data' => $evaluationData['features'],
-                'year_level' => 1,
-                'respondent_type' => 0,
-                'positive_comments' => $evaluationData['positive_comments'],
-                'suggestion_comments' => $evaluationData['suggestion_comments'],
-                'total_respondents' => $evaluationData['total_respondents'],
-                'response_rate' => $evaluationData['response_rate'],
-                'event_date' => $normalizedDate,
-            ];
-            
-            Log::info('📤 SENDING TO AI SERVICE', [
+        // Step 1: Calculate DSS satisfaction from Likert responses
+        $satisfaction = $this->dssService->calculateSatisfaction($evaluation, $normalizedDate);
+        
+        if (!$satisfaction['has_data']) {
+            Log::warning('No data available for analysis', [
                 'evaluation_id' => $evaluation->id,
-                'event_date' => $dateLabel,
-                'features_count' => count($evaluationData['features']),
-                'positive_comments_count' => count($evaluationData['positive_comments']),
-                'response_rate' => $evaluationData['response_rate'],
-                'total_responses' => $evaluationData['total_respondents']
+                'event_date' => $dateLabel
             ]);
-            
-            $response = Http::timeout($this->timeout)->post("{$this->apiUrl}/analyze", $payload);
-            
-            if ($response->successful()) {
-                $insights = $response->json();
-                
-                Log::info('✅ AI SERVICE RESPONSE RECEIVED', [
-                    'evaluation_id' => $evaluation->id,
-                    'event_date' => $dateLabel,
-                    'satisfaction' => $insights['predicted_satisfaction'] ?? 'N/A',
-                    'strengths_count' => count($insights['strengths'] ?? []),
-                    'weaknesses_count' => count($insights['weaknesses'] ?? []),
-                    'recommendations_count' => count($insights['recommendations'] ?? [])
-                ]);
-                
-                $this->storeInsights($evaluation, $insights, $normalizedDate);
-                
-                return $insights;
-            } else {
-                Log::error('❌ AI service error', [
-                    'status' => $response->status(),
-                    'body' => $response->body()
-                ]);
-            }
-            
-        } catch (\Exception $e) {
-            Log::error('💥 AI analysis exception', [
-                'error' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-                'trace' => $e->getTraceAsString()
-            ]);
+            return null;
         }
         
-        return null;
-    }
-    
-    protected function prepareEvaluationData(Evaluation $evaluation, ?string $eventDate = null): ?array
-    {
-        $normalizedDate = $eventDate ? $this->normalizeDate($eventDate) : null;
+        // Step 2: Get comments for sentiment analysis
+        $comments = $this->getComments($evaluation, $normalizedDate);
+        Log::info('Retrieved comments for analysis', ['count' => count($comments)]);
         
-        Log::info('📊 PREPARING EVALUATION DATA', [
-            'evaluation_id' => $evaluation->id,
-            'event_date' => $normalizedDate ?? 'overall'
+        // Step 3: Analyze sentiment using Python service
+        $sentiment = $this->analyzeSentiment($comments);
+        
+        // Step 4: Extract categorized comments - THESE ARE THE COMMENTS FROM PYTHON SERVICE
+        $positiveComments = $sentiment['positive_comments'] ?? [];
+        $negativeComments = $sentiment['negative_comments'] ?? [];
+        $neutralComments = $sentiment['neutral_comments'] ?? [];
+        
+        Log::info('Comments extracted from sentiment analysis', [
+            'positive_count' => count($positiveComments),
+            'negative_count' => count($negativeComments),
+            'neutral_count' => count($neutralComments),
+            'sample_positive' => array_slice($positiveComments, 0, 2),
+            'sample_negative' => array_slice($negativeComments, 0, 2),
+            'sample_neutral' => array_slice($neutralComments, 0, 2),
         ]);
         
-        $query = EvaluationResponse::where('evaluation_id', $evaluation->id);
+        // Step 5: Generate recommendations from DSS
+        $recommendations = $this->dssService->generateRecommendations($satisfaction['category_scores']);
         
-        if ($normalizedDate) {
-            $query->whereDate('event_date', $normalizedDate);
-        }
+        // Step 6: Get strengths and weaknesses
+        $strengths = $this->dssService->getStrengths($satisfaction['category_scores']);
+        $weaknesses = $this->dssService->getWeaknesses($satisfaction['category_scores']);
         
-        $responses = $query->get();
+        // Step 7: Generate what-if analysis
+        $whatIfAnalysis = $this->generateWhatIfAnalysis($satisfaction);
         
-        if ($responses->isEmpty()) {
-            Log::warning('No responses found', [
-                'evaluation_id' => $evaluation->id,
-                'event_date' => $normalizedDate ?? 'overall'
-            ]);
-            return null;
-        }
+        // Step 8: Generate summary
+        $summary = $this->generateSummary($satisfaction, $sentiment);
         
-        Log::info('📊 Found responses', ['count' => $responses->count()]);
+        // Step 9: Calculate response rate
+        $responseRate = $this->getResponseRateForDate($evaluation, $normalizedDate);
         
-        $questions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
-            ->where('question_type', 'likert')
-            ->orderBy('order')
-            ->get()
-            ->keyBy('id');
+        // Step 10: Get low scoring questions
+        $lowScoringQuestions = $this->getLowScoringQuestions($evaluation, $normalizedDate);
         
-        if ($questions->isEmpty()) {
-            Log::warning('No likert questions found', ['evaluation_id' => $evaluation->id]);
-            return null;
-        }
+        // Step 11: Get year level analysis
+        $yearLevelAnalysis = $this->getYearLevelAnalysis($evaluation, $normalizedDate);
         
-        $features = [];
-        $featureCounts = [];
-        $responseCount = 0;
-        $positiveComments = [];
-        $suggestionComments = [];
+        // Step 12: Store all results in database
+        $this->storeResults(
+            $evaluation, 
+            $normalizedDate,
+            $satisfaction, 
+            $sentiment, 
+            $recommendations, 
+            $strengths, 
+            $weaknesses, 
+            $whatIfAnalysis, 
+            $summary,
+            $responseRate,
+            $lowScoringQuestions,
+            $yearLevelAnalysis,
+            $positiveComments,
+            $negativeComments,
+            $neutralComments
+        );
         
-        foreach ($responses as $response) {
-            $likert = $response->likert_responses;
-            
-            if (is_string($likert)) {
-                $likert = json_decode($likert, true);
-            }
-            
-            if (!is_array($likert) || empty($likert)) {
-                continue;
-            }
-            
-            foreach ($likert as $questionId => $rating) {
-                $questionId = (int)$questionId;
-                $rating = (float)$rating;
-                
-                if (!$questions->has($questionId)) {
-                    continue;
-                }
-                
-                $key = "q_{$questionId}";
-                
-                if (!isset($features[$key])) {
-                    $features[$key] = 0;
-                    $featureCounts[$key] = 0;
-                }
-                
-                $features[$key] += $rating;
-                $featureCounts[$key]++;
-            }
-            
-            $comments = $response->comment_responses;
-            if (is_string($comments)) {
-                $comments = json_decode($comments, true);
-            }
-            
-            if (is_array($comments)) {
-                foreach ($comments as $comment) {
-                    if (!empty($comment) && is_string($comment) && strlen(trim($comment)) > 0) {
-                        $positiveComments[] = $comment;
-                    }
-                }
-            }
-            
-            $responseCount++;
-        }
-        
-        if ($responseCount === 0) {
-            Log::warning('No valid responses processed', [
-                'evaluation_id' => $evaluation->id,
-                'event_date' => $normalizedDate ?? 'overall'
-            ]);
-            return null;
-        }
-        
-        foreach ($features as $key => $value) {
-            if ($featureCounts[$key] > 0) {
-                $features[$key] = round($value / $featureCounts[$key], 2);
-            }
-        }
-        
-        if ($normalizedDate) {
-            $totalEligible = $this->getTotalEligibleForDate($evaluation, $normalizedDate);
-        } else {
-            $totalEligible = $this->getTotalUniqueEligible($evaluation);
-        }
-        
-        $responseRate = $totalEligible > 0 
-            ? min(1, round($responseCount / $totalEligible, 2)) 
-            : 0;
-        
+        // Return combined results
         return [
-            'features' => $features,
-            'form_type' => $evaluation->form_type,
-            'year_level' => 1,
-            'positive_comments' => $positiveComments,
-            'suggestion_comments' => $positiveComments,
-            'total_respondents' => $responseCount,
+            'summary' => $summary,
+            'strengths' => $strengths,
+            'weaknesses' => $weaknesses,
+            'recommendations' => $recommendations,
+            'feature_importance' => $this->calculateFeatureImportance($satisfaction['category_scores']),
+            'sentiment_analysis' => $sentiment,
+            'what_if_analysis' => $whatIfAnalysis,
+            'predicted_satisfaction' => $satisfaction['score'],
+            'success_probability' => $satisfaction['success_probability'] / 100,
+            'critical_factors' => $this->getCriticalFactors($satisfaction['category_scores']),
+            'category_breakdown' => $satisfaction['category_scores'],
+            'low_scoring_questions' => $lowScoringQuestions,
+            'year_level_analysis' => $yearLevelAnalysis,
             'response_rate' => $responseRate,
+            'total_respondents' => $satisfaction['total_respondents'],
+            'analyzed_at' => now()->toISOString(),
+            'event_date' => $normalizedDate,
+            'positive_comments' => $positiveComments,
+            'negative_comments' => $negativeComments,
+            'neutral_comments' => $neutralComments,
         ];
     }
     
-    protected function storeInsights(Evaluation $evaluation, array $insights, ?string $eventDate = null): void
+    private function getComments(Evaluation $evaluation, ?string $eventDate = null): array
     {
-        $normalizedDate = $eventDate ? $this->normalizeDate($eventDate) : null;
+        $query = EvaluationResponse::where('evaluation_id', $evaluation->id);
+        if ($eventDate) {
+            $query->whereDate('event_date', $eventDate);
+        }
         
-        Log::info('📝 STORING INSIGHTS IN DATABASE', [
-            'evaluation_id' => $evaluation->id,
-            'event_date' => $normalizedDate ?? 'overall'
-        ]);
+        $responses = $query->get();
+        $comments = [];
+        
+        foreach ($responses as $response) {
+            $commentResponses = $response->comment_responses;
+            if (is_string($commentResponses)) {
+                $commentResponses = json_decode($commentResponses, true);
+            }
+            if (is_array($commentResponses)) {
+                foreach ($commentResponses as $comment) {
+                    if (!empty($comment) && is_string($comment) && strlen(trim($comment)) > 0) {
+                        $comments[] = trim($comment);
+                    }
+                }
+            }
+        }
+        
+        return $comments;
+    }
     
+    private function analyzeSentiment(array $comments): array
+    {
+        if (empty($comments)) {
+            return [
+                'positive_percentage' => 0,
+                'negative_percentage' => 0,
+                'neutral_percentage' => 0,
+                'sentiment_score' => 0.5,
+                'total_comments' => 0,
+                'common_themes' => [],
+                'positive_comments' => [],
+                'negative_comments' => [],
+                'neutral_comments' => [],
+                'method_used' => 'none'
+            ];
+        }
+        
         try {
-            $sentimentAnalysis = [
-                'sentiment_score' => $insights['sentiment_score'] ?? 0,
-                'positive_percentage' => $insights['positive_percentage'] ?? 0,
-                'negative_percentage' => $insights['negative_percentage'] ?? 0,
-                'neutral_percentage' => $insights['neutral_percentage'] ?? 0,
-                'total_comments' => $insights['total_comments'] ?? 0,
-                'common_themes' => $insights['common_themes'] ?? [],
-                'positive_comments' => $insights['positive_comments'] ?? [],
-                'negative_comments' => $insights['negative_comments'] ?? [],
-                'neutral_comments' => $insights['neutral_comments'] ?? []
-            ];
+            $response = Http::timeout($this->timeout)->post("{$this->apiUrl}/analyze", [
+                'positive_comments' => $comments,
+                'suggestion_comments' => [],
+                'total_respondents' => count($comments),
+                'response_rate' => 1.0,
+            ]);
             
-            $whatIfAnalysis = [
-                'optimistic' => [
-                    'scenario' => $insights['what_if_optimistic']['scenario'] ?? 'Optimistic Scenario',
-                    'current_satisfaction' => $insights['what_if_optimistic']['current_satisfaction'] ?? $insights['predicted_satisfaction'] ?? 0,
-                    'projected_satisfaction' => $insights['what_if_optimistic']['projected_satisfaction'] ?? 0,
-                    'gain' => $insights['what_if_optimistic']['gain'] ?? 0
-                ],
-                'targeted' => [
-                    'scenario' => $insights['what_if_targeted']['scenario'] ?? 'Targeted Improvements',
-                    'current_satisfaction' => $insights['what_if_targeted']['current_satisfaction'] ?? $insights['predicted_satisfaction'] ?? 0,
-                    'projected_satisfaction' => $insights['what_if_targeted']['projected_satisfaction'] ?? 0,
-                    'gain' => $insights['what_if_targeted']['gain'] ?? 0,
-                    'improvements' => $insights['what_if_targeted']['improvements'] ?? []
-                ]
-            ];
+            if ($response->successful()) {
+                $data = $response->json();
+                Log::info('Python service response', [
+                    'positive_comments_count' => count($data['positive_comments'] ?? []),
+                    'negative_comments_count' => count($data['negative_comments'] ?? []),
+                    'neutral_comments_count' => count($data['neutral_comments'] ?? []),
+                ]);
+                
+                return [
+                    'positive_percentage' => $data['positive_percentage'] ?? 0,
+                    'negative_percentage' => $data['negative_percentage'] ?? 0,
+                    'neutral_percentage' => $data['neutral_percentage'] ?? 0,
+                    'sentiment_score' => $data['sentiment_score'] ?? 0.5,
+                    'total_comments' => $data['total_comments'] ?? 0,
+                    'common_themes' => $data['common_themes'] ?? [],
+                    'positive_comments' => $data['positive_comments'] ?? [],
+                    'negative_comments' => $data['negative_comments'] ?? [],
+                    'neutral_comments' => $data['neutral_comments'] ?? [],
+                    'method_used' => $data['method_used'] ?? 'python_service'
+                ];
+            }
             
-            $recommendations = [];
-            if (isset($insights['recommendations']) && is_array($insights['recommendations'])) {
-                foreach ($insights['recommendations'] as $rec) {
-                    $recommendations[] = [
-                        'priority' => $rec['priority'] ?? 'medium',
-                        'category' => $rec['category'] ?? 'General',
-                        'title' => $rec['title'] ?? 'Improvement Opportunity',
-                        'problem_statement' => $rec['problem_statement'] ?? $rec['description'] ?? '',
-                        'action_items' => $rec['action_items'] ?? [],
-                        'expected_outcome' => $rec['expected_outcome'] ?? '',
-                        'resources_needed' => $rec['resources_needed'] ?? [],
-                        'success_metrics' => $rec['success_metrics'] ?? []
+            Log::warning('Sentiment analysis failed, using fallback', [
+                'status' => $response->status()
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Sentiment analysis exception: ' . $e->getMessage());
+        }
+        
+        return $this->fallbackSentimentAnalysis($comments);
+    }
+    
+    private function fallbackSentimentAnalysis(array $comments): array
+    {
+        $positiveKeywords = [
+            'good', 'great', 'excellent', 'awesome', 'nice', 'love', 'perfect', 'fantastic',
+            'wonderful', 'amazing', 'helpful', 'clear', 'organized', 'satisfied', 'happy',
+            'enjoyed', 'informative', 'well', 'best', 'outstanding', 'impressive'
+        ];
+        
+        $negativeKeywords = [
+            'bad', 'poor', 'terrible', 'awful', 'worst', 'disappointed', 'waste', 'horrible',
+            'slow', 'boring', 'confusing', 'unclear', 'disorganized', 'unhelpful', 'rude',
+            'unsatisfied', 'lacking', 'insufficient', 'delay', 'problem', 'issue'
+        ];
+        
+        $positiveComments = [];
+        $negativeComments = [];
+        $neutralComments = [];
+        
+        foreach ($comments as $comment) {
+            $commentLower = strtolower($comment);
+            $posCount = count(array_filter($positiveKeywords, fn($kw) => str_contains($commentLower, $kw)));
+            $negCount = count(array_filter($negativeKeywords, fn($kw) => str_contains($commentLower, $kw)));
+            
+            if ($posCount > $negCount) {
+                $positiveComments[] = $comment;
+            } elseif ($negCount > $posCount) {
+                $negativeComments[] = $comment;
+            } else {
+                $neutralComments[] = $comment;
+            }
+        }
+        
+        $total = count($comments);
+        $posCount = count($positiveComments);
+        $negCount = count($negativeComments);
+        $neuCount = count($neutralComments);
+        
+        return [
+            'positive_percentage' => $total > 0 ? round(($posCount / $total) * 100, 1) : 0,
+            'negative_percentage' => $total > 0 ? round(($negCount / $total) * 100, 1) : 0,
+            'neutral_percentage' => $total > 0 ? round(($neuCount / $total) * 100, 1) : 0,
+            'sentiment_score' => $total > 0 ? round(($posCount + ($neuCount * 0.5)) / $total, 2) : 0.5,
+            'total_comments' => $total,
+            'common_themes' => $this->extractCommonThemes($comments),
+            'positive_comments' => $positiveComments,
+            'negative_comments' => $negativeComments,
+            'neutral_comments' => $neutralComments,
+            'method_used' => 'fallback_keyword'
+        ];
+    }
+    
+    private function extractCommonThemes(array $comments): array
+    {
+        $stopwords = ['the', 'and', 'is', 'in', 'to', 'of', 'it', 'that', 'was', 'for', 'this', 'but', 'with', 'as', 'are', 'be', 'at', 'from', 'by', 'an', 'on', 'have', 'has', 'were', 'had', 'been', 'not', 'very', 'so', 'a', 'i', 'we', 'they', 'he', 'she', 'you', 'also', 'event', 'program'];
+        
+        $allWords = [];
+        foreach ($comments as $comment) {
+            $words = str_word_count(strtolower($comment), 1);
+            $words = array_filter($words, fn($w) => strlen($w) > 3 && !in_array($w, $stopwords));
+            $allWords = array_merge($allWords, $words);
+        }
+        
+        $frequencies = array_count_values($allWords);
+        arsort($frequencies);
+        
+        return array_slice(array_keys($frequencies), 0, 10);
+    }
+    
+    private function generateWhatIfAnalysis(array $satisfaction): array
+    {
+        $currentScore = $satisfaction['score'];
+        
+        $optimisticGain = 0;
+        $targetedGain = 0;
+        
+        $lowCategories = array_filter($satisfaction['category_scores'], fn($s) => $s < 4.0);
+        if (!empty($lowCategories)) {
+            $optimisticGain = round(min(1.0, count($lowCategories) * 0.15), 2);
+            $targetedGain = round(min(0.5, $optimisticGain / 2), 2);
+        }
+        
+        $improvements = [];
+        $categoriesToImprove = array_slice(array_keys($lowCategories), 0, 3);
+        foreach ($categoriesToImprove as $category) {
+            $current = $satisfaction['category_scores'][$category];
+            $improvements[] = [
+                'category' => $category,
+                'from' => $current,
+                'to' => min(4.5, round($current + 0.8, 1)),
+                'gain' => round(min(0.5, 0.8 - ($current - 3.0)), 1)
+            ];
+        }
+        
+        return [
+            'optimistic' => [
+                'scenario' => 'Optimistic Scenario',
+                'description' => 'Improving all low-scoring categories',
+                'current_satisfaction' => $currentScore,
+                'projected_satisfaction' => round(min(5.0, $currentScore + $optimisticGain), 2),
+                'gain' => $optimisticGain
+            ],
+            'targeted' => [
+                'scenario' => 'Targeted Improvements',
+                'description' => 'Focusing on top 3 lowest-scoring categories',
+                'current_satisfaction' => $currentScore,
+                'projected_satisfaction' => round(min(5.0, $currentScore + $targetedGain), 2),
+                'gain' => $targetedGain,
+                'improvements' => $improvements
+            ]
+        ];
+    }
+    
+    private function generateSummary(array $satisfaction, array $sentiment): string
+    {
+        $score = $satisfaction['score'];
+        $respondents = $satisfaction['total_respondents'];
+        $sentimentScore = $sentiment['sentiment_score'] ?? 0.5;
+        
+        $satisfactionText = '';
+        if ($score >= 4.50) {
+            $satisfactionText = "Outstanding event!";
+        } elseif ($score >= 3.50) {
+            $satisfactionText = "Very satisfactory event.";
+        } elseif ($score >= 2.50) {
+            $satisfactionText = "Satisfactory event.";
+        } elseif ($score >= 1.50) {
+            $satisfactionText = "Poor event satisfaction.";
+        } else {
+            $satisfactionText = "Very poor event satisfaction.";
+        }
+        
+        $sentimentText = '';
+        if ($sentimentScore >= 0.7) {
+            $sentimentText = "Participants expressed predominantly positive feedback.";
+        } elseif ($sentimentScore >= 0.4) {
+            $sentimentText = "Participant feedback was mixed with some positive and negative comments.";
+        } else {
+            $sentimentText = "Participants expressed significant concerns in their feedback.";
+        }
+        
+        return "{$satisfactionText} Overall satisfaction is {$score}/5.0 based on {$respondents} responses. {$sentimentText}";
+    }
+    
+    private function calculateFeatureImportance(array $categoryScores): array
+    {
+        if (empty($categoryScores)) return [];
+        
+        $importance = [];
+        foreach ($categoryScores as $category => $score) {
+            if ($score < 2.50) {
+                $importance[$category] = 30;
+            } elseif ($score < 3.50) {
+                $importance[$category] = 20;
+            } elseif ($score < 4.50) {
+                $importance[$category] = 10;
+            } else {
+                $importance[$category] = 5;
+            }
+        }
+        
+        $sum = array_sum($importance);
+        if ($sum > 0) {
+            foreach ($importance as $category => $value) {
+                $importance[$category] = round(($value / $sum) * 100, 1);
+            }
+        }
+        
+        return $importance;
+    }
+    
+    private function getCriticalFactors(array $categoryScores): array
+    {
+        $criticalFactors = [];
+        foreach ($categoryScores as $category => $score) {
+            if ($score < 2.50) {
+                $criticalFactors[] = [
+                    'category' => $category,
+                    'score' => $score,
+                    'impact' => 0.3,
+                    'description' => "Critical issue that needs immediate attention",
+                    'status' => 'critical'
+                ];
+            } elseif ($score < 3.50) {
+                $criticalFactors[] = [
+                    'category' => $category,
+                    'score' => $score,
+                    'impact' => 0.15,
+                    'description' => "Needs improvement to meet expectations",
+                    'status' => 'needs_improvement'
+                ];
+            }
+        }
+        return array_slice($criticalFactors, 0, 5);
+    }
+    
+    private function getLowScoringQuestions(Evaluation $evaluation, ?string $eventDate = null): array
+    {
+        $query = EvaluationResponse::where('evaluation_id', $evaluation->id);
+        if ($eventDate) {
+            $query->whereDate('event_date', $eventDate);
+        }
+        $responses = $query->get();
+        
+        if ($responses->isEmpty()) {
+            return [];
+        }
+        
+        $questions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
+            ->with('category')
+            ->where('question_type', 'likert')
+            ->get()
+            ->keyBy('id');
+        
+        $questionSums = [];
+        $questionCounts = [];
+        
+        foreach ($responses as $response) {
+            $likert = $response->likert_responses;
+            if (is_string($likert)) {
+                $likert = json_decode($likert, true);
+            }
+            if (!is_array($likert)) continue;
+            
+            foreach ($likert as $questionId => $rating) {
+                if (!is_numeric($rating)) continue;
+                
+                if (!isset($questionSums[$questionId])) {
+                    $questionSums[$questionId] = 0;
+                    $questionCounts[$questionId] = 0;
+                }
+                $questionSums[$questionId] += $rating;
+                $questionCounts[$questionId]++;
+            }
+        }
+        
+        $lowScoring = [];
+        foreach ($questionSums as $questionId => $sum) {
+            $count = $questionCounts[$questionId];
+            $avg = $sum / $count;
+            
+            if ($avg < 3.50) {
+                $question = $questions->get((int)$questionId);
+                if ($question) {
+                    $lowScoring[] = [
+                        'question_id' => $questionId,
+                        'question_text' => $question->question_text,
+                        'category' => $question->category ? $question->category->category_name : 'General',
+                        'average_rating' => round($avg, 2),
+                        'priority_level' => $avg < 2.50 ? 'High' : ($avg < 3.00 ? 'Medium' : 'Low'),
+                        'recommendation' => $this->getRecommendationForQuestion($question->question_text, $avg)
                     ];
                 }
             }
+        }
+        
+        usort($lowScoring, fn($a, $b) => $a['average_rating'] <=> $b['average_rating']);
+        return array_slice($lowScoring, 0, 10);
+    }
+    
+    private function getRecommendationForQuestion(string $questionText, float $avg): string
+    {
+        $lowerText = strtolower($questionText);
+        
+        if (str_contains($lowerText, 'food')) {
+            return 'Improve food quality and increase portions';
+        }
+        if (str_contains($lowerText, 'invite')) {
+            return 'Send invitations earlier and use multiple channels';
+        }
+        if (str_contains($lowerText, 'time')) {
+            return 'Improve time management and start on time';
+        }
+        return 'Review and address this area for improvement';
+    }
+    
+    private function getYearLevelAnalysis(Evaluation $evaluation, ?string $eventDate = null): array
+    {
+        $query = EvaluationResponse::where('evaluation_id', $evaluation->id);
+        if ($eventDate) {
+            $query->whereDate('event_date', $eventDate);
+        }
+        $responses = $query->get();
+        
+        if ($responses->isEmpty()) {
+            return [];
+        }
+        
+        $yearLevelData = [];
+        foreach ($responses as $response) {
+            $yearLevel = $response->year_level ?? 'Unknown';
+            if (!isset($yearLevelData[$yearLevel])) {
+                $yearLevelData[$yearLevel] = ['sum' => 0, 'count' => 0];
+            }
             
-            $strengths = is_array($insights['strengths'] ?? null) ? $insights['strengths'] : [];
-            $weaknesses = is_array($insights['weaknesses'] ?? null) ? $insights['weaknesses'] : [];
-            $categoryBreakdown = is_array($insights['category_breakdown'] ?? null) ? $insights['category_breakdown'] : [];
-            $criticalFactors = is_array($insights['critical_factors'] ?? null) ? $insights['critical_factors'] : [];
-            $lowScoringQuestions = is_array($insights['low_scoring_questions'] ?? null) ? $insights['low_scoring_questions'] : [];
-            $yearLevelAnalysis = is_array($insights['year_level_analysis'] ?? null) ? $insights['year_level_analysis'] : [];
-            $featureImportance = is_array($insights['feature_importance'] ?? null) ? $insights['feature_importance'] : [];
+            $likert = $response->likert_responses;
+            if (is_string($likert)) {
+                $likert = json_decode($likert, true);
+            }
+            if (is_array($likert)) {
+                foreach ($likert as $rating) {
+                    if (is_numeric($rating)) {
+                        $yearLevelData[$yearLevel]['sum'] += $rating;
+                        $yearLevelData[$yearLevel]['count']++;
+                    }
+                }
+            }
+        }
+        
+        $analysis = [];
+        foreach ($yearLevelData as $yearLevel => $data) {
+            $avg = $data['count'] > 0 ? $data['sum'] / $data['count'] : 0;
+            $analysis[] = [
+                'year_level' => $yearLevel,
+                'average_satisfaction' => round($avg, 2),
+                'respondent_count' => $data['count'],
+                'status' => $avg >= 4.50 ? 'Very Satisfied' : ($avg >= 3.50 ? 'Satisfied' : ($avg >= 2.50 ? 'Neutral' : 'Dissatisfied'))
+            ];
+        }
+        
+        return $analysis;
+    }
+    
+    private function storeResults(
+        Evaluation $evaluation,
+        ?string $eventDate,
+        array $satisfaction,
+        array $sentiment,
+        array $recommendations,
+        array $strengths,
+        array $weaknesses,
+        array $whatIfAnalysis,
+        string $summary,
+        float $responseRate,
+        array $lowScoringQuestions,
+        array $yearLevelAnalysis,
+        array $positiveComments,
+        array $negativeComments,
+        array $neutralComments
+    ): void {
+        try {
+            $featureImportance = $this->calculateFeatureImportance($satisfaction['category_scores']);
+            $criticalFactors = $this->getCriticalFactors($satisfaction['category_scores']);
+            
+            // Convert comments to JSON - THIS IS THE CRITICAL PART
+            $positiveCommentsJson = json_encode(array_values($positiveComments), JSON_UNESCAPED_UNICODE);
+            $negativeCommentsJson = json_encode(array_values($negativeComments), JSON_UNESCAPED_UNICODE);
+            $neutralCommentsJson = json_encode(array_values($neutralComments), JSON_UNESCAPED_UNICODE);
+            
+            // Check if columns exist
+            $hasCommentColumns = Schema::hasColumn('ai_analyses', 'positive_comments');
+            
+            Log::info('Storing analysis results', [
+                'evaluation_id' => $evaluation->id,
+                'event_date' => $eventDate ?? 'overall',
+                'has_comment_columns' => $hasCommentColumns,
+                'positive_comments_count' => count($positiveComments),
+                'negative_comments_count' => count($negativeComments),
+                'neutral_comments_count' => count($neutralComments),
+                'positive_json_preview' => substr($positiveCommentsJson, 0, 200),
+            ]);
             
             $data = [
-                'summary' => $insights['summary'] ?? '',
+                'summary' => $summary,
                 'strengths' => json_encode($strengths, JSON_UNESCAPED_UNICODE),
                 'weaknesses' => json_encode($weaknesses, JSON_UNESCAPED_UNICODE),
                 'recommendations' => json_encode($recommendations, JSON_UNESCAPED_UNICODE),
                 'feature_importance' => json_encode($featureImportance, JSON_UNESCAPED_UNICODE),
-                'sentiment_analysis' => json_encode($sentimentAnalysis, JSON_UNESCAPED_UNICODE),
+                'sentiment_analysis' => json_encode($sentiment, JSON_UNESCAPED_UNICODE),
                 'what_if_analysis' => json_encode($whatIfAnalysis, JSON_UNESCAPED_UNICODE),
-                'predicted_satisfaction' => $insights['predicted_satisfaction'] ?? 0,
-                'success_probability' => $insights['success_probability'] ?? 0,
+                'predicted_satisfaction' => $satisfaction['score'],
+                'success_probability' => $satisfaction['success_probability'] / 100,
                 'critical_factors' => json_encode($criticalFactors, JSON_UNESCAPED_UNICODE),
-                'category_breakdown' => json_encode($categoryBreakdown, JSON_UNESCAPED_UNICODE),
+                'category_breakdown' => json_encode($satisfaction['category_scores'], JSON_UNESCAPED_UNICODE),
                 'low_scoring_questions' => json_encode($lowScoringQuestions, JSON_UNESCAPED_UNICODE),
                 'year_level_analysis' => json_encode($yearLevelAnalysis, JSON_UNESCAPED_UNICODE),
-                'response_rate' => $insights['response_rate'] ?? 0,
-                'total_respondents' => $insights['total_respondents'] ?? 0,
+                'response_rate' => $responseRate,
+                'total_respondents' => $satisfaction['total_respondents'],
                 'analyzed_at' => now(),
             ];
             
-            if ($normalizedDate) {
-                $data['event_date'] = $normalizedDate;
+            // Only add comment columns if they exist
+            if ($hasCommentColumns) {
+                $data['positive_comments'] = $positiveCommentsJson;
+                $data['negative_comments'] = $negativeCommentsJson;
+                $data['neutral_comments'] = $neutralCommentsJson;
+            } else {
+                Log::warning('Comment columns do not exist in ai_analyses table. Run migration to add them.');
             }
             
             $result = AIAnalysis::updateOrCreate(
                 [
                     'evaluation_id' => $evaluation->id,
-                    'event_date' => $normalizedDate
+                    'event_date' => $eventDate
                 ],
                 $data
             );
             
-            Log::info('✅ INSIGHTS STORED SUCCESSFULLY', [
-                'evaluation_id' => $evaluation->id,
-                'event_date' => $normalizedDate ?? 'overall',
-                'analysis_id' => $result->id
-            ]);
+            // Verify the data was saved
+            if ($hasCommentColumns) {
+                $savedRecord = AIAnalysis::find($result->id);
+                Log::info('Storage verification', [
+                    'id' => $savedRecord->id,
+                    'positive_comments_saved' => !is_null($savedRecord->positive_comments),
+                    'positive_comments_length' => strlen($savedRecord->positive_comments ?? ''),
+                    'positive_comments_sample' => substr($savedRecord->positive_comments ?? '', 0, 100),
+                ]);
+            }
             
         } catch (\Exception $e) {
-            Log::error('❌ FAILED TO STORE INSIGHTS', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
+            Log::error('Failed to store analysis results: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
         }
+    }
+    
+    public function getResponseRateForDate(Evaluation $evaluation, ?string $eventDate = null): float
+    {
+        $normalizedDate = $eventDate ? $this->normalizeDate($eventDate) : null;
+        
+        if ($normalizedDate) {
+            $totalEligible = $this->getTotalEligibleForDate($evaluation, $normalizedDate);
+            $totalResponses = EvaluationResponse::where('evaluation_id', $evaluation->id)
+                ->whereDate('event_date', $normalizedDate)
+                ->count();
+        } else {
+            $totalEligible = $this->getTotalUniqueEligible($evaluation);
+            $totalResponses = $evaluation->total_responses;
+        }
+        
+        if ($totalEligible === 0) return 1;
+        
+        return round($totalResponses / $totalEligible, 2);
     }
     
     public function getInsights(Evaluation $evaluation, ?string $eventDate = null): ?array
@@ -471,18 +790,17 @@ class AIAnalysisService
         
         if (!$analysis) return null;
         
-        $sentimentAnalysis = json_decode($analysis->sentiment_analysis, true);
-        $whatIfAnalysis = json_decode($analysis->what_if_analysis, true);
-        $recommendations = json_decode($analysis->recommendations, true) ?: [];
-        
         return [
             'summary' => $analysis->summary,
             'strengths' => json_decode($analysis->strengths, true) ?: [],
             'weaknesses' => json_decode($analysis->weaknesses, true) ?: [],
-            'recommendations' => $recommendations,
+            'recommendations' => json_decode($analysis->recommendations, true) ?: [],
             'feature_importance' => json_decode($analysis->feature_importance, true) ?: [],
-            'sentiment_analysis' => $sentimentAnalysis,
-            'what_if_analysis' => $whatIfAnalysis,
+            'sentiment_analysis' => json_decode($analysis->sentiment_analysis, true) ?: [],
+            'positive_comments' => json_decode($analysis->positive_comments, true) ?: [],
+            'negative_comments' => json_decode($analysis->negative_comments, true) ?: [],
+            'neutral_comments' => json_decode($analysis->neutral_comments, true) ?: [],
+            'what_if_analysis' => json_decode($analysis->what_if_analysis, true) ?: [],
             'predicted_satisfaction' => $analysis->predicted_satisfaction,
             'success_probability' => $analysis->success_probability,
             'critical_factors' => json_decode($analysis->critical_factors, true) ?: [],
@@ -492,17 +810,7 @@ class AIAnalysisService
             'response_rate' => $analysis->response_rate,
             'total_respondents' => $analysis->total_respondents,
             'analyzed_at' => $analysis->analyzed_at,
-            'sentiment_score' => $sentimentAnalysis['sentiment_score'] ?? 0,
-            'positive_percentage' => $sentimentAnalysis['positive_percentage'] ?? 0,
-            'negative_percentage' => $sentimentAnalysis['negative_percentage'] ?? 0,
-            'neutral_percentage' => $sentimentAnalysis['neutral_percentage'] ?? 0,
-            'total_comments' => $sentimentAnalysis['total_comments'] ?? 0,
-            'common_themes' => $sentimentAnalysis['common_themes'] ?? [],
-            'positive_comments' => $sentimentAnalysis['positive_comments'] ?? [],
-            'negative_comments' => $sentimentAnalysis['negative_comments'] ?? [],
-            'neutral_comments' => $sentimentAnalysis['neutral_comments'] ?? [],
-            'what_if_optimistic' => $whatIfAnalysis['optimistic'] ?? [],
-            'what_if_targeted' => $whatIfAnalysis['targeted'] ?? [],
+            'event_date' => $analysis->event_date
         ];
     }
     
@@ -524,25 +832,6 @@ class AIAnalysisService
         }
         
         return $allInsights;
-    }
-    
-    public function getResponseRateForDate(Evaluation $evaluation, ?string $eventDate = null): float
-    {
-        $normalizedDate = $eventDate ? $this->normalizeDate($eventDate) : null;
-        
-        if ($normalizedDate) {
-            $totalEligible = $this->getTotalEligibleForDate($evaluation, $normalizedDate);
-            $totalResponses = EvaluationResponse::where('evaluation_id', $evaluation->id)
-                ->whereDate('event_date', $normalizedDate)
-                ->count();
-        } else {
-            $totalEligible = $this->getTotalUniqueEligible($evaluation);
-            $totalResponses = $evaluation->total_responses;
-        }
-        
-        if ($totalEligible === 0) return 1;
-        
-        return round($totalResponses / $totalEligible, 2);
     }
     
     public function canGenerateInsights(Evaluation $evaluation, ?string $eventDate = null): bool

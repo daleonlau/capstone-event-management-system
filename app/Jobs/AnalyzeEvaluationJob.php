@@ -28,7 +28,6 @@ class AnalyzeEvaluationJob implements ShouldQueue
         $this->evaluation = $evaluation;
         $this->generateAll = $generateAll;
         
-        // Normalize date if provided
         if ($eventDate) {
             try {
                 $this->eventDate = Carbon::parse($eventDate)->format('Y-m-d');
@@ -43,40 +42,29 @@ class AnalyzeEvaluationJob implements ShouldQueue
     public function handle(AIAnalysisService $aiService): void
     {
         if ($this->generateAll) {
-            // Generate insights for all dates and overall
-            Log::info('Generating all insights for evaluation', [
+            Log::info('Generating all analyses for evaluation', [
                 'evaluation_id' => $this->evaluation->id
             ]);
             
             $results = $aiService->generateAllInsights($this->evaluation, true);
             
-            Log::info('All insights generation completed', [
+            Log::info('All analyses generation completed', [
                 'evaluation_id' => $this->evaluation->id,
-                'generated_count' => count($results)
+                'results_count' => count($results)
             ]);
         } else {
-            // Generate insights for specific date or overall
-            $dateLabel = $this->eventDate ?? 'overall';
-            
-            Log::info('Starting AI analysis for evaluation', [
+            Log::info('Starting single analysis generation', [
                 'evaluation_id' => $this->evaluation->id,
-                'event_date' => $dateLabel
+                'event_date' => $this->eventDate ?? 'overall'
             ]);
             
-            $result = $aiService->analyzeEvaluation($this->evaluation, $this->eventDate);
+            $result = $aiService->analyzeEvaluation($this->evaluation, $this->eventDate, true);
             
-            if ($result) {
-                Log::info('AI analysis completed successfully', [
-                    'evaluation_id' => $this->evaluation->id,
-                    'event_date' => $dateLabel,
-                    'satisfaction' => $result['predicted_satisfaction'] ?? 'N/A'
-                ]);
-            } else {
-                Log::warning('AI analysis returned no results', [
-                    'evaluation_id' => $this->evaluation->id,
-                    'event_date' => $dateLabel
-                ]);
-            }
+            Log::info('Single analysis generation completed', [
+                'evaluation_id' => $this->evaluation->id,
+                'event_date' => $this->eventDate ?? 'overall',
+                'has_result' => !is_null($result)
+            ]);
         }
     }
     
@@ -84,7 +72,7 @@ class AnalyzeEvaluationJob implements ShouldQueue
     {
         $dateLabel = $this->eventDate ?? 'overall';
         
-        Log::error('AI analysis job permanently failed', [
+        Log::error('Analysis job failed', [
             'evaluation_id' => $this->evaluation->id,
             'event_date' => $dateLabel,
             'error' => $exception->getMessage(),

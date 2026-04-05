@@ -513,7 +513,7 @@
                      <tr>
                         <th style="width: 12%">Student ID</th>
                         <th style="width: 28%">Student Name</th>
-                        <th style="width: 12%">Course</th>
+                        <th style="width: 12%">Program</th>
                         <th style="width: 8%">Year</th>
                         <th style="width: 12%">Amount (₱)</th>
                         <th style="width: 12%">Status</th>

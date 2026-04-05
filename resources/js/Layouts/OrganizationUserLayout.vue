@@ -26,7 +26,7 @@
             class="w-10 h-10 object-contain rounded-full shadow-md flex-shrink-0 bg-white p-1"
           />
           <div :class="['transition-opacity duration-300', isSidebarCollapsed ? 'opacity-0 w-0' : 'opacity-100']">
-            <h1 class="text-lg font-bold whitespace-nowrap">CSUCC EMS</h1>
+            <h1 class="text-lg font-bold whitespace-nowrap">EventFlow</h1>
             <p class="text-xs text-emerald-200 whitespace-nowrap capitalize">{{ userRole }} Dashboard</p>
           </div>
         </div>

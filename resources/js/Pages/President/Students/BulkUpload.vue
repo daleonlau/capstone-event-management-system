@@ -16,20 +16,20 @@
             </svg>
           </div>
           <div class="ml-3">
-            <h3 class="text-sm font-medium text-emerald-800">Your Organization's Allowed Departments & Courses</h3>
+            <h3 class="text-sm font-medium text-emerald-800">Your Organization's Allowed College & Programs</h3>
             <div class="mt-2 grid grid-cols-2 gap-4">
               <div>
-                <p class="text-xs font-semibold text-emerald-700">Departments:</p>
+                <p class="text-xs font-semibold text-emerald-700">College:</p>
                 <ul class="text-xs text-emerald-600 list-disc list-inside">
                   <li v-for="dept in allowedDepartments" :key="dept">{{ dept }}</li>
-                  <li v-if="allowedDepartments.length === 0" class="text-yellow-600">No departments assigned</li>
+                  <li v-if="allowedDepartments.length === 0" class="text-yellow-600">No college assigned</li>
                 </ul>
               </div>
               <div>
-                <p class="text-xs font-semibold text-emerald-700">Courses:</p>
+                <p class="text-xs font-semibold text-emerald-700">Programs:</p>
                 <ul class="text-xs text-emerald-600 list-disc list-inside">
                   <li v-for="course in allowedCourses" :key="course">{{ course }}</li>
-                  <li v-if="allowedCourses.length === 0" class="text-yellow-600">No courses assigned</li>
+                  <li v-if="allowedCourses.length === 0" class="text-yellow-600">No programs assigned</li>
                 </ul>
               </div>
             </div>
@@ -49,9 +49,9 @@
             <h3 class="text-sm font-medium text-blue-800">CSV File Requirements</h3>
             <ul class="mt-2 text-sm text-blue-700 list-disc list-inside">
               <li>Format: .csv only (Max size: 5MB)</li>
-              <li>First row must be headers: <code class="bg-blue-100 px-1 rounded">student_id,firstname,lastname,email,course,department,yearlevel</code></li>
-              <li><span class="font-semibold">Course must match</span> one of your assigned courses (listed above)</li>
-              <li><span class="font-semibold">Department must match</span> one of your assigned departments (listed above)</li>
+              <li>First row must be headers: <code class="bg-blue-100 px-1 rounded">student_id,firstname,lastname,email,program,college,yearlevel</code></li>
+              <li><span class="font-semibold">Program must match</span> one of your assigned programs (listed above)</li>
+              <li><span class="font-semibold">College must match</span> one of your assigned college (listed above)</li>
               <li>Year level must be: 1st Year, 2nd Year, 3rd Year, or 4th Year</li>
               <li>Example: <code class="bg-blue-100 px-1 rounded">CTHM-2024-0001,Maria,Santos,maria@email.com,Bachelor of Science in Hospitality Management,CTHM,1st Year</code></li>
             </ul>
@@ -124,7 +124,7 @@
           <!-- Validation Info -->
           <div v-if="previewLines.length > 1" class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
             <p class="text-xs text-yellow-700">
-              <span class="font-semibold">Note:</span> Only rows with valid course and department (matching your organization's assignments) will be imported.
+              <span class="font-semibold">Note:</span> Only rows with valid college and program (matching your organization's assignments) will be imported.
             </p>
           </div>
 

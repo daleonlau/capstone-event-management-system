@@ -144,7 +144,7 @@
             <div class="space-y-6">
               <!-- Departments -->
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-3">Departments</label>
+                <label class="block text-sm font-medium text-gray-700 mb-3">College</label>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div v-for="dept in departments" :key="dept.id" class="border rounded-xl p-4">
                     <label class="flex items-center gap-2 cursor-pointer">
@@ -310,12 +310,12 @@
     
     // Validate required fields manually
     if (form.departments.length === 0) {
-      form.errors.departments = 'Please select at least one department.';
+      form.errors.departments = 'Please select at least one college.';
       return;
     }
     
     if (form.courses.length === 0) {
-      form.errors.courses = 'Please select at least one course.';
+      form.errors.courses = 'Please select at least one program.';
       return;
     }
     

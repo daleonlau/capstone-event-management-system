@@ -241,7 +241,7 @@
                   </th>
                   <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Student</th>
                   <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Contact</th>
-                  <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Course & Year</th>
+                  <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Program & Year</th>
                   <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
                   <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Receipt</th>
                   <th class="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
@@ -272,7 +272,7 @@
                   </td>
                   <td class="px-6 py-4">
                     <div class="text-sm text-gray-900">{{ student.email || 'No email' }}</div>
-                    <div class="text-xs text-gray-500">{{ student.department || 'No department' }}</div>
+                    <div class="text-xs text-gray-500">{{ student.department || 'No college' }}</div>
                   </td>
                   <td class="px-6 py-4">
                     <div class="text-sm text-gray-900">{{ student.course }}</div>
@@ -371,7 +371,7 @@
 
               <div class="grid grid-cols-2 gap-2 mb-3 text-sm">
                 <div>
-                  <span class="text-gray-500">Course:</span>
+                  <span class="text-gray-500">Program:</span>
                   <span class="ml-1 text-gray-900">{{ student.course }}</span>
                 </div>
                 <div>
@@ -513,7 +513,7 @@
                       </div>
                       
                       <div class="mt-3 space-y-1 text-sm">
-                        <p><span class="text-gray-500">Course:</span> <span class="font-medium text-gray-900">{{ selectedStudent?.course }}</span></p>
+                        <p><span class="text-gray-500">Program:</span> <span class="font-medium text-gray-900">{{ selectedStudent?.course }}</span></p>
                         <p><span class="text-gray-500">Year Level:</span> <span class="font-medium text-gray-900">{{ selectedStudent?.yearlevel }}</span></p>
                         <p><span class="text-gray-500">Email:</span> <span class="font-medium text-gray-900">{{ selectedStudent?.email || 'No email' }}</span></p>
                       </div>
