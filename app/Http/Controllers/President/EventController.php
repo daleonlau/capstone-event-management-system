@@ -40,12 +40,31 @@ class EventController extends Controller
     private function syncEligibleStudents(Event $event)
     {
         try {
+            // Get department names from IDs
+            $departmentNames = [];
+            if (!empty($event->departments) && is_array($event->departments)) {
+                $departmentNames = Department::whereIn('id', $event->departments)->pluck('name')->toArray();
+            }
+
+            // Get course names from IDs
+            $courseNames = [];
+            if (!empty($event->courses) && is_array($event->courses)) {
+                $courseNames = Course::whereIn('id', $event->courses)->pluck('name')->toArray();
+            }
+
             $eligibleStudents = Student::where('user_id', $this->organizationId)
-                ->whereIn('department', $event->departments)
-                ->whereIn('course', $event->courses)
-                ->whereIn('yearlevel', $event->year_levels)
+                ->when(!empty($departmentNames), function($q) use ($departmentNames) {
+                    $q->whereIn('department', $departmentNames);
+                })
+                ->when(!empty($courseNames), function($q) use ($courseNames) {
+                    $q->whereIn('course', $courseNames);
+                })
+                ->when(!empty($event->year_levels) && is_array($event->year_levels), function($q) use ($event) {
+                    $q->whereIn('yearlevel', $event->year_levels);
+                })
                 ->get();
 
+            // Clear existing and add new
             EventStudent::where('event_id', $event->id)->delete();
 
             foreach ($eligibleStudents as $student) {
@@ -61,150 +80,59 @@ class EventController extends Controller
             return $eligibleStudents->count();
         } catch (\Exception $e) {
             Log::error('Failed to sync students: ' . $e->getMessage());
-            
-            $this->logError('sync_students_failed', 'Failed to sync students for event: ' . $event->id, $e, [
-                'event_id' => $event->id,
-                'event_name' => $event->event_name,
-            ]);
-            
             return 0;
         }
     }
 
-    private function getEligibleStudentsForEvent(Event $event)
+    public function index(Request $request)
     {
-        $query = Student::where('user_id', $this->organizationId);
+        // Get organization settings for available departments and courses
+        $orgSettings = OrganizationSetting::where('organization_id', $this->organizationId)->first();
         
-        if (!empty($event->departments) && is_array($event->departments)) {
-            $departmentNames = Department::whereIn('id', $event->departments)->pluck('name')->toArray();
-            if (!empty($departmentNames)) {
-                $query->whereIn('department', $departmentNames);
-            }
+        $availableDepartments = [];
+        $availableCourses = [];
+        
+        if ($orgSettings) {
+            $availableDepartments = Department::whereIn('id', $orgSettings->assigned_departments ?? [])
+                ->with(['courses' => function($q) use ($orgSettings) {
+                    $q->whereIn('id', $orgSettings->assigned_courses ?? []);
+                }])
+                ->get();
+            
+            $availableCourses = Course::whereIn('id', $orgSettings->assigned_courses ?? [])->get();
         }
-        
-        if (!empty($event->courses) && is_array($event->courses)) {
-            $courseNames = Course::whereIn('id', $event->courses)->pluck('name')->toArray();
-            if (!empty($courseNames)) {
-                $query->whereIn('course', $courseNames);
-            }
-        }
-        
-        if (!empty($event->year_levels) && is_array($event->year_levels)) {
-            $query->whereIn('yearlevel', $event->year_levels);
-        }
-        
-        return $query->get();
-    }
 
-    public function syncAllEligibleStudents(Event $event)
-    {
-        if ($event->user_id !== $this->organizationId) {
-            return response()->json(['error' => 'Unauthorized'], 403);
-        }
-        
-        try {
-            $eligibleStudents = $this->getEligibleStudentsForEvent($event);
-            
-            $existingStudents = EventStudent::where('event_id', $event->id)
-                ->pluck('student_id')
-                ->toArray();
-            
-            $studentsToAdd = array_diff($eligibleStudents->pluck('student_id')->toArray(), $existingStudents);
-            $studentsToRemove = array_diff($existingStudents, $eligibleStudents->pluck('student_id')->toArray());
-            
-            $added = 0;
-            $removed = 0;
-            
-            foreach ($eligibleStudents as $student) {
-                if (in_array($student->student_id, $studentsToAdd)) {
-                    EventStudent::updateOrCreate(
-                        [
-                            'event_id' => $event->id,
-                            'student_id' => $student->student_id,
-                        ],
-                        [
-                            'user_id' => $this->organizationId,
-                            'status' => $event->payment === 'Payment' ? 'Pending' : 'Paid',
-                            'amount_paid' => $event->payment === 'Payment' ? 0 : $event->event_fee,
-                        ]
-                    );
-                    $added++;
-                }
-            }
-            
-            foreach ($studentsToRemove as $studentId) {
-                EventStudent::where('event_id', $event->id)
-                    ->where('student_id', $studentId)
-                    ->delete();
-                $removed++;
-            }
-            
-            $this->logAction('sync_event_students', 'Synced eligible students for event: ' . $event->event_name, [
-                'event_id' => $event->id,
-                'event_name' => $event->event_name,
-                'added' => $added,
-                'removed' => $removed,
-                'total_eligible' => $eligibleStudents->count(),
-            ]);
-            
-            $updatedStudents = EventStudent::where('event_id', $event->id)
-                ->with('student')
-                ->get()
-                ->map(function ($es) {
-                    return [
-                        'student_id' => $es->student->student_id,
-                        'firstname' => $es->student->firstname,
-                        'lastname' => $es->student->lastname,
-                        'department' => $es->student->department,
-                        'course' => $es->student->course,
-                        'yearlevel' => $es->student->yearlevel,
-                        'status' => $es->status,
-                        'amount_paid' => $es->amount_paid,
-                    ];
-                });
-            
-            return response()->json([
-                'success' => true,
-                'students' => $updatedStudents,
-                'total' => $updatedStudents->count(),
-                'added' => $added,
-                'removed' => $removed,
-                'message' => "Updated student list: +{$added} added, -{$removed} removed"
-            ]);
-            
-        } catch (\Exception $e) {
-            Log::error('Failed to sync event students: ' . $e->getMessage());
-            
-            $this->logError('sync_event_students_failed', 'Failed to sync students: ' . $e->getMessage(), $e, [
-                'event_id' => $event->id,
-                'event_name' => $event->event_name,
-            ]);
-            
-            return response()->json([
-                'error' => 'Failed to sync students: ' . $e->getMessage()
-            ], 500);
-        }
-    }
+        $query = Event::where('user_id', $this->organizationId)
+            ->with('eventType');
 
-    public function index()
-    {
-        $events = Event::where('user_id', $this->organizationId)
-            ->with('eventType')
-            ->orderBy('created_at', 'desc')
-            ->get()
+        if ($request->search) {
+            $query->where('event_name', 'like', '%' . $request->search . '%');
+        }
+        if ($request->status) {
+            $query->where('status', $request->status);
+        }
+        if ($request->approval) {
+            $query->where('approval_status', $request->approval);
+        }
+
+        $events = $query->orderBy('created_at', 'desc')->get()
             ->map(function ($event) {
                 return [
                     'id' => $event->id,
                     'event_name' => $event->event_name,
                     'event_type' => $event->eventType,
-                    'event_date_start' => $event->event_date_start,
-                    'event_date_end' => $event->event_date_end,
+                    'event_type_id' => $event->event_type_id,
+                    'event_date_start' => $event->event_date_start instanceof Carbon ? $event->event_date_start->format('Y-m-d') : date('Y-m-d', strtotime($event->event_date_start)),
+                    'event_date_end' => $event->event_date_end instanceof Carbon ? $event->event_date_end->format('Y-m-d') : date('Y-m-d', strtotime($event->event_date_end)),
                     'status' => $event->status,
                     'approval_status' => $event->approval_status,
                     'signed_document_path' => $event->signed_document_path,
                     'has_document' => !is_null($event->signed_document_path),
                     'payment' => $event->payment,
                     'event_fee' => $event->event_fee,
+                    'departments' => $event->departments,
+                    'courses' => $event->courses,
+                    'year_levels' => $event->year_levels,
                     'has_evaluation' => $event->evaluations()->exists(),
                     'evaluation_count' => $event->evaluations()->count(),
                     'eligible_students' => EventStudent::where('event_id', $event->id)->count(),
@@ -214,7 +142,16 @@ class EventController extends Controller
             });
 
         return Inertia::render('President/Events/Index', [
-            'events' => $events
+            'events' => $events,
+            'departments' => $availableDepartments,
+            'courses' => $availableCourses,
+            'eventTypes' => EventType::all(),
+            'yearLevels' => ['1st Year', '2nd Year', '3rd Year', '4th Year'],
+            'filters' => [
+                'search' => $request->search,
+                'status' => $request->status,
+                'approval' => $request->approval,
+            ]
         ]);
     }
 
@@ -279,30 +216,13 @@ class EventController extends Controller
 
             DB::commit();
 
-            $this->logAction('create_event', 'Created event: ' . $event->event_name, [
-                'event_id' => $event->id,
-                'event_name' => $event->event_name,
-                'event_type' => $eventType->name,
-                'event_date_start' => $event->event_date_start,
-                'event_date_end' => $event->event_date_end,
-                'payment' => $event->payment,
-                'event_fee' => $event->event_fee,
-                'students_synced' => $studentsSynced,
-            ]);
-
             return redirect()->route('president.events.index')
                 ->with('success', 'Event created successfully. Please upload the signed document when ready.');
 
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Failed to create event: ' . $e->getMessage());
-            
-            $this->logError('create_event_failed', 'Failed to create event: ' . $e->getMessage(), $e, [
-                'event_name' => $request->event_name,
-                'event_type_id' => $request->event_type_id,
-            ]);
-            
-            return back()->withErrors(['error' => 'Failed to create event.']);
+            return back()->withErrors(['error' => 'Failed to create event: ' . $e->getMessage()]);
         }
     }
 
@@ -372,7 +292,6 @@ class EventController extends Controller
                 'id' => $event->id,
                 'event_name' => $event->event_name,
                 'event_type' => $event->eventType,
-                // FIX: Format dates as Y-m-d without timezone
                 'event_date_start' => $event->event_date_start instanceof Carbon ? $event->event_date_start->format('Y-m-d') : date('Y-m-d', strtotime($event->event_date_start)),
                 'event_date_end' => $event->event_date_end instanceof Carbon ? $event->event_date_end->format('Y-m-d') : date('Y-m-d', strtotime($event->event_date_end)),
                 'description' => $event->description,
@@ -399,35 +318,13 @@ class EventController extends Controller
         ]);
     }
 
-    public function edit(Event $event)
-    {
-        if ($event->user_id !== $this->organizationId) {
-            abort(403);
-        }
-
-        $settings = OrganizationSetting::where('organization_id', $this->organizationId)->first();
-        
-        $departments = Department::whereIn('id', $settings->assigned_departments ?? [])
-            ->with(['courses' => function($query) use ($settings) {
-                $query->whereIn('id', $settings->assigned_courses ?? []);
-            }])
-            ->get();
-
-        $eventTypes = EventType::all();
-        $yearLevels = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
-
-        return Inertia::render('President/Events/Edit', [
-            'event' => $event,
-            'departments' => $departments,
-            'eventTypes' => $eventTypes,
-            'yearLevels' => $yearLevels,
-        ]);
-    }
-
+    /**
+     * UPDATE method - This is called by the modal via PUT request
+     */
     public function update(Request $request, Event $event)
     {
         if ($event->user_id !== $this->organizationId) {
-            abort(403);
+            return response()->json(['error' => 'Unauthorized'], 403);
         }
 
         $request->validate([
@@ -441,19 +338,15 @@ class EventController extends Controller
         ]);
 
         $eventType = EventType::find($request->event_type_id);
+        
+        if ($eventType->requires_payment) {
+            $request->validate(['event_fee' => 'required|numeric|min:0']);
+        }
 
         DB::beginTransaction();
 
         try {
-            $oldData = [
-                'event_name' => $event->event_name,
-                'event_type_id' => $event->event_type_id,
-                'event_date_start' => $event->event_date_start,
-                'event_date_end' => $event->event_date_end,
-                'event_fee' => $event->event_fee,
-            ];
-
-            $data = [
+            $updateData = [
                 'event_name' => $request->event_name,
                 'event_type_id' => $request->event_type_id,
                 'event_date_start' => $request->event_date_start,
@@ -465,9 +358,10 @@ class EventController extends Controller
                 'year_levels' => $request->year_levels,
             ];
 
+            // Handle document upload if present
             if ($request->hasFile('signed_document')) {
                 $request->validate([
-                    'signed_document' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
+                    'signed_document' => 'file|mimes:pdf,jpg,jpeg,png|max:5120',
                 ]);
                 
                 if ($event->signed_document_path) {
@@ -475,22 +369,16 @@ class EventController extends Controller
                 }
                 
                 $path = $request->file('signed_document')->store('signed-documents', 'public');
-                $data['signed_document_path'] = $path;
-                $data['approval_status'] = 'pending_approval';
+                $updateData['signed_document_path'] = $path;
+                $updateData['approval_status'] = 'pending_approval';
             }
 
-            $event->update($data);
+            $event->update($updateData);
+            
+            // Re-sync eligible students after update
             $studentsSynced = $this->syncEligibleStudents($event);
 
             DB::commit();
-
-            $this->logAction('update_event', 'Updated event: ' . $event->event_name, [
-                'event_id' => $event->id,
-                'event_name' => $event->event_name,
-                'changes' => $oldData['event_name'] !== $event->event_name ? ['name_changed' => true] : null,
-                'students_synced' => $studentsSynced,
-                'document_uploaded' => $request->hasFile('signed_document'),
-            ]);
 
             return redirect()->route('president.events.index')
                 ->with('success', 'Event updated successfully.');
@@ -498,13 +386,7 @@ class EventController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Failed to update event: ' . $e->getMessage());
-            
-            $this->logError('update_event_failed', 'Failed to update event: ' . $e->getMessage(), $e, [
-                'event_id' => $event->id,
-                'event_name' => $event->event_name,
-            ]);
-            
-            return back()->withErrors(['error' => 'Failed to update event.']);
+            return back()->withErrors(['error' => 'Failed to update event: ' . $e->getMessage()]);
         }
     }
 
@@ -530,19 +412,8 @@ class EventController extends Controller
                 'approval_status' => 'pending_approval',
             ]);
 
-            $this->logAction('upload_event_document', 'Uploaded signed document for event: ' . $event->event_name, [
-                'event_id' => $event->id,
-                'event_name' => $event->event_name,
-                'document_size' => $request->file('signed_document')->getSize(),
-            ]);
-
             return back()->with('success', 'Document uploaded successfully. Event is now pending adviser approval.');
         } catch (\Exception $e) {
-            $this->logError('upload_document_failed', 'Failed to upload document: ' . $e->getMessage(), $e, [
-                'event_id' => $event->id,
-                'event_name' => $event->event_name,
-            ]);
-            
             return back()->with('error', 'Failed to upload document.');
         }
     }
@@ -558,100 +429,65 @@ class EventController extends Controller
         }
 
         try {
-            $oldStatus = $event->status;
             $event->update(['status' => 'Finished']);
-
-            $this->logAction('mark_event_finished', 'Marked event as finished: ' . $event->event_name, [
-                'event_id' => $event->id,
-                'event_name' => $event->event_name,
-                'old_status' => $oldStatus,
-            ]);
-
             return back()->with('success', 'Event marked as finished successfully. You can now request evaluation services.');
         } catch (\Exception $e) {
-            $this->logError('mark_event_finished_failed', 'Failed to mark event as finished: ' . $e->getMessage(), $e, [
-                'event_id' => $event->id,
-                'event_name' => $event->event_name,
-            ]);
-            
             return back()->with('error', 'Failed to mark event as finished.');
         }
     }
 
-   /**
- * Request evaluation service for an event - FIXED for Philippines timezone
- */
-public function requestEvaluation(Request $request, Event $event)
-{
-    if ($event->user_id !== $this->organizationId) {
-        abort(403);
-    }
+    public function requestEvaluation(Request $request, Event $event)
+    {
+        if ($event->user_id !== $this->organizationId) {
+            abort(403);
+        }
 
-    if (!$event->canRequestEvaluation()) {
-        return back()->with('error', 'This event cannot request evaluation service.');
-    }
+        if (!$event->canRequestEvaluation()) {
+            return back()->with('error', 'This event cannot request evaluation service.');
+        }
 
-    // Generate ALL inclusive dates between event_date_start and event_date_end
-    // FIX: Use only the date part, no time
-    $inclusiveDates = [];
-    
-    // Parse dates as Carbon and format as Y-m-d only
-    $start = Carbon::parse($event->event_date_start)->startOfDay();
-    $end = Carbon::parse($event->event_date_end)->startOfDay();
-    
-    for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
-        $inclusiveDates[] = $date->format('Y-m-d');
-    }
-
-    $request->validate([
-        'title' => 'required|string|max:255',
-        'venue' => 'required|string|max:255',
-        'speaker_name' => 'required|string|max:255',
-        'topics' => 'required|array|min:1',
-        'topics.*' => 'required|string',
-        'has_food' => 'boolean',
-        'notes' => 'nullable|string',
-    ]);
-
-    try {
-        $evaluationRequest = EvaluationRequest::create([
-            'event_id' => $event->id,
-            'organization_id' => $this->organizationId,
-            'requested_by' => Auth::guard('org_user')->id(),
-            'title' => $request->title,
-            'activity_date' => $event->event_date_start, // This will be saved as is
-            'event_dates' => $inclusiveDates, // This will be array of Y-m-d strings
-            'venue' => $request->venue,
-            'speaker_name' => $request->speaker_name,
-            'topics' => $request->topics,
-            'has_food' => $request->has_food ?? false,
-            'notes' => $request->notes,
-            'status' => 'pending',
-        ]);
-
-        $this->logAction('request_evaluation', 'Requested evaluation service for event: ' . $event->event_name, [
-            'event_id' => $event->id,
-            'event_name' => $event->event_name,
-            'evaluation_request_id' => $evaluationRequest->id,
-            'title' => $request->title,
-            'venue' => $request->venue,
-            'speaker_name' => $request->speaker_name,
-            'topics_count' => count($request->topics),
-            'event_dates' => $inclusiveDates,
-            'event_dates_count' => count($inclusiveDates),
-        ]);
-
-        return redirect()->route('president.events.show', $event->id)
-            ->with('success', 'Evaluation service request submitted successfully with ' . count($inclusiveDates) . ' event dates.');
-    } catch (\Exception $e) {
-        $this->logError('request_evaluation_failed', 'Failed to request evaluation: ' . $e->getMessage(), $e, [
-            'event_id' => $event->id,
-            'event_name' => $event->event_name,
-        ]);
+        // Generate ALL inclusive dates between event_date_start and event_date_end
+        $inclusiveDates = [];
+        $start = Carbon::parse($event->event_date_start)->startOfDay();
+        $end = Carbon::parse($event->event_date_end)->startOfDay();
         
-        return back()->with('error', 'Failed to submit evaluation request: ' . $e->getMessage());
+        for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
+            $inclusiveDates[] = $date->format('Y-m-d');
+        }
+
+        $request->validate([
+            'title' => 'required|string|max:255',
+            'venue' => 'required|string|max:255',
+            'speaker_name' => 'required|string|max:255',
+            'topics' => 'required|array|min:1',
+            'topics.*' => 'required|string',
+            'has_food' => 'boolean',
+            'notes' => 'nullable|string',
+        ]);
+
+        try {
+            $evaluationRequest = EvaluationRequest::create([
+                'event_id' => $event->id,
+                'organization_id' => $this->organizationId,
+                'requested_by' => Auth::guard('org_user')->id(),
+                'title' => $request->title,
+                'activity_date' => $event->event_date_start,
+                'event_dates' => $inclusiveDates,
+                'venue' => $request->venue,
+                'speaker_name' => $request->speaker_name,
+                'topics' => $request->topics,
+                'has_food' => $request->has_food ?? false,
+                'notes' => $request->notes,
+                'status' => 'pending',
+            ]);
+
+            return redirect()->route('president.events.show', $event->id)
+                ->with('success', 'Evaluation service request submitted successfully with ' . count($inclusiveDates) . ' event dates.');
+        } catch (\Exception $e) {
+            return back()->with('error', 'Failed to submit evaluation request: ' . $e->getMessage());
+        }
     }
-}
+
     public function destroy(Event $event)
     {
         if ($event->user_id !== $this->organizationId) {
@@ -659,28 +495,14 @@ public function requestEvaluation(Request $request, Event $event)
         }
 
         try {
-            $eventName = $event->event_name;
-            $eventId = $event->id;
-            
             if ($event->signed_document_path) {
                 Storage::disk('public')->delete($event->signed_document_path);
             }
-
             $event->delete();
-
-            $this->logAction('delete_event', 'Deleted event: ' . $eventName, [
-                'event_id' => $eventId,
-                'event_name' => $eventName,
-            ]);
 
             return redirect()->route('president.events.index')
                 ->with('success', 'Event deleted successfully.');
         } catch (\Exception $e) {
-            $this->logError('delete_event_failed', 'Failed to delete event: ' . $e->getMessage(), $e, [
-                'event_id' => $event->id,
-                'event_name' => $event->event_name,
-            ]);
-            
             return redirect()->route('president.events.index')
                 ->with('error', 'Failed to delete event.');
         }
@@ -711,12 +533,6 @@ public function requestEvaluation(Request $request, Event $event)
                     ];
                 });
             
-            $this->logAction('refresh_eligible_students', 'Refreshed eligible students for event: ' . $event->event_name, [
-                'event_id' => $event->id,
-                'event_name' => $event->event_name,
-                'students_added' => $added,
-            ]);
-            
             return response()->json([
                 'success' => true,
                 'students' => $eligibleStudents,
@@ -724,13 +540,82 @@ public function requestEvaluation(Request $request, Event $event)
                 'added' => $added,
             ]);
         } catch (\Exception $e) {
-            $this->logError('refresh_eligible_students_failed', 'Failed to refresh students: ' . $e->getMessage(), $e, [
-                'event_id' => $event->id,
-                'event_name' => $event->event_name,
-            ]);
-            
             return response()->json([
                 'error' => 'Failed to refresh students: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function syncAllEligibleStudents(Event $event)
+    {
+        if ($event->user_id !== $this->organizationId) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+        
+        try {
+            $eligibleStudents = Student::where('user_id', $this->organizationId)->get();
+            
+            $existingStudents = EventStudent::where('event_id', $event->id)
+                ->pluck('student_id')
+                ->toArray();
+            
+            $studentsToAdd = array_diff($eligibleStudents->pluck('student_id')->toArray(), $existingStudents);
+            $studentsToRemove = array_diff($existingStudents, $eligibleStudents->pluck('student_id')->toArray());
+            
+            $added = 0;
+            $removed = 0;
+            
+            foreach ($eligibleStudents as $student) {
+                if (in_array($student->student_id, $studentsToAdd)) {
+                    EventStudent::updateOrCreate(
+                        [
+                            'event_id' => $event->id,
+                            'student_id' => $student->student_id,
+                        ],
+                        [
+                            'user_id' => $this->organizationId,
+                            'status' => $event->payment === 'Payment' ? 'Pending' : 'Paid',
+                            'amount_paid' => $event->payment === 'Payment' ? 0 : $event->event_fee,
+                        ]
+                    );
+                    $added++;
+                }
+            }
+            
+            foreach ($studentsToRemove as $studentId) {
+                EventStudent::where('event_id', $event->id)
+                    ->where('student_id', $studentId)
+                    ->delete();
+                $removed++;
+            }
+            
+            $updatedStudents = EventStudent::where('event_id', $event->id)
+                ->with('student')
+                ->get()
+                ->map(function ($es) {
+                    return [
+                        'student_id' => $es->student->student_id,
+                        'firstname' => $es->student->firstname,
+                        'lastname' => $es->student->lastname,
+                        'department' => $es->student->department,
+                        'course' => $es->student->course,
+                        'yearlevel' => $es->student->yearlevel,
+                        'status' => $es->status,
+                        'amount_paid' => $es->amount_paid,
+                    ];
+                });
+            
+            return response()->json([
+                'success' => true,
+                'students' => $updatedStudents,
+                'total' => $updatedStudents->count(),
+                'added' => $added,
+                'removed' => $removed,
+                'message' => "Updated student list: +{$added} added, -{$removed} removed"
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Failed to sync students: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -790,13 +675,6 @@ public function requestEvaluation(Request $request, Event $event)
                 'status' => 'Pending',
             ]);
             
-            $this->logAction('add_event_guest', 'Added guest to event: ' . $event->event_name, [
-                'event_id' => $event->id,
-                'event_name' => $event->event_name,
-                'guest_name' => $guest->name,
-                'guest_email' => $guest->email,
-            ]);
-            
             return response()->json([
                 'success' => true,
                 'message' => 'Guest added successfully',
@@ -808,13 +686,6 @@ public function requestEvaluation(Request $request, Event $event)
                 ],
             ]);
         } catch (\Exception $e) {
-            $this->logError('add_guest_failed', 'Failed to add guest: ' . $e->getMessage(), $e, [
-                'event_id' => $event->id,
-                'event_name' => $event->event_name,
-                'guest_name' => $request->name,
-                'guest_email' => $request->email,
-            ]);
-            
             return response()->json(['error' => 'Failed to add guest'], 500);
         }
     }
@@ -859,13 +730,6 @@ public function requestEvaluation(Request $request, Event $event)
         
         fclose($handle);
         
-        $this->logAction('bulk_add_event_guests', 'Bulk added guests to event: ' . $event->event_name, [
-            'event_id' => $event->id,
-            'event_name' => $event->event_name,
-            'success_count' => $successCount,
-            'error_count' => $errorCount,
-        ]);
-        
         return response()->json([
             'success' => true,
             'message' => "Imported {$successCount} guests, {$errorCount} failed",
@@ -884,23 +748,9 @@ public function requestEvaluation(Request $request, Event $event)
         }
         
         try {
-            $guestName = $guest->name;
             $guest->delete();
-            
-            $this->logAction('delete_event_guest', 'Deleted guest from event: ' . $event->event_name, [
-                'event_id' => $event->id,
-                'event_name' => $event->event_name,
-                'guest_name' => $guestName,
-            ]);
-            
             return response()->json(['success' => true]);
         } catch (\Exception $e) {
-            $this->logError('delete_guest_failed', 'Failed to delete guest: ' . $e->getMessage(), $e, [
-                'event_id' => $event->id,
-                'event_name' => $event->event_name,
-                'guest_name' => $guest->name,
-            ]);
-            
             return response()->json(['error' => 'Failed to delete guest'], 500);
         }
     }
@@ -924,26 +774,5 @@ public function requestEvaluation(Request $request, Event $event)
             'Content-Type' => 'text/csv',
             'Content-Disposition' => 'attachment; filename="' . $filename . '"',
         ]);
-    }
-
-    private function logAction($action, $description, $details = [])
-    {
-        try {
-            $user = Auth::guard('org_user')->user();
-            if ($user) {
-                LogService::action($action, $description, $user, $details);
-            }
-        } catch (\Exception $e) {
-            Log::warning('Failed to log action: ' . $e->getMessage());
-        }
-    }
-    
-    private function logError($action, $description, $exception = null, $details = [])
-    {
-        try {
-            LogService::error($action, $description, $exception, $details);
-        } catch (\Exception $e) {
-            Log::warning('Failed to log error: ' . $e->getMessage());
-        }
     }
 }

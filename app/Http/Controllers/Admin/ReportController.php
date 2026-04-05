@@ -106,8 +106,6 @@ class ReportController extends Controller
             // ==================== CALCULATE OVERALL SATISFACTION FROM RAW RESPONSES ====================
             $totalRatingSum = 0;
             $totalRatingCount = 0;
-            $categoryTotals = [];
-            $categoryCounts = [];
             
             foreach ($allResponses as $response) {
                 $likert = $response->likert_responses;
@@ -133,6 +131,9 @@ class ReportController extends Controller
             if (empty($eventDates)) {
                 $eventDates = [$evaluation->event->event_date_start];
             }
+            
+            // Sort event dates chronologically
+            sort($eventDates);
             
             // Get ALL AI insights (overall and per date)
             $overallInsights = AIAnalysis::where('evaluation_id', $evaluation->id)
@@ -170,6 +171,9 @@ class ReportController extends Controller
                 elseif ($age >= 23 && $age <= 25) $age_groups['23-25 years old'] = ($age_groups['23-25 years old'] ?? 0) + 1;
                 elseif ($age >= 27 && $age <= 29) $age_groups['27-29 years old'] = ($age_groups['27-29 years old'] ?? 0) + 1;
             }
+            
+            // Sort age groups by key
+            ksort($age_groups);
             
             // Respondent type counts
             $respondent_type_counts = [];
@@ -285,21 +289,13 @@ class ReportController extends Controller
             $organizationName = $organization ? $organization->name : 'Organization';
             
             // Prepare header image data
-            $imageData = '';
-            $possiblePaths = [
-                public_path('images/pdfheader.png'),
-                base_path('public/images/pdfheader.png'),
-                storage_path('app/public/images/pdfheader.png'),
-            ];
-            foreach ($possiblePaths as $path) {
-                if (file_exists($path)) {
-                    $imageData = base64_encode(file_get_contents($path));
-                    break;
-                }
-            }
+            $imageData = $this->loadHeaderImage();
             
             // Get interpretation based on mean score
             $satisfactionInterpretation = $this->getInterpretation($overallSatisfaction);
+            
+            // Prepare per-date data with proper ordering
+            $perDateData = $this->getPerDateData($evaluation, $eventDates, $dateInsights, $totalEligible);
             
             // Prepare data for PDF
             $data = [
@@ -335,7 +331,7 @@ class ReportController extends Controller
                 'report_date' => now()->format('F d, Y'),
                 'generated_by' => auth()->user()->name,
                 'header_image' => $imageData,
-                'per_date_data' => $this->getPerDateData($evaluation, $eventDates, $dateInsights, $totalEligible),
+                'per_date_data' => $perDateData,
             ];
             
             // Generate PDF
@@ -377,7 +373,34 @@ class ReportController extends Controller
     }
 
     /**
-     * Get per-date data by querying the responses table directly
+     * Load header image from multiple possible paths
+     */
+    private function loadHeaderImage()
+    {
+        $possiblePaths = [
+            public_path('images/pdfheader.png'),
+            public_path('images/header.png'),
+            public_path('img/pdfheader.png'),
+            public_path('img/header.png'),
+            base_path('public/images/pdfheader.png'),
+            base_path('public/images/header.png'),
+            storage_path('app/public/images/pdfheader.png'),
+            storage_path('app/public/images/header.png'),
+        ];
+        
+        foreach ($possiblePaths as $path) {
+            if (file_exists($path)) {
+                Log::info('Header image loaded from: ' . $path);
+                return base64_encode(file_get_contents($path));
+            }
+        }
+        
+        Log::warning('No header image found in any path');
+        return null;
+    }
+
+    /**
+     * Get per-date data by querying the responses table directly with proper ordering
      */
     private function getPerDateData($evaluation, $eventDates, $dateInsights, $totalEligible)
     {
@@ -395,7 +418,7 @@ class ReportController extends Controller
                 
                 $responseCount = $dateResponses->count();
                 
-                // Calculate category scores for this date
+                // Calculate category scores for this date - preserves insertion order
                 $dateCategoryScores = $this->calculateCategoryScores($evaluation, $dateResponses);
                 
                 // Get demographic data for this date
@@ -415,6 +438,7 @@ class ReportController extends Controller
                     elseif ($age == 22) $age_groups['22 years old'] = ($age_groups['22 years old'] ?? 0) + 1;
                     elseif ($age >= 23 && $age <= 25) $age_groups['23-25 years old'] = ($age_groups['23-25 years old'] ?? 0) + 1;
                 }
+                ksort($age_groups);
                 
                 // Respondent types for this date
                 $respondent_types = [];
@@ -559,14 +583,16 @@ class ReportController extends Controller
     }
 
     /**
-     * Calculate category scores from responses
+     * Calculate category scores from responses preserving database insertion order
      */
     private function calculateCategoryScores($evaluation, $responses)
     {
         try {
-            // Get all questions with their categories
+            // Get all questions with their categories - ORDER BY category ID to preserve insertion order
             $questions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
-                ->with('category')
+                ->with(['category' => function($query) {
+                    $query->orderBy('id', 'asc'); // Order categories by ID (insertion order)
+                }])
                 ->where('question_type', 'likert')
                 ->orderBy('order')
                 ->get();
@@ -580,17 +606,20 @@ class ReportController extends Controller
             $categoryCounts = [];
             $questionTotals = [];
             $questionCounts = [];
+            $categoryOrderList = []; // Track the order categories first appear
             
-            // Initialize structure
+            // Initialize structure - preserve insertion order
             foreach ($questions as $question) {
                 $categoryName = $question->category ? $question->category->category_name : 'Other';
                 $questionText = $question->question_text;
                 
+                // Record the order of first appearance
                 if (!isset($categoryTotals[$categoryName])) {
                     $categoryTotals[$categoryName] = 0;
                     $categoryCounts[$categoryName] = 0;
                     $questionTotals[$categoryName] = [];
                     $questionCounts[$categoryName] = [];
+                    $categoryOrderList[] = $categoryName; // Preserve order
                 }
                 
                 $questionTotals[$categoryName][$questionText] = 0;
@@ -634,18 +663,20 @@ class ReportController extends Controller
                 }
             }
             
-            // Calculate averages and format output
+            // Calculate averages and maintain the original insertion order
             $result = [];
-            foreach ($categoryTotals as $categoryName => $totalScore) {
-                $categoryAverage = $categoryCounts[$categoryName] > 0 
-                    ? $totalScore / $categoryCounts[$categoryName] 
-                    : 0;
+            foreach ($categoryOrderList as $categoryName) {
+                $totalScore = $categoryTotals[$categoryName] ?? 0;
+                $count = $categoryCounts[$categoryName] ?? 0;
+                $categoryAverage = $count > 0 ? $totalScore / $count : 0;
                 
                 $questionsArray = [];
-                foreach ($questionTotals[$categoryName] as $questionText => $total) {
-                    $count = $questionCounts[$categoryName][$questionText] ?? 0;
-                    if ($count > 0) {
-                        $questionsArray[$questionText] = $total / $count;
+                if (isset($questionTotals[$categoryName])) {
+                    foreach ($questionTotals[$categoryName] as $questionText => $total) {
+                        $qCount = $questionCounts[$categoryName][$questionText] ?? 0;
+                        if ($qCount > 0) {
+                            $questionsArray[$questionText] = $total / $qCount;
+                        }
                     }
                 }
                 
@@ -656,6 +687,7 @@ class ReportController extends Controller
             }
             
             return $result;
+            
         } catch (\Exception $e) {
             Log::error('Error in calculateCategoryScores: ' . $e->getMessage());
             return [];

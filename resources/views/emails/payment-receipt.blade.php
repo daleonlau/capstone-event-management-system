@@ -92,11 +92,26 @@
             font-size: 11px;
             text-transform: uppercase;
         }
+        .contact-info {
+            background-color: #f0fdf4;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 15px;
+            text-align: center;
+        }
+        .contact-info p {
+            margin: 5px 0;
+        }
+        .reply-note {
+            font-size: 11px;
+            color: #059669;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
     <div class="header">
-        <div class="logo">CSUCC EMS</div>
+        <div class="logo">Event Flow</div>
         <div class="school-name">Caraga State University - Cabadbaran Campus</div>
         <div class="receipt-title">OFFICIAL RECEIPT</div>
     </div>
@@ -156,10 +171,20 @@
         Thank you for your payment!
     </div>
 
+    <!-- Contact Info with Treasurer's Email -->
+    <div class="contact-info">
+        <p><strong>Processed by:</strong> {{ $treasurer->name ?? 'Treasurer' }}</p>
+        <p><strong>Contact Email:</strong> 
+            <a href="mailto:{{ $treasurer->email ?? config('mail.from.address') }}" style="color: #059669;">
+                {{ $treasurer->email ?? config('mail.from.address') }}
+            </a>
+        </p>
+        <p class="reply-note">💡 For any questions about this payment, simply reply to this email and it will go directly to the treasurer who processed your payment.</p>
+    </div>
+
     <div class="footer">
-        <p>This is an official receipt from CSUCC EMS. Please keep this for your records.</p>
-        <p>For any inquiries, please contact the treasurer's office.</p>
-        <p>Processed by: {{ $treasurer->name ?? 'Treasurer' }}</p>
+        <p>This is an official receipt from Event Flow. Please keep this for your records.</p>
+        <p>For any inquiries, please contact the organization treasurer.</p>
     </div>
 </body>
 </html>

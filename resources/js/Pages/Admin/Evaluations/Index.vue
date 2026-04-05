@@ -379,7 +379,7 @@
                   </span>
                 </div>
 
-                <!-- Response Stats with Progress Bar -->
+                <!-- Response Stats with Progress Bar - FIXED: Guest responses now count correctly -->
                 <div class="mb-4">
                   <div class="flex justify-between items-center mb-2">
                     <div class="flex items-center gap-2">
@@ -403,7 +403,7 @@
                     <span>{{ evaluation.guests_count }} guests</span>
                   </div>
                   <p class="text-xs text-gray-400 mt-1 text-center">
-                    Expected = {{ evaluation.students_count }} × {{ evaluation.number_of_dates || 1 }} + {{ evaluation.guests_count }} = {{ evaluation.expected_count }}
+                    Expected = ({{ evaluation.students_count }} × {{ evaluation.number_of_dates || 1 }}) + {{ evaluation.guests_count }} = {{ evaluation.expected_count }}
                   </p>
                 </div>
 
@@ -598,8 +598,6 @@ function getRateTextClass(rate) {
 }
 
 function performSearch() {
-  // For pending requests, we filter client-side
-  // For evaluations, we also filter client-side but could also call server
   if (activeTab.value !== 'requests') {
     router.get('/admin/evaluations', { search: searchQuery.value }, {
       preserveState: true,
@@ -699,8 +697,6 @@ watch(searchQuery, (newVal) => {
 watch(activeTab, (newTab) => {
   if (newTab === 'requests') {
     fetchPendingRequests();
-    // Clear search when switching to requests? Optional
-    // searchQuery.value = '';
   }
 });
 </script>

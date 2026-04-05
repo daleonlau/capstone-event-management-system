@@ -287,8 +287,8 @@ class CollectionController extends Controller
 
             DB::beginTransaction();
 
-            // Generate receipt number
-            $receiptNumber = EventStudent::generateReceiptNumber();
+            // Generate unique receipt number
+            $receiptNumber = $this->generateReceiptNumber();
 
             // Store old payment data if exists
             $oldPayment = EventStudent::where('event_id', $event->id)
@@ -327,7 +327,7 @@ class CollectionController extends Controller
                 'payment_method' => 'cash',
             ]);
 
-            // Generate PDF (this is fast, keep sync)
+            // Generate PDF
             try {
                 $this->generateReceiptPDF($payment, $student, $event);
             } catch (\Exception $e) {
@@ -344,7 +344,7 @@ class CollectionController extends Controller
             
             if ($sendEmail && $student->email) {
                 try {
-                    // ✅ USE send INSTEAD OF SEND
+                    // Use send() instead of queue() to avoid serialization issues
                     Mail::to($student->email)->send(new PaymentReceiptMail($payment));
                     
                     DB::table('event_student')
@@ -355,7 +355,7 @@ class CollectionController extends Controller
                     $emailSent = true;
                     
                     // Log email sent
-                    $this->logAction('send_payment_receipt', 'Sent payment receipt email to student (sendd)', [
+                    $this->logAction('send_payment_receipt', 'Sent payment receipt email to student', [
                         'event_id' => $event->id,
                         'event_name' => $event->event_name,
                         'student_id' => $student->student_id,
@@ -364,8 +364,8 @@ class CollectionController extends Controller
                         'receipt_number' => $receiptNumber,
                     ]);
                 } catch (\Exception $e) {
-                    Log::warning('Email queuing failed but payment was recorded: ' . $e->getMessage());
-                    $this->logError('email_queuing_failed', 'Failed to send receipt email', $e, [
+                    Log::warning('Email sending failed but payment was recorded: ' . $e->getMessage());
+                    $this->logError('email_sending_failed', 'Failed to send receipt email', $e, [
                         'event_id' => $event->id,
                         'student_id' => $student->student_id,
                         'student_email' => $student->email,
@@ -376,7 +376,7 @@ class CollectionController extends Controller
 
             $message = 'Payment recorded successfully. Receipt #: ' . $receiptNumber;
             if ($emailSent) {
-                $message .= ' Email will be sent to ' . $student->email;
+                $message .= ' Email sent to ' . $student->email;
             }
 
             return response()->json([
@@ -403,7 +403,7 @@ class CollectionController extends Controller
     }
 
     /**
-     * Generate receipt number
+     * Generate unique receipt number
      */
     private function generateReceiptNumber()
     {
@@ -411,17 +411,26 @@ class CollectionController extends Controller
         $month = date('m');
         $prefix = "REC-{$year}{$month}-";
         
+        // Get the latest receipt number for this month/year
         $lastReceipt = EventStudent::where('receipt_number', 'like', $prefix . '%')
-            ->orderBy('created_at', 'desc')
+            ->orderBy('id', 'desc')
             ->first();
-    
+
         if ($lastReceipt && $lastReceipt->receipt_number) {
-            $lastNumber = intval(substr($lastReceipt->receipt_number, -4));
+            // Extract the number part (last 4 digits)
+            $lastNumber = (int) substr($lastReceipt->receipt_number, -4);
             $newNumber = str_pad($lastNumber + 1, 4, '0', STR_PAD_LEFT);
         } else {
             $newNumber = '0001';
         }
-    
+        
+        // Double-check that this number doesn't already exist (safety)
+        $existingReceipt = EventStudent::where('receipt_number', $prefix . $newNumber)->first();
+        if ($existingReceipt) {
+            // If somehow exists, increment again
+            $newNumber = str_pad((int)$newNumber + 1, 4, '0', STR_PAD_LEFT);
+        }
+        
         return $prefix . $newNumber;
     }
 
@@ -684,8 +693,8 @@ class CollectionController extends Controller
                     ->first();
             }
 
-            // ✅ USE send INSTEAD OF SEND
-            Log::info('sending email to: ' . $student->email);
+            // Use send() instead of queue() to avoid serialization issues
+            Log::info('Sending email to: ' . $student->email);
             
             Mail::to($student->email)->send(new PaymentReceiptMail($payment));
             
@@ -695,10 +704,10 @@ class CollectionController extends Controller
                 ->where('student_id', $studentId)
                 ->update(['receipt_sent_at' => now()]);
             
-            Log::info('Email sendd successfully');
+            Log::info('Email sent successfully');
             
             // Log email resend
-            $this->logAction('resend_payment_receipt', 'Resent payment receipt email to student (sendd)', [
+            $this->logAction('resend_payment_receipt', 'Resent payment receipt email to student', [
                 'event_id' => $eventId,
                 'student_id' => $studentId,
                 'student_name' => $student->firstname . ' ' . $student->lastname,
@@ -708,16 +717,16 @@ class CollectionController extends Controller
             
             return response()->json([
                 'success' => true,
-                'message' => 'Receipt email will be sent to ' . $student->email
+                'message' => 'Receipt email sent successfully to ' . $student->email
             ]);
             
         } catch (\Exception $e) {
-            Log::error('Failed to send receipt email', [
+            Log::error('Failed to resend receipt email', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
             
-            $this->logError('resend_receipt_email_failed', 'Failed to send receipt email: ' . $e->getMessage(), $e, [
+            $this->logError('resend_receipt_email_failed', 'Failed to resend receipt email: ' . $e->getMessage(), $e, [
                 'event_id' => $eventId,
                 'student_id' => $studentId,
             ]);

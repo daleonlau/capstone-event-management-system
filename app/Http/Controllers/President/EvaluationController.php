@@ -7,6 +7,8 @@ use App\Models\Evaluation;
 use App\Models\EvaluationResponse;
 use App\Models\EvaluationQuestion;
 use App\Models\AIAnalysis;
+use App\Models\EventStudent;
+use App\Models\EventGuest;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Carbon\Carbon;
@@ -29,18 +31,37 @@ class EvaluationController extends Controller
 
     public function index()
     {
-        $evaluations = Evaluation::with(['event', 'event.eventType'])
+        $evaluations = Evaluation::with(['event', 'event.creator'])
             ->where('organization_id', $this->organizationId)
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($evaluation) {
+                $event = $evaluation->event;
+                $eventDates = $evaluation->event_dates ?: [];
+                $numberOfDates = count($eventDates);
+                
+                $totalStudents = EventStudent::where('event_id', $event->id)->count();
+                $totalGuests = EventGuest::where('event_id', $event->id)->count();
+                $totalExpected = ($totalStudents * max($numberOfDates, 1)) + $totalGuests;
+                
+                $responseRate = $totalExpected > 0 
+                    ? round(($evaluation->total_responses / $totalExpected) * 100, 1) 
+                    : 0;
+                
                 return [
                     'id' => $evaluation->id,
                     'title' => $evaluation->title,
-                    'event_name' => $evaluation->event->event_name,
-                    'event_status' => $evaluation->event->status,
+                    'form_type' => $evaluation->form_type,
                     'status' => $evaluation->status,
+                    'event_name' => $evaluation->event->event_name,
+                    'organization_name' => $evaluation->event->creator->name,
                     'responses_count' => $evaluation->total_responses,
+                    'expected_count' => $totalExpected,
+                    'response_rate' => $responseRate,
+                    'students_count' => $totalStudents,
+                    'guests_count' => $totalGuests,
+                    'number_of_dates' => $numberOfDates,
+                    'event_dates' => $eventDates,
                     'created_at' => $evaluation->created_at->format('Y-m-d'),
                 ];
             });
@@ -62,7 +83,7 @@ class EvaluationController extends Controller
 
         $responses = EvaluationResponse::where('evaluation_id', $evaluation->id)->get();
         
-        // ==================== CALCULATE OVERALL SATISFACTION FROM RAW RESPONSES ====================
+        // Calculate overall satisfaction from raw responses
         $totalRatingSum = 0;
         $totalRatingCount = 0;
         
@@ -83,20 +104,26 @@ class EvaluationController extends Controller
         
         $overallSatisfaction = $totalRatingCount > 0 ? round($totalRatingSum / $totalRatingCount, 2) : 0;
         
-        // ==================== GET ALL AI INSIGHTS WITH COMMENTS ====================
+        // Calculate expected counts
+        $event = $evaluation->event;
+        $eventDates = $evaluation->event_dates ?: [];
+        $numberOfDates = count($eventDates);
+        $totalStudents = EventStudent::where('event_id', $event->id)->count();
+        $totalGuests = EventGuest::where('event_id', $event->id)->count();
+        $totalExpected = ($totalStudents * max($numberOfDates, 1)) + $totalGuests;
+        $responseRate = $totalExpected > 0 ? round(($evaluation->total_responses / $totalExpected) * 100, 1) : 0;
+        
+        // Get all AI insights
         $allAiInsights = AIAnalysis::where('evaluation_id', $evaluation->id)
             ->orderBy('event_date', 'asc')
             ->get()
             ->map(function ($insight) {
-                // Decode sentiment analysis if it exists
                 $sentimentAnalysis = json_decode($insight->sentiment_analysis, true) ?: [];
                 
-                // Get comments from separate columns (if they exist) or from sentiment_analysis
                 $positiveComments = [];
                 $negativeComments = [];
                 $neutralComments = [];
                 
-                // First try to get from separate columns
                 if ($insight->positive_comments) {
                     $positiveComments = json_decode($insight->positive_comments, true) ?: [];
                 } elseif (isset($sentimentAnalysis['positive_comments'])) {
@@ -115,7 +142,6 @@ class EvaluationController extends Controller
                     $neutralComments = $sentimentAnalysis['neutral_comments'];
                 }
                 
-                // Update sentiment analysis with comments from separate columns
                 $sentimentAnalysis['positive_comments'] = $positiveComments;
                 $sentimentAnalysis['negative_comments'] = $negativeComments;
                 $sentimentAnalysis['neutral_comments'] = $neutralComments;
@@ -137,7 +163,6 @@ class EvaluationController extends Controller
                     'what_if_analysis' => json_decode($insight->what_if_analysis, true) ?: [],
                     'critical_factors' => json_decode($insight->critical_factors, true) ?: [],
                     'low_scoring_questions' => json_decode($insight->low_scoring_questions, true) ?: [],
-                    // Direct comment fields for easier access
                     'positive_comments' => $positiveComments,
                     'negative_comments' => $negativeComments,
                     'neutral_comments' => $neutralComments,
@@ -165,7 +190,7 @@ class EvaluationController extends Controller
             })
             ->toArray();
         
-        // Calculate stats for overall
+        // Calculate stats
         $stats = [];
         $likertQuestions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
             ->where('question_type', 'likert')
@@ -218,7 +243,7 @@ class EvaluationController extends Controller
             ];
         }
 
-        // Calculate category breakdown from stats if no AI insights
+        // Calculate category breakdown
         $categoryBreakdown = [];
         if ($overallInsights && !empty($overallInsights['category_breakdown'])) {
             $categoryBreakdown = $overallInsights['category_breakdown'];
@@ -242,6 +267,7 @@ class EvaluationController extends Controller
             'evaluation' => [
                 'id' => $evaluation->id,
                 'title' => $evaluation->title,
+                'form_type' => $evaluation->form_type,
                 'status' => $evaluation->status,
                 'qr_code_url' => $evaluation->qr_code_url ?? route('evaluations.form', $evaluation->id),
                 'event' => [
@@ -268,6 +294,11 @@ class EvaluationController extends Controller
                     ];
                 })->values(),
                 'responses_count' => $evaluation->total_responses,
+                'expected_count' => $totalExpected,
+                'response_rate' => $responseRate,
+                'students_count' => $totalStudents,
+                'guests_count' => $totalGuests,
+                'number_of_dates' => $numberOfDates,
                 'created_at' => $evaluation->created_at->format('Y-m-d H:i'),
                 'overall_satisfaction' => $overallSatisfaction,
             ],

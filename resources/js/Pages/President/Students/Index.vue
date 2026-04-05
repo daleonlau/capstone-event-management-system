@@ -206,15 +206,25 @@
         </div>
       </div>
 
-      <!-- Edit Student Modal -->
-      <Transition name="modal">
-        <div v-if="showEditModal" class="fixed inset-0 z-50 overflow-y-auto">
-          <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" @click="showEditModal = false"></div>
-            <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
-            <div class="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-              <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                <h3 class="text-lg font-medium text-gray-900 mb-4">Edit Student</h3>
+      <!-- Edit Student Modal - Modern Transparent Blurred Backdrop -->
+      <Teleport to="body">
+        <Transition name="modal-fade">
+          <div v-if="showEditModal" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="closeEditModal">
+            <!-- Blurred backdrop -->
+            <div class="absolute inset-0 bg-black/40 backdrop-blur-md"></div>
+            
+            <!-- Modal content -->
+            <div class="relative bg-white rounded-2xl shadow-2xl max-w-lg w-full transform transition-all duration-300 scale-100">
+              <div class="bg-white px-6 pt-6 pb-4">
+                <div class="flex items-center justify-between mb-4">
+                  <h3 class="text-xl font-bold text-gray-900">Edit Student</h3>
+                  <button @click="closeEditModal" class="text-gray-400 hover:text-gray-600 transition">
+                    <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                
                 <form @submit.prevent="updateStudent" class="space-y-4">
                   <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Student ID</label>
@@ -222,15 +232,15 @@
                   </div>
                   <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">First Name</label>
-                    <input v-model="editForm.firstname" type="text" class="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500" required />
+                    <input v-model="editForm.firstname" type="text" class="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" required />
                   </div>
                   <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
-                    <input v-model="editForm.lastname" type="text" class="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500" required />
+                    <input v-model="editForm.lastname" type="text" class="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" required />
                   </div>
                   <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                    <input v-model="editForm.email" type="email" class="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500" required />
+                    <input v-model="editForm.email" type="email" class="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" required />
                   </div>
                   <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Program</label>
@@ -246,59 +256,61 @@
                   </div>
                 </form>
               </div>
-              <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                <button @click="updateStudent" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-emerald-600 text-base font-medium text-white hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 sm:ml-3 sm:w-auto sm:text-sm">
-                  Update
-                </button>
-                <button @click="showEditModal = false" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+              
+              <div class="bg-gray-50 px-6 py-4 rounded-b-2xl flex justify-end gap-3">
+                <button @click="closeEditModal" class="px-4 py-2 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-100 transition">
                   Cancel
+                </button>
+                <button @click="updateStudent" class="px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition">
+                  Update Student
                 </button>
               </div>
             </div>
           </div>
-        </div>
-      </Transition>
+        </Transition>
+      </Teleport>
 
-      <!-- Delete Confirmation Modal -->
-      <Transition name="modal">
-        <div v-if="showDeleteModal" class="fixed inset-0 z-50 overflow-y-auto">
-          <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" @click="showDeleteModal = false"></div>
-            <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
-            <div class="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-              <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                <div class="sm:flex sm:items-start">
-                  <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
-                    <svg class="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <!-- Delete Confirmation Modal - Modern Transparent Blurred Backdrop -->
+      <Teleport to="body">
+        <Transition name="modal-fade">
+          <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="closeDeleteModal">
+            <!-- Blurred backdrop -->
+            <div class="absolute inset-0 bg-black/40 backdrop-blur-md"></div>
+            
+            <!-- Modal content -->
+            <div class="relative bg-white rounded-2xl shadow-2xl max-w-md w-full transform transition-all duration-300 scale-100">
+              <div class="bg-white px-6 pt-6 pb-4">
+                <div class="flex items-center gap-4">
+                  <div class="flex-shrink-0 w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                    <svg class="w-6 h-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
                   </div>
-                  <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-                    <h3 class="text-lg font-medium text-gray-900">Delete Student</h3>
-                    <div class="mt-2">
-                      <p class="text-sm text-gray-500">
-                        Are you sure you want to delete <span class="font-semibold">{{ selectedStudent?.firstname }} {{ selectedStudent?.lastname }}</span>? 
-                        This action cannot be undone.
-                      </p>
-                    </div>
+                  <div>
+                    <h3 class="text-lg font-semibold text-gray-900">Delete Student</h3>
+                    <p class="text-sm text-gray-500 mt-1">
+                      Are you sure you want to delete <span class="font-semibold text-gray-700">{{ selectedStudent?.firstname }} {{ selectedStudent?.lastname }}</span>?
+                    </p>
+                    <p class="text-sm text-red-500 mt-1">This action cannot be undone.</p>
                   </div>
                 </div>
               </div>
-              <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                <button @click="deleteStudent" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm">
-                  Delete
-                </button>
-                <button @click="showDeleteModal = false" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+              
+              <div class="bg-gray-50 px-6 py-4 rounded-b-2xl flex justify-end gap-3">
+                <button @click="closeDeleteModal" class="px-4 py-2 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-100 transition">
                   Cancel
+                </button>
+                <button @click="deleteStudent" class="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition">
+                  Delete Student
                 </button>
               </div>
             </div>
           </div>
-        </div>
-      </Transition>
+        </Transition>
+      </Teleport>
 
       <!-- Success Toast -->
-      <Transition name="fade">
+      <Transition name="toast-fade">
         <div v-if="$page.props.flash?.success" class="fixed bottom-4 right-4 bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded-lg shadow-lg z-50">
           {{ $page.props.flash.success }}
         </div>
@@ -375,14 +387,20 @@ function editStudent(student) {
   showEditModal.value = true;
 }
 
+// Close edit modal
+function closeEditModal() {
+  showEditModal.value = false;
+  selectedStudent.value = null;
+  editForm.reset();
+}
+
 // Update student
 function updateStudent() {
   if (!selectedStudent.value) return;
   
   editForm.put(`/president/students/${selectedStudent.value.student_id}`, {
     onSuccess: () => {
-      showEditModal.value = false;
-      selectedStudent.value = null;
+      closeEditModal();
     }
   });
 }
@@ -393,31 +411,43 @@ function confirmDelete(student) {
   showDeleteModal.value = true;
 }
 
+// Close delete modal
+function closeDeleteModal() {
+  showDeleteModal.value = false;
+  selectedStudent.value = null;
+}
+
 // Delete student
 function deleteStudent() {
   if (!selectedStudent.value) return;
   
   router.delete(`/president/students/${selectedStudent.value.student_id}`, {
     onSuccess: () => {
-      showDeleteModal.value = false;
-      selectedStudent.value = null;
+      closeDeleteModal();
     }
   });
 }
 </script>
 
 <style scoped>
-.modal-enter-active, .modal-leave-active {
+/* Modal fade animation */
+.modal-fade-enter-active,
+.modal-fade-leave-active {
   transition: opacity 0.3s ease;
 }
-.modal-enter-from, .modal-leave-to {
+
+.modal-fade-enter-from,
+.modal-fade-leave-to {
   opacity: 0;
 }
 
-.fade-enter-active, .fade-leave-active {
+/* Toast animation */
+.toast-fade-enter-active,
+.toast-fade-leave-active {
   transition: opacity 0.5s ease;
 }
-.fade-enter-from, .fade-leave-to {
+.toast-fade-enter-from,
+.toast-fade-leave-to {
   opacity: 0;
 }
 </style>

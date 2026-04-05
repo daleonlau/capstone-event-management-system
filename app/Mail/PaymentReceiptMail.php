@@ -9,7 +9,6 @@ use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Mail\Mailables\Attachment;
-use Illuminate\Support\Facades\Auth;
 
 class PaymentReceiptMail extends Mailable
 {
@@ -30,8 +29,18 @@ class PaymentReceiptMail extends Mailable
 
     public function envelope(): Envelope
     {
+        // Set reply-to based on the treasurer who processed the payment
+        $replyToEmail = $this->treasurer?->email ?? config('mail.from.address');
+        $replyToName = $this->treasurer?->name ?? config('mail.from.name');
+        
         return new Envelope(
             subject: 'Payment Receipt #' . $this->payment->receipt_number . ' - ' . $this->event->event_name,
+            replyTo: [
+                [
+                    'address' => $replyToEmail,
+                    'name' => $replyToName,
+                ]
+            ],
         );
     }
 

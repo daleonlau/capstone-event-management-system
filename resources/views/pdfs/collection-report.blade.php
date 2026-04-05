@@ -7,165 +7,86 @@
     <style>
         @page {
             size: A4;
-            margin: 2cm;
-            margin-top: 3.5cm;
+            margin: 1.5cm;
+            margin-top: 3.8cm;
         }
         
         body {
-            font-family: 'DejaVu Sans', 'Segoe UI', 'Inter', system-ui, sans-serif;
+            font-family: 'DejaVu Sans', 'Segoe UI', Arial, sans-serif;
             font-size: 10px;
             line-height: 1.4;
-            color: #1f2937;
+            color: #333;
             margin: 0;
             padding: 0;
-            background: white;
         }
         
-        /* Fixed header that repeats on every page */
         .fixed-header {
             position: fixed;
             top: -2.5cm;
             left: 0;
             right: 0;
-            height: 2.8cm;
+            height: 2.2cm;
             text-align: center;
             background: white;
             z-index: 1000;
-            padding: 5px 0;
-            border-bottom: 2px solid #e2e8f0;
+            padding: 0;
+            border-bottom: 1px solid #e0e0e0;
         }
         
         .header-content {
             text-align: center;
             height: 100%;
+            width: 100%;
             display: flex;
             justify-content: center;
             align-items: center;
+            overflow: hidden;
         }
         
         .header-image {
-            width: auto;
-            max-width: 100%;
-            height: auto;
-            max-height: 2.2cm;
+            width: 100%;
+            height: 100%;
             object-fit: contain;
-            margin: 0 auto;
+            object-position: center;
+            margin: 0;
+            padding: 0;
             display: block;
         }
         
-        /* Main content wrapper with top padding to avoid header overlap */
-        .main-content {
-            margin-top: 1.2cm;
-            padding-top: 0;
+        .report-title {
+            font-size: 14px;
+            font-weight: bold;
+            margin-top: 10px;
+            text-decoration: underline;
+            text-align: center;
         }
         
-        /* Page break with proper spacing for new pages */
         .page-break {
             page-break-before: always;
-            margin-top: 1.2cm;
+            margin-top: 0;
         }
         
-        /* Table header repeat on every page */
-        .data-table thead {
-            display: table-header-group;
-        }
-        
-        .data-table tr {
-            page-break-inside: avoid;
-        }
-        
-        /* Professional table styling */
-        .summary-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 20px;
-        }
-        
-        .summary-table th,
-        .summary-table td {
-            border: 1px solid #d1d5db;
-            padding: 10px 12px;
-        }
-        
-        .summary-table th {
-            background-color: #1e4620;
-            color: white;
-            font-weight: 600;
-            font-size: 11px;
-            text-align: center;
-        }
-        
-        .summary-table td {
-            background-color: white;
-            font-size: 10px;
-        }
-        
-        /* Data table for students */
-        .data-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 15px;
-            margin-bottom: 20px;
-            font-size: 9px;
-        }
-        
-        .data-table th,
-        .data-table td {
-            border: 1px solid #d1d5db;
-            padding: 8px 10px;
-        }
-        
-        .data-table th {
-            background-color: #2d6a4f;
-            color: white;
-            font-weight: 600;
-            text-align: center;
-        }
-        
-        .data-table td {
-            vertical-align: top;
-        }
-        
-        /* Section header */
         .section-header {
-            background-color: #e5e7eb;
-            padding: 8px 12px;
-            border-left: 4px solid #1e4620;
+            font-size: 13px;
             font-weight: bold;
-            font-size: 11px;
-            margin-bottom: 12px;
+            margin: 15px 0 15px 0;
+            background-color: #e5e7eb;
+            padding: 8px;
+            border-left: 4px solid #1a472a;
+            clear: both;
         }
         
-        /* Badge styles */
-        .badge {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 20px;
-            font-size: 8px;
-            font-weight: 600;
+        .date-header {
+            font-size: 14px;
+            font-weight: bold;
+            margin: 20px 0 15px 0;
+            background-color: #1a472a;
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
         }
         
-        .badge-paid {
-            background: #d1fae5;
-            color: #065f46;
-        }
-        
-        .badge-pending {
-            background: #fed7aa;
-            color: #9b2c1d;
-        }
-        
-        .badge-unpaid {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-        
-        .receipt-number {
-            font-family: monospace;
-            font-size: 8px;
-        }
-        
-        /* Info row styling */
         .info-row {
             display: flex;
             justify-content: space-between;
@@ -200,10 +121,9 @@
         }
         
         .info-value-highlight {
-            color: #1e4620;
+            color: #1a472a;
         }
         
-        /* Stats row - compact */
         .stats-row {
             display: flex;
             justify-content: space-between;
@@ -225,19 +145,19 @@
         }
         
         .stat-number-paid {
-            color: #059669;
+            color: #27ae60;
         }
         
         .stat-number-pending {
-            color: #d97706;
+            color: #f39c12;
         }
         
         .stat-number-unpaid {
-            color: #dc2626;
+            color: #e74c3c;
         }
         
         .stat-number-rate {
-            color: #1e4620;
+            color: #1a472a;
         }
         
         .stat-label-compact {
@@ -252,7 +172,6 @@
             margin: 0 8px;
         }
         
-        /* Progress bar */
         .progress-container {
             width: 100%;
             background-color: #e5e7eb;
@@ -263,12 +182,79 @@
         }
         
         .progress-bar {
-            background-color: #1e4620;
+            background-color: #1a472a;
             height: 6px;
             border-radius: 20px;
         }
         
-        /* Note box */
+        .summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        
+        .summary-table th,
+        .summary-table td {
+            border: 1px solid #000;
+            padding: 10px 12px;
+        }
+        
+        .summary-table th {
+            background-color: #1a472a;
+            color: white;
+            font-weight: 600;
+            font-size: 11px;
+            text-align: center;
+        }
+        
+        .summary-table td {
+            background-color: white;
+            font-size: 10px;
+        }
+        
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 8px 0;
+            font-size: 9px;
+        }
+        
+        .data-table th,
+        .data-table td {
+            border: 1px solid #000;
+            padding: 6px 8px;
+        }
+        
+        .data-table th {
+            background-color: #2d6a4f;
+            color: white;
+            text-align: center;
+            font-weight: bold;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 8px;
+            font-weight: 600;
+        }
+        
+        .badge-paid {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .badge-pending {
+            background: #fed7aa;
+            color: #9b2c1d;
+        }
+        
+        .badge-unpaid {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        
         .note-box {
             background-color: #fef3c7;
             border-left: 4px solid #f59e0b;
@@ -279,7 +265,7 @@
         
         .success-box {
             background-color: #d1fae5;
-            border-left: 4px solid #059669;
+            border-left: 4px solid #27ae60;
             padding: 10px 12px;
             border-radius: 6px;
             margin-bottom: 20px;
@@ -295,7 +281,6 @@
             color: #065f46;
         }
         
-        /* Table footer */
         .table-footer {
             margin-top: 16px;
             padding: 10px 12px;
@@ -311,7 +296,6 @@
             gap: 16px;
         }
         
-        /* Signature section */
         .signature-section {
             margin-top: 40px;
             display: flex;
@@ -320,14 +304,14 @@
         
         .signature-box {
             text-align: center;
-            width: 180px;
+            width: 200px;
         }
         
         .signature-line {
             border-top: 1px solid #000;
-            margin-top: 35px;
+            margin-top: 30px;
             padding-top: 5px;
-            width: 160px;
+            width: 180px;
         }
         
         .signature-name {
@@ -342,12 +326,11 @@
         }
         
         .footer {
-            margin-top: 30px;
+            margin-top: 20px;
             text-align: center;
             font-size: 7px;
-            color: #9ca3af;
-            border-top: 1px solid #e5e7eb;
-            padding-top: 12px;
+            border-top: 1px solid #ccc;
+            padding-top: 8px;
         }
         
         .text-center { text-align: center; }
@@ -358,28 +341,22 @@
 </head>
 <body>
 
-<!-- FIXED HEADER -->
+<!-- FIXED HEADER - REPEATS ON EVERY PAGE -->
 <div class="fixed-header">
     <div class="header-content">
         @if(isset($header_image) && $header_image)
             <img src="data:image/png;base64,{{ $header_image }}" class="header-image" alt="CSUCC Logo">
-        @else
-            <div style="text-align: center;">
-                <div style="font-size: 14px; font-weight: bold; color: #1e4620;">CARAGA STATE UNIVERSITY</div>
-                <div style="font-size: 9px; color: #6b7280;">Cabadbaran Campus</div>
-            </div>
         @endif
     </div>
 </div>
 
-<!-- MAIN CONTENT - Lowered to avoid header overlap -->
-<div class="main-content">
+<div class="content">
     <!-- PAGE 1: SUMMARY SECTION -->
     <div>
         <!-- Report Header -->
         <div style="text-align: center; margin-bottom: 20px;">
-            <h1 style="font-size: 20px; font-weight: bold; color: #1f2937; margin-bottom: 6px;">COLLECTION REPORT</h1>
-            <h2 style="font-size: 14px; font-weight: bold; color: #1e4620; margin-bottom: 6px;">{{ $event->event_name }}</h2>
+            <div class="report-title">COLLECTION REPORT</div>
+            <h2 style="font-size: 14px; font-weight: bold; color: #1a472a; margin-bottom: 6px;">{{ $event->event_name }}</h2>
             <p style="font-size: 9px; color: #6b7280;">Generated on: {{ $report_date }} | By: {{ $generated_by }} | Organization: {{ $org_name }}</p>
         </div>
 
@@ -444,7 +421,8 @@
                     <th style="width: 20%">Count</th>
                     <th style="width: 20%">Amount (₱)</th>
                     <th style="width: 20%">Percentage</th>
-                </thead>
+                </tr>
+            </thead>
             <tbody>
                 <tr>
                     <td class="font-bold">Total Students Assigned</td>
@@ -452,42 +430,42 @@
                     <td class="text-right">—</td>
                     <td class="text-center">100%</td>
                 </tr>
-                 <tr>
+                <tr>
                     <td>✓ Fully Paid Students</td>
                     <td class="text-center">{{ $summary['paid_students'] }}</td>
-                    <td class="text-right" style="color: #059669; font-weight: bold;">₱{{ number_format($summary['total_collected'], 2) }}</td>
+                    <td class="text-right" style="color: #27ae60; font-weight: bold;">₱{{ number_format($summary['total_collected'], 2) }}</td>
                     <td class="text-center">{{ $summary['collection_rate'] }}%</td>
-                 </tr>
-                 <tr>
+                </tr>
+                <tr>
                     <td>⏳ Pending Students (Partial Payment)</td>
                     <td class="text-center">{{ $summary['pending_students'] }}</td>
                     <td class="text-right">—</td>
                     <td class="text-center">{{ $summary['total_students'] > 0 ? number_format(($summary['pending_students'] / $summary['total_students']) * 100, 1) : 0 }}%</td>
-                 </tr>
-                 <tr>
+                </tr>
+                <tr>
                     <td>❌ Unpaid Students (No Payment)</td>
                     <td class="text-center">{{ $summary['not_paid_students'] }}</td>
                     <td class="text-right">—</td>
                     <td class="text-center">{{ $summary['total_students'] > 0 ? number_format(($summary['not_paid_students'] / $summary['total_students']) * 100, 1) : 0 }}%</td>
-                 </tr>
+                </tr>
                 <tr style="background-color: #f0fdf4;">
                     <td class="font-bold">Expected Total Collection</td>
                     <td class="text-center">—</td>
                     <td class="text-right font-bold">₱{{ number_format($summary['expected_total'], 2) }}</td>
                     <td class="text-center">100%</td>
-                 </tr>
+                </tr>
                 <tr style="background-color: #e8f5e9;">
                     <td class="font-bold">Actual Total Collected</td>
                     <td class="text-center">—</td>
-                    <td class="text-right font-bold" style="color: #059669;">₱{{ number_format($summary['total_collected'], 2) }}</td>
+                    <td class="text-right font-bold" style="color: #27ae60;">₱{{ number_format($summary['total_collected'], 2) }}</td>
                     <td class="text-center font-bold">{{ $summary['collection_rate'] }}%</td>
-                 </tr>
+                </tr>
                 <tr style="background-color: #fff3e0;">
                     <td class="font-bold">Outstanding Balance (To be Collected)</td>
                     <td class="text-center">{{ $summary['pending_students'] + $summary['not_paid_students'] }}</td>
-                    <td class="text-right font-bold" style="color: #d97706;">₱{{ number_format($summary['expected_total'] - $summary['total_collected'], 2) }}</td>
+                    <td class="text-right font-bold" style="color: #f39c12;">₱{{ number_format($summary['expected_total'] - $summary['total_collected'], 2) }}</td>
                     <td class="text-center">{{ $summary['expected_total'] > 0 ? number_format((($summary['expected_total'] - $summary['total_collected']) / $summary['expected_total']) * 100, 1) : 0 }}%</td>
-                 </tr>
+                </tr>
             </tbody>
         </table>
 
@@ -510,7 +488,7 @@
         <div style="overflow-x: auto;">
             <table class="data-table">
                 <thead>
-                     <tr>
+                    <tr>
                         <th style="width: 12%">Student ID</th>
                         <th style="width: 28%">Student Name</th>
                         <th style="width: 12%">Program</th>
@@ -519,7 +497,7 @@
                         <th style="width: 12%">Status</th>
                         <th style="width: 12%">Payment Date</th>
                         <th style="width: 8%">Receipt No.</th>
-                     </tr>
+                    </tr>
                 </thead>
                 <tbody>
                     @forelse($students as $index => $student)
@@ -539,20 +517,20 @@
                             @endif
                         </td>
                         <td class="text-center">{{ $student['paid_at'] ?? '—' }}</td>
-                        <td class="text-center receipt-number">
+                        <td class="text-center" style="font-family: monospace; font-size: 8px;">
                             @if(isset($student['receipt_number']) && !empty($student['receipt_number']))
                                 {{ $student['receipt_number'] }}
                             @else
                                 —
                             @endif
                         </td>
-                     </tr>
+                      </tr>
                     @empty
-                     <tr>
+                      <tr>
                         <td colspan="8" style="text-align: center; padding: 40px;">
                             No students found for this event.
                         </td>
-                     </tr>
+                      </tr>
                     @endforelse
                 </tbody>
             </table>
@@ -565,7 +543,7 @@
                 <div>✅ Fully Paid: <strong>{{ $summary['paid_students'] }}</strong></div>
                 <div>⏳ Pending: <strong>{{ $summary['pending_students'] }}</strong></div>
                 <div>❌ Unpaid: <strong>{{ $summary['not_paid_students'] }}</strong></div>
-                <div>💰 Total Collected: <strong style="color: #059669;">₱{{ number_format($summary['total_collected'], 2) }}</strong></div>
+                <div>💰 Total Collected: <strong style="color: #27ae60;">₱{{ number_format($summary['total_collected'], 2) }}</strong></div>
             </div>
         </div>
 

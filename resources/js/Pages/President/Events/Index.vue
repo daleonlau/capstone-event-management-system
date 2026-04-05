@@ -176,7 +176,7 @@
                 </td>
                 <td class="px-6 py-4 text-right space-x-3">
                   <Link :href="`/president/events/${event.id}`" class="text-blue-600 hover:text-blue-800 text-sm font-medium">View</Link>
-                  <Link :href="`/president/events/${event.id}/edit`" class="text-emerald-600 hover:text-emerald-800 text-sm font-medium">Edit</Link>
+                  <button @click="openEditModal(event)" class="text-emerald-600 hover:text-emerald-800 text-sm font-medium">Edit</button>
                   <button @click="confirmDelete(event)" class="text-red-600 hover:text-red-800 text-sm font-medium">Delete</button>
                 </td>
               </tr>
@@ -193,52 +193,224 @@
         </div>
       </div>
 
-      <!-- Delete Confirmation Modal -->
-      <Transition name="modal">
-        <div v-if="showDeleteModal" class="fixed inset-0 z-50 overflow-y-auto">
-          <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" @click="showDeleteModal = false"></div>
-            <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
-            <div class="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-              <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                <div class="sm:flex sm:items-start">
-                  <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
-                    <svg class="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                  </div>
-                  <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-                    <h3 class="text-lg font-medium text-gray-900">Delete Event</h3>
-                    <div class="mt-2">
-                      <p class="text-sm text-gray-500">
-                        Are you sure you want to delete <span class="font-semibold">{{ selectedEvent?.event_name }}</span>? 
-                        This action cannot be undone and will remove all associated data.
-                      </p>
+      <!-- Edit Event Modal -->
+      <Teleport to="body">
+        <Transition name="modal-fade">
+          <div v-if="showEditModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto" @click.self="closeEditModal">
+            <div class="absolute inset-0 bg-black/40 backdrop-blur-md"></div>
+            
+            <div class="relative bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto transform transition-all duration-300 scale-100">
+              <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 rounded-t-2xl flex justify-between items-center">
+                <h3 class="text-xl font-bold text-gray-900">Edit Event</h3>
+                <button @click="closeEditModal" class="text-gray-400 hover:text-gray-600 transition">
+                  <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div class="px-6 py-6">
+                <div v-if="Object.keys(editForm.errors).length > 0" class="mb-4 p-4 bg-red-50 border-l-4 border-red-500 rounded-lg">
+                  <ul class="list-disc list-inside text-sm text-red-600">
+                    <li v-for="(error, field) in editForm.errors" :key="field">{{ error }}</li>
+                  </ul>
+                </div>
+
+                <form @submit.prevent="updateEvent" class="space-y-6">
+                  <!-- Basic Information -->
+                  <div class="bg-gray-50 rounded-xl p-5">
+                    <h2 class="text-lg font-semibold text-gray-800 mb-4">Basic Information</h2>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div class="md:col-span-2">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Event Name</label>
+                        <input v-model="editForm.event_name" type="text" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500" required />
+                      </div>
+
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Event Type</label>
+                        <select v-model="editForm.event_type_id" @change="onEventTypeChange" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500" required>
+                          <option v-for="type in eventTypes" :key="type.id" :value="type.id">{{ type.name }}</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Event Fee</label>
+                        <div class="relative">
+                          <span class="absolute left-3 top-3 text-gray-500">₱</span>
+                          <input v-model="editForm.event_fee" type="number" :disabled="!requiresPayment" class="w-full pl-8 px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500" :class="{ 'bg-gray-100': !requiresPayment }" />
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-              <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                <button @click="deleteEvent" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 sm:ml-3 sm:w-auto sm:text-sm">Delete</button>
-                <button @click="showDeleteModal = false" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">Cancel</button>
+
+                  <!-- Event Dates -->
+                  <div class="bg-gray-50 rounded-xl p-5">
+                    <h2 class="text-lg font-semibold text-gray-800 mb-4">Event Dates</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+                        <input v-model="editForm.event_date_start" type="date" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500" required />
+                      </div>
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">End Date</label>
+                        <input v-model="editForm.event_date_end" type="date" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500" required />
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Target Audience -->
+                  <div class="bg-gray-50 rounded-xl p-5">
+                    <h2 class="text-lg font-semibold text-gray-800 mb-4">Target Audience</h2>
+
+                    <div class="space-y-6">
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-3">Departments (from your organization's assigned departments)</label>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div v-for="dept in departments" :key="dept.id" class="border rounded-xl p-4 bg-white">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                              <input type="checkbox" :value="dept.id" v-model="editForm.departments" @change="toggleDepartment(dept.id)" class="w-4 h-4 text-emerald-600 rounded" />
+                              <span class="font-medium">{{ dept.name }}</span>
+                            </label>
+                            
+                            <div v-if="editForm.departments.includes(dept.id)" class="ml-6 mt-3 space-y-2">
+                              <div v-for="course in dept.courses" :key="course.id" class="flex items-center gap-2">
+                                <input type="checkbox" :value="course.id" v-model="editForm.courses" class="w-3 h-3 text-emerald-600 rounded" />
+                                <span class="text-sm">{{ course.name }}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <p v-if="departments.length === 0" class="text-sm text-yellow-600 mt-2">
+                          No departments assigned to your organization. Please contact QUAMS admin.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-3">Year Levels</label>
+                        <div class="flex flex-wrap gap-4">
+                          <label v-for="year in yearLevels" :key="year" class="flex items-center gap-2">
+                            <input type="checkbox" :value="year" v-model="editForm.year_levels" class="w-4 h-4 text-emerald-600 rounded" />
+                            <span>{{ year }}</span>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Current Document -->
+                  <div v-if="selectedEvent?.signed_document_path" class="bg-gray-50 rounded-xl p-5">
+                    <h2 class="text-lg font-semibold text-gray-800 mb-4">Current Document</h2>
+                    <div class="flex items-center gap-4 p-4 bg-white rounded-xl border">
+                      <svg class="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <div class="flex-1">
+                        <p class="text-sm font-medium text-gray-700">Signed Document</p>
+                        <p class="text-xs text-gray-500">Uploaded</p>
+                      </div>
+                      <a :href="`/storage/${selectedEvent.signed_document_path}`" target="_blank" class="text-emerald-600 hover:text-emerald-700">View</a>
+                    </div>
+                  </div>
+
+                  <!-- Replace Document -->
+                  <div class="bg-gray-50 rounded-xl p-5">
+                    <h2 class="text-lg font-semibold text-gray-800 mb-4">Replace Document (Optional)</h2>
+                    <div class="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-emerald-500 transition cursor-pointer bg-white"
+                         @dragover.prevent
+                         @drop.prevent="handleDrop"
+                         @click="$refs.fileInput.click()">
+                      <svg class="w-12 h-12 mx-auto text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                      </svg>
+                      <p class="text-gray-600 mb-2">{{ editFileName || 'Click to upload new document' }}</p>
+                      <p class="text-sm text-gray-500">Leave empty to keep current document</p>
+                    </div>
+                    <input ref="fileInput" type="file" @change="handleFileChange" accept=".pdf,.jpg,.jpeg,.png" class="hidden" />
+                  </div>
+
+                  <div class="flex justify-end gap-3 pt-4">
+                    <button type="button" @click="closeEditModal" class="px-6 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition">Cancel</button>
+                    <button type="submit" class="px-6 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition disabled:opacity-50" :disabled="editForm.processing">
+                      {{ editForm.processing ? 'Updating...' : 'Update Event' }}
+                    </button>
+                  </div>
+                </form>
               </div>
             </div>
           </div>
-        </div>
-      </Transition>
+        </Transition>
+      </Teleport>
+
+      <!-- Delete Confirmation Modal -->
+      <Teleport to="body">
+        <Transition name="modal-fade">
+          <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="closeDeleteModal">
+            <div class="absolute inset-0 bg-black/40 backdrop-blur-md"></div>
+            
+            <div class="relative bg-white rounded-2xl shadow-2xl max-w-md w-full transform transition-all duration-300 scale-100">
+              <div class="bg-white px-6 pt-6 pb-4">
+                <div class="flex items-center gap-4">
+                  <div class="flex-shrink-0 w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                    <svg class="w-6 h-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 class="text-lg font-semibold text-gray-900">Delete Event</h3>
+                    <p class="text-sm text-gray-500 mt-1">
+                      Are you sure you want to delete <span class="font-semibold text-gray-700">{{ selectedEvent?.event_name }}</span>?
+                    </p>
+                    <p class="text-sm text-red-500 mt-1">This action cannot be undone.</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="bg-gray-50 px-6 py-4 rounded-b-2xl flex justify-end gap-3">
+                <button @click="closeDeleteModal" class="px-4 py-2 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-100 transition">
+                  Cancel
+                </button>
+                <button @click="deleteEvent" class="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition">
+                  Delete Event
+                </button>
+              </div>
+            </div>
+          </div>
+        </Transition>
+      </Teleport>
     </div>
   </OrganizationUserLayout>
 </template>
 
 <script setup>
 import { ref, computed } from 'vue';
-import { Link, router } from '@inertiajs/vue3';
+import { Link, router, useForm } from '@inertiajs/vue3';
 import OrganizationUserLayout from '@/Layouts/OrganizationUserLayout.vue';
 
 const props = defineProps({
   events: {
     type: Array,
     default: () => []
+  },
+  departments: {
+    type: Array,
+    default: () => []
+  },
+  courses: {
+    type: Array,
+    default: () => []
+  },
+  eventTypes: {
+    type: Array,
+    default: () => []
+  },
+  yearLevels: {
+    type: Array,
+    default: () => ['1st Year', '2nd Year', '3rd Year', '4th Year']
+  },
+  filters: {
+    type: Object,
+    default: () => ({})
   }
 });
 
@@ -250,14 +422,35 @@ const approvedEvents = computed(() => props.events.filter(e => e.approval_status
 
 // Filters
 const filters = ref({
-  search: '',
-  status: '',
-  approval: ''
+  search: props.filters?.search || '',
+  status: props.filters?.status || '',
+  approval: props.filters?.approval || ''
 });
 
+// Modal states
+const showEditModal = ref(false);
 const showDeleteModal = ref(false);
 const selectedEvent = ref(null);
+const editFileName = ref('');
 
+// Edit Form
+const editForm = useForm({
+  event_name: '',
+  event_type_id: '',
+  event_date_start: '',
+  event_date_end: '',
+  event_fee: 0,
+  departments: [],
+  courses: [],
+  year_levels: [],
+  signed_document: null
+});
+
+// Computed for edit form
+const selectedEventType = computed(() => props.eventTypes.find(t => t.id === editForm.event_type_id));
+const requiresPayment = computed(() => selectedEventType.value?.requires_payment || false);
+
+// Filtered events
 const filteredEvents = computed(() => {
   let filtered = props.events;
   
@@ -279,7 +472,9 @@ const filteredEvents = computed(() => {
   return filtered;
 });
 
+// Helper functions
 function formatDate(date) {
+  if (!date) return 'N/A';
   return new Date(date).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
@@ -322,6 +517,7 @@ function approvalBadgeClass(status) {
   }
 }
 
+// Filter functions
 function applyFilters() {
   router.get('/president/events', filters.value, { preserveState: true });
 }
@@ -331,28 +527,107 @@ function resetFilters() {
   applyFilters();
 }
 
+// Edit modal functions
+function openEditModal(event) {
+  selectedEvent.value = event;
+  editForm.event_name = event.event_name;
+  editForm.event_type_id = event.event_type_id;
+  editForm.event_date_start = event.event_date_start;
+  editForm.event_date_end = event.event_date_end;
+  editForm.event_fee = event.event_fee;
+  editForm.departments = event.departments || [];
+  editForm.courses = event.courses || [];
+  editForm.year_levels = event.year_levels || [];
+  editForm.signed_document = null;
+  editFileName.value = '';
+  showEditModal.value = true;
+}
+
+function closeEditModal() {
+  showEditModal.value = false;
+  selectedEvent.value = null;
+  editForm.reset();
+  editFileName.value = '';
+}
+
+function onEventTypeChange() {
+  if (!requiresPayment.value) editForm.event_fee = 0;
+}
+
+function toggleDepartment(deptId) {
+  if (!editForm.departments.includes(deptId)) {
+    const dept = props.departments.find(d => d.id === deptId);
+    if (dept?.courses) {
+      const courseIds = dept.courses.map(c => c.id);
+      editForm.courses = editForm.courses.filter(id => !courseIds.includes(id));
+    }
+  }
+}
+
+function handleFileChange(e) {
+  const file = e.target.files[0];
+  if (file) {
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File size must not exceed 5MB');
+      return;
+    }
+    editForm.signed_document = file;
+    editFileName.value = file.name;
+  }
+}
+
+function handleDrop(e) {
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File size must not exceed 5MB');
+      return;
+    }
+    editForm.signed_document = file;
+    editFileName.value = file.name;
+  }
+}
+
+function updateEvent() {
+  if (!selectedEvent.value) return;
+  
+  // Use PUT method - this is the fix for the error
+  editForm.put(`/president/events/${selectedEvent.value.id}`, {
+    onSuccess: () => {
+      closeEditModal();
+    }
+  });
+}
+
+// Delete modal functions
 function confirmDelete(event) {
   selectedEvent.value = event;
   showDeleteModal.value = true;
 }
 
+function closeDeleteModal() {
+  showDeleteModal.value = false;
+  selectedEvent.value = null;
+}
+
 function deleteEvent() {
-  if (selectedEvent.value) {
-    router.delete(`/president/events/${selectedEvent.value.id}`, {
-      onSuccess: () => {
-        showDeleteModal.value = false;
-        selectedEvent.value = null;
-      }
-    });
-  }
+  if (!selectedEvent.value) return;
+  
+  router.delete(`/president/events/${selectedEvent.value.id}`, {
+    onSuccess: () => {
+      closeDeleteModal();
+    }
+  });
 }
 </script>
 
 <style scoped>
-.modal-enter-active, .modal-leave-active {
+.modal-fade-enter-active,
+.modal-fade-leave-active {
   transition: opacity 0.3s ease;
 }
-.modal-enter-from, .modal-leave-to {
+.modal-fade-enter-from,
+.modal-fade-leave-to {
   opacity: 0;
 }
 </style>

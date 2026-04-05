@@ -102,7 +102,6 @@ class AdminController extends Controller
             
             DB::commit();
 
-            // Log the action
             $this->logAction(
                 'delete_organization',
                 "Deleted organization: {$orgName}",
@@ -130,7 +129,6 @@ class AdminController extends Controller
             
             $user->block('Blocked by admin');
             
-            // Log the action
             $this->logAction(
                 'block_user',
                 "Blocked user: {$userName} ({$userEmail}) - {$userRole}",
@@ -169,7 +167,6 @@ class AdminController extends Controller
             
             $user->unblock();
             
-            // Log the action
             $this->logAction(
                 'unblock_user',
                 "Unblocked user: {$userName} ({$userEmail}) - {$userRole}",
@@ -219,7 +216,6 @@ class AdminController extends Controller
                 'role' => $validated['role'],
             ]);
 
-            // Log the action
             $this->logAction(
                 'add_organization_member',
                 "Added new {$validated['role']}: {$validated['name']} ({$validated['email']}) to organization: {$organization->name}",
@@ -270,7 +266,6 @@ class AdminController extends Controller
             if (isset($validated['email']) && $validated['email'] != $oldEmail) $changes['email'] = "{$oldEmail} → {$validated['email']}";
             if (isset($validated['role']) && $validated['role'] != $oldRole) $changes['role'] = "{$oldRole} → {$validated['role']}";
 
-            // Log the action
             $this->logAction(
                 'update_organization_member',
                 "Updated member: {$oldName} - Changes: " . implode(', ', $changes),
@@ -308,7 +303,6 @@ class AdminController extends Controller
             
             $user->delete();
             
-            // Log the action
             $this->logAction(
                 'delete_organization_member',
                 "Removed member: {$userName} ({$userEmail}) - {$userRole} from organization",
@@ -345,7 +339,6 @@ class AdminController extends Controller
                 'password' => Hash::make($validated['password'])
             ]);
 
-            // Log the action
             $this->logAction(
                 'reset_password',
                 "Reset password for user: {$userName} ({$userEmail})",
@@ -369,7 +362,18 @@ class AdminController extends Controller
 
     public function profile()
     {
-        return Inertia::render('Admin/Profile');
+        $admin = auth()->user();
+        
+        return Inertia::render('Admin/Profile', [
+            'admin' => [
+                'id' => $admin->id,
+                'name' => $admin->name,
+                'email' => $admin->email,
+                'email_verified_at' => $admin->email_verified_at,
+                'last_login' => $admin->last_login,
+                'created_at' => $admin->created_at,
+            ]
+        ]);
     }
 
     public function updateProfile(Request $request)
@@ -393,7 +397,6 @@ class AdminController extends Controller
         
         $user->update($validated);
 
-        // Log the action
         $changes = [];
         if ($user->name != $oldName) $changes[] = "name: {$oldName} → {$user->name}";
         if ($user->email != $oldEmail) $changes[] = "email: {$oldEmail} → {$user->email}";
