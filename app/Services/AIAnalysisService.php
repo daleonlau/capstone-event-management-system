@@ -282,64 +282,70 @@ class AIAnalysisService
         
         return $comments;
     }
-    
     private function analyzeSentiment(array $comments): array
-    {
-        if (empty($comments)) {
+{
+    if (empty($comments)) {
+        return [
+            'positive_percentage' => 0,
+            'negative_percentage' => 0,
+            'neutral_percentage' => 0,
+            'sentiment_score' => 0.5,
+            'total_comments' => 0,
+            'common_themes' => [],
+            'positive_comments' => [],
+            'negative_comments' => [],
+            'neutral_comments' => [],
+            'method_used' => 'none'
+        ];
+    }
+    
+    try {
+        Log::info('Calling AI service for sentiment analysis', [
+            'url' => $this->apiUrl . '/analyze',
+            'comments_count' => count($comments),
+            'sample_comments' => array_slice($comments, 0, 3)
+        ]);
+        
+        $response = Http::timeout($this->timeout)->post("{$this->apiUrl}/analyze", [
+            'positive_comments' => $comments,  // Send all comments as positive_comments
+            'suggestion_comments' => [],        // Empty array
+            'total_respondents' => count($comments),
+            'response_rate' => 1.0,
+        ]);
+        
+        Log::info('AI service response', [
+            'status' => $response->status(),
+            'successful' => $response->successful(),
+            'response_data' => $response->json()
+        ]);
+        
+        if ($response->successful()) {
+            $data = $response->json();
             return [
-                'positive_percentage' => 0,
-                'negative_percentage' => 0,
-                'neutral_percentage' => 0,
-                'sentiment_score' => 0.5,
-                'total_comments' => 0,
-                'common_themes' => [],
-                'positive_comments' => [],
-                'negative_comments' => [],
-                'neutral_comments' => [],
-                'method_used' => 'none'
+                'positive_percentage' => $data['positive_percentage'] ?? 0,
+                'negative_percentage' => $data['negative_percentage'] ?? 0,
+                'neutral_percentage' => $data['neutral_percentage'] ?? 0,
+                'sentiment_score' => $data['sentiment_score'] ?? 0.5,
+                'total_comments' => $data['total_comments'] ?? 0,
+                'common_themes' => $data['common_themes'] ?? [],
+                'positive_comments' => $data['positive_comments'] ?? [],
+                'negative_comments' => $data['negative_comments'] ?? [],
+                'neutral_comments' => $data['neutral_comments'] ?? [],
+                'method_used' => $data['method_used'] ?? 'python_service'
             ];
         }
         
-        try {
-            $response = Http::timeout($this->timeout)->post("{$this->apiUrl}/analyze", [
-                'positive_comments' => $comments,
-                'suggestion_comments' => [],
-                'total_respondents' => count($comments),
-                'response_rate' => 1.0,
-            ]);
-            
-            if ($response->successful()) {
-                $data = $response->json();
-                Log::info('Python service response', [
-                    'positive_comments_count' => count($data['positive_comments'] ?? []),
-                    'negative_comments_count' => count($data['negative_comments'] ?? []),
-                    'neutral_comments_count' => count($data['neutral_comments'] ?? []),
-                ]);
-                
-                return [
-                    'positive_percentage' => $data['positive_percentage'] ?? 0,
-                    'negative_percentage' => $data['negative_percentage'] ?? 0,
-                    'neutral_percentage' => $data['neutral_percentage'] ?? 0,
-                    'sentiment_score' => $data['sentiment_score'] ?? 0.5,
-                    'total_comments' => $data['total_comments'] ?? 0,
-                    'common_themes' => $data['common_themes'] ?? [],
-                    'positive_comments' => $data['positive_comments'] ?? [],
-                    'negative_comments' => $data['negative_comments'] ?? [],
-                    'neutral_comments' => $data['neutral_comments'] ?? [],
-                    'method_used' => $data['method_used'] ?? 'python_service'
-                ];
-            }
-            
-            Log::warning('Sentiment analysis failed, using fallback', [
-                'status' => $response->status()
-            ]);
-            
-        } catch (\Exception $e) {
-            Log::error('Sentiment analysis exception: ' . $e->getMessage());
-        }
+        Log::warning('Sentiment analysis failed, using fallback', [
+            'status' => $response->status(),
+            'body' => $response->body()
+        ]);
         
-        return $this->fallbackSentimentAnalysis($comments);
+    } catch (\Exception $e) {
+        Log::error('Sentiment analysis exception: ' . $e->getMessage());
     }
+    
+    return $this->fallbackSentimentAnalysis($comments);
+}
     
     private function fallbackSentimentAnalysis(array $comments): array
     {

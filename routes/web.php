@@ -327,3 +327,22 @@ Route::get('/test-email', function() {
         return "❌ Error: " . $e->getMessage();
     }
 });
+Route::get('/test-ai-direct', function() {
+    try {
+        $response = Illuminate\Support\Facades\Http::timeout(30)->post('https://creative-fulfillment-production.up.railway.app/analyze', [
+            'positive_comments' => ['This event was great!', 'Very organized event'],
+            'suggestion_comments' => [],
+            'total_respondents' => 2,
+            'response_rate' => 1.0,
+        ]);
+        
+        return response()->json([
+            'status' => $response->status(),
+            'success' => $response->successful(),
+            'data' => $response->json(),
+            'error' => $response->failed() ? $response->body() : null
+        ]);
+    } catch (\Exception $e) {
+        return response()->json(['error' => $e->getMessage()], 500);
+    }
+});
