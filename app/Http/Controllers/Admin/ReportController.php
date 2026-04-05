@@ -583,89 +583,103 @@ class ReportController extends Controller
     }
 
     private function calculateCategoryScores($evaluation, $responses)
-    {
-        try {
-            // Get all questions with their categories - ORDER BY category ID (insertion order)
-            $questions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
-                ->with(['category' => function($query) {
-                    $query->orderBy('id', 'asc'); // Force order by category ID (creation order)
-                }])
-                ->where('question_type', 'likert')
-                ->orderBy('order')
-                ->get();
+{
+    try {
+        // Get all questions with their categories
+        $questions = EvaluationQuestion::where('evaluation_id', $evaluation->id)
+            ->with('category')
+            ->where('question_type', 'likert')
+            ->orderBy('order')
+            ->get();
+        
+        if ($questions->isEmpty()) {
+            return [];
+        }
+        
+        // Initialize arrays for storing scores per category
+        $categoryTotals = [];
+        $categoryCounts = [];
+        $questionTotals = [];
+        $questionCounts = [];
+        
+        // Define the EXACT order of categories as they should appear
+        $forcedOrder = [
+            'I. Information Dissemination',
+            'II. Design of the Event',
+            'III. Outcomes of the Event',
+            'IV. Secretariat',
+            'V. Facilities',
+            'VI. Food',
+            'VII. Resource Speaker',
+            'VIII. Traffic Management'
+        ];
+        
+        // Initialize structure for all categories
+        foreach ($forcedOrder as $categoryName) {
+            $categoryTotals[$categoryName] = 0;
+            $categoryCounts[$categoryName] = 0;
+            $questionTotals[$categoryName] = [];
+            $questionCounts[$categoryName] = [];
+        }
+        
+        // Also handle any other categories
+        foreach ($questions as $question) {
+            $categoryName = $question->category ? $question->category->category_name : 'Other';
+            $questionText = $question->question_text;
             
-            if ($questions->isEmpty()) {
-                return [];
+            if (!isset($categoryTotals[$categoryName])) {
+                $categoryTotals[$categoryName] = 0;
+                $categoryCounts[$categoryName] = 0;
+                $questionTotals[$categoryName] = [];
+                $questionCounts[$categoryName] = [];
             }
             
-            // Initialize arrays for storing scores per category
-            $categoryTotals = [];
-            $categoryCounts = [];
-            $questionTotals = [];
-            $questionCounts = [];
-            $categoryOrderList = []; // Track order of first appearance (by ID)
-            
-            // Initialize structure - preserve insertion order from category ID
-            foreach ($questions as $question) {
-                $categoryName = $question->category ? $question->category->category_name : 'Other';
-                $questionText = $question->question_text;
-                
-                // Record the order of first appearance based on category ID
-                if (!isset($categoryTotals[$categoryName])) {
-                    $categoryTotals[$categoryName] = 0;
-                    $categoryCounts[$categoryName] = 0;
-                    $questionTotals[$categoryName] = [];
-                    $questionCounts[$categoryName] = [];
-                    $categoryOrderList[] = $categoryName; // Preserve order
-                }
-                
-                $questionTotals[$categoryName][$questionText] = 0;
-                $questionCounts[$categoryName][$questionText] = 0;
+            $questionTotals[$categoryName][$questionText] = 0;
+            $questionCounts[$categoryName][$questionText] = 0;
+        }
+        
+        // Process each response
+        foreach ($responses as $response) {
+            $likert = $response->likert_responses;
+            if (is_string($likert)) {
+                $likert = json_decode($likert, true);
             }
             
-            // Process each response
-            foreach ($responses as $response) {
-                $likert = $response->likert_responses;
-                if (is_string($likert)) {
-                    $likert = json_decode($likert, true);
-                }
+            if (!is_array($likert)) {
+                continue;
+            }
+            
+            foreach ($likert as $questionId => $rating) {
+                $questionId = (int)$questionId;
+                $rating = (float)$rating;
                 
-                if (!is_array($likert)) {
+                $question = $questions->firstWhere('id', $questionId);
+                if (!$question) {
                     continue;
                 }
                 
-                foreach ($likert as $questionId => $rating) {
-                    $questionId = (int)$questionId;
-                    $rating = (float)$rating;
-                    
-                    $question = $questions->firstWhere('id', $questionId);
-                    if (!$question) {
-                        continue;
-                    }
-                    
-                    $categoryName = $question->category ? $question->category->category_name : 'Other';
-                    $questionText = $question->question_text;
-                    
-                    // Add to category totals
-                    if (isset($categoryTotals[$categoryName])) {
-                        $categoryTotals[$categoryName] += $rating;
-                        $categoryCounts[$categoryName]++;
-                    }
-                    
-                    // Add to question totals
-                    if (isset($questionTotals[$categoryName][$questionText])) {
-                        $questionTotals[$categoryName][$questionText] += $rating;
-                        $questionCounts[$categoryName][$questionText]++;
-                    }
+                $categoryName = $question->category ? $question->category->category_name : 'Other';
+                $questionText = $question->question_text;
+                
+                // Add to category totals
+                if (isset($categoryTotals[$categoryName])) {
+                    $categoryTotals[$categoryName] += $rating;
+                    $categoryCounts[$categoryName]++;
+                }
+                
+                // Add to question totals
+                if (isset($questionTotals[$categoryName][$questionText])) {
+                    $questionTotals[$categoryName][$questionText] += $rating;
+                    $questionCounts[$categoryName][$questionText]++;
                 }
             }
-            
-            // Calculate averages and maintain the original insertion order (by category ID)
-            $result = [];
-            foreach ($categoryOrderList as $categoryName) {
-                $totalScore = $categoryTotals[$categoryName] ?? 0;
-                $count = $categoryCounts[$categoryName] ?? 0;
-                $categoryAverage = $count > 0 ? $totalScore / $count : 0;
+        }
+        
+        // Calculate averages in forced order
+        $result = [];
+        foreach ($forcedOrder as $categoryName) {
+            if (isset($categoryTotals[$categoryName]) && $categoryCounts[$categoryName] > 0) {
+                $categoryAverage = $categoryTotals[$categoryName] / $categoryCounts[$categoryName];
                 
                 $questionsArray = [];
                 if (isset($questionTotals[$categoryName])) {
@@ -682,14 +696,37 @@ class ReportController extends Controller
                     'questions' => $questionsArray
                 ];
             }
-            
-            return $result;
-            
-        } catch (\Exception $e) {
-            Log::error('Error in calculateCategoryScores: ' . $e->getMessage());
-            return [];
         }
+        
+        // Add any remaining categories not in forced order
+        foreach ($categoryTotals as $categoryName => $totalScore) {
+            if (!isset($result[$categoryName]) && $categoryCounts[$categoryName] > 0) {
+                $categoryAverage = $totalScore / $categoryCounts[$categoryName];
+                
+                $questionsArray = [];
+                if (isset($questionTotals[$categoryName])) {
+                    foreach ($questionTotals[$categoryName] as $questionText => $total) {
+                        $qCount = $questionCounts[$categoryName][$questionText] ?? 0;
+                        if ($qCount > 0) {
+                            $questionsArray[$questionText] = $total / $qCount;
+                        }
+                    }
+                }
+                
+                $result[$categoryName] = [
+                    'average' => $categoryAverage,
+                    'questions' => $questionsArray
+                ];
+            }
+        }
+        
+        return $result;
+        
+    } catch (\Exception $e) {
+        Log::error('Error in calculateCategoryScores: ' . $e->getMessage());
+        return [];
     }
+}
     /**
      * Regenerate report (even if already generated)
      */

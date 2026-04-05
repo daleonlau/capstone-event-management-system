@@ -80,13 +80,14 @@ class EventStudent extends Model
     {
         return $this->belongsTo(Student::class, 'student_id', 'student_id');
     }
-
-    /**
-     * Get the treasurer/organization user who processed this payment.
-     */
-    public function treasurer(): BelongsTo
+    public function approved_by(): BelongsTo
     {
         return $this->belongsTo(OrganizationUser::class, 'user_id');
+    }
+    
+    public function treasurer()
+    {
+        return $this->belongsTo(OrganizationUser::class, 'processed_by');
     }
 
     /**
@@ -168,6 +169,7 @@ class EventStudent extends Model
     
         return $prefix . $newNumber;
     }
+    
 
     /**
      * Scope a query to only include paid students.
@@ -200,4 +202,5 @@ class EventStudent extends Model
     {
         return $query->where('user_id', $organizationId);
     }
+    
 }

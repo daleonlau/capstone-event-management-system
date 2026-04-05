@@ -228,62 +228,61 @@ class CollectionController extends Controller
         ]);
     }
 
-    /**
-     * Mark a student as paid (CASH ONLY) and generate receipt with email.
-     */
     public function pay(Request $request, Event $event, $studentId)
     {
         try {
             if ($event->user_id !== $this->organizationId) {
                 return response()->json(['error' => 'Unauthorized access.'], 403);
             }
-
+    
             if ($event->payment !== 'Payment') {
                 return response()->json(['error' => 'This event does not require payments.'], 400);
             }
-
+    
             $request->validate([
                 'send_email' => 'nullable|boolean',
                 'notes' => 'nullable|string|max:255',
             ]);
-
+    
             $student = Student::where('student_id', $studentId)
                 ->where('user_id', $this->organizationId)
                 ->first();
-
+    
             if (!$student) {
                 return response()->json(['error' => 'Student not found.'], 404);
             }
-
+    
             DB::beginTransaction();
-
+    
             $treasurer = Auth::guard('org_user')->user();
             
             if (!$treasurer) {
                 return response()->json(['error' => 'Treasurer not found.'], 401);
             }
-
+    
             $receiptNumber = $this->generateUniqueReceiptNumber();
-
+    
             $oldPayment = EventStudent::where('event_id', $event->id)
                 ->where('student_id', $studentId)
                 ->first();
             
             $wasPreviouslyPaid = $oldPayment && $oldPayment->status === 'Paid';
-
+    
+            // Store organization ID in user_id, and treasurer ID in processed_by
             $payment = EventStudent::updateOrCreateComposite(
                 $event->id,
                 $studentId,
                 [
                     'status' => 'Paid',
                     'amount_paid' => $event->event_fee,
-                    'user_id' => $treasurer->id,
+                    'user_id' => $this->organizationId,  // Organization ID
+                    'processed_by' => $treasurer->id,    // Treasurer ID (no foreign key)
                     'receipt_number' => $receiptNumber,
                     'payment_method' => 'cash',
                     'payment_notes' => $request->notes,
                 ]
             );
-
+    
             DB::commit();
             
             $this->logAction('record_payment', 'Recorded payment for student: ' . $student->firstname . ' ' . $student->lastname, [
@@ -293,13 +292,13 @@ class CollectionController extends Controller
                 'processed_by_treasurer' => $treasurer->name,
                 'treasurer_id' => $treasurer->id,
             ]);
-
+    
             try {
                 $this->generateReceiptPDF($payment, $student, $event);
             } catch (\Exception $e) {
                 Log::warning('PDF generation failed but payment was recorded: ' . $e->getMessage());
             }
-
+    
             $sendEmail = $request->has('send_email') ? filter_var($request->send_email, FILTER_VALIDATE_BOOLEAN) : true;
             $emailSent = false;
             
@@ -324,12 +323,12 @@ class CollectionController extends Controller
                     Log::warning('Email sending failed but payment was recorded: ' . $e->getMessage());
                 }
             }
-
+    
             $message = 'Payment recorded successfully. Receipt #: ' . $receiptNumber;
             if ($emailSent) {
                 $message .= ' Email sent to ' . $student->email;
             }
-
+    
             return response()->json([
                 'success' => true,
                 'message' => $message,
@@ -339,14 +338,13 @@ class CollectionController extends Controller
                 'email_sent' => $emailSent,
                 'processed_by' => $treasurer->name,
             ]);
-
+    
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Payment failed: ' . $e->getMessage());
             return response()->json(['error' => 'Payment failed: ' . $e->getMessage()], 500);
         }
     }
-
     /**
      * Generate unique receipt number
      */

@@ -23,16 +23,16 @@ class PaymentReceiptMail extends Mailable
     public $organizationName;
 
     public function __construct(EventStudent $payment)
-    {
-        $this->payment = $payment;
-        $this->student = $payment->student;
-        $this->event = $payment->event;
-        $this->treasurer = $payment->treasurer;
-        
-        // Get organization details
-        $this->organization = Organization::find($payment->event->user_id);
-        $this->organizationName = $this->organization ? $this->organization->name : 'Organization';
-    }
+{
+    $this->payment = $payment;
+    $this->student = $payment->student;
+    $this->event = $payment->event;
+    $this->treasurer = $payment->treasurer; // This now uses processed_by relationship
+    
+    // Get organization details
+    $this->organization = Organization::find($payment->event->user_id);
+    $this->organizationName = $this->organization ? $this->organization->name : 'Organization';
+}
 
     public function envelope(): Envelope
     {
