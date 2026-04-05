@@ -402,37 +402,34 @@ class CollectionController extends Controller
         }
     }
 
-    /**
-     * Generate unique receipt number
-     */
     private function generateReceiptNumber()
-    {
-        $year = date('Y');
-        $month = date('m');
-        $prefix = "REC-{$year}{$month}-";
-        
-        // Get the latest receipt number for this month/year
-        $lastReceipt = EventStudent::where('receipt_number', 'like', $prefix . '%')
-            ->orderBy('id', 'desc')
-            ->first();
+{
+    $year = date('Y');
+    $month = date('m');
+    $prefix = "REC-{$year}{$month}-";
+    
+    // Get the latest receipt number for this month/year
+    // Using created_at instead of id since event_student has composite key
+    $lastReceipt = EventStudent::where('receipt_number', 'like', $prefix . '%')
+        ->orderBy('created_at', 'desc')
+        ->first();
 
-        if ($lastReceipt && $lastReceipt->receipt_number) {
-            // Extract the number part (last 4 digits)
-            $lastNumber = (int) substr($lastReceipt->receipt_number, -4);
-            $newNumber = str_pad($lastNumber + 1, 4, '0', STR_PAD_LEFT);
-        } else {
-            $newNumber = '0001';
-        }
-        
-        // Double-check that this number doesn't already exist (safety)
-        $existingReceipt = EventStudent::where('receipt_number', $prefix . $newNumber)->first();
-        if ($existingReceipt) {
-            // If somehow exists, increment again
-            $newNumber = str_pad((int)$newNumber + 1, 4, '0', STR_PAD_LEFT);
-        }
-        
-        return $prefix . $newNumber;
+    if ($lastReceipt && $lastReceipt->receipt_number) {
+        // Extract the number part (last 4 digits)
+        $lastNumber = (int) substr($lastReceipt->receipt_number, -4);
+        $newNumber = str_pad($lastNumber + 1, 4, '0', STR_PAD_LEFT);
+    } else {
+        $newNumber = '0001';
     }
+    
+    // Safety check - ensure number is unique
+    $existingReceipt = EventStudent::where('receipt_number', $prefix . $newNumber)->first();
+    if ($existingReceipt) {
+        $newNumber = str_pad((int)$newNumber + 1, 4, '0', STR_PAD_LEFT);
+    }
+    
+    return $prefix . $newNumber;
+}
 
     /**
      * Generate receipt PDF

@@ -354,34 +354,6 @@
             font-size: 8px;
         }
         
-        .memo-date {
-            text-align: right;
-            margin: 15px 0 20px 0;
-            font-size: 11px;
-        }
-        
-        .memo-to, .memo-from, .memo-subject {
-            margin: 12px 0;
-            line-height: 1.6;
-            font-size: 11px;
-        }
-        
-        .memo-body {
-            text-align: justify;
-            margin: 15px 0;
-            line-height: 1.6;
-            font-size: 11px;
-        }
-        
-        .memo-list {
-            margin: 10px 0 10px 30px;
-            padding-left: 0;
-        }
-        
-        .memo-list li {
-            margin: 5px 0;
-        }
-        
         .event-details {
             margin: 12px 0;
             line-height: 1.8;
@@ -441,6 +413,16 @@
             text-align: center;
         }
         
+        .satisfaction-section {
+            margin: 15px 0;
+        }
+        
+        .satisfaction-title {
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        
         .satisfaction-score {
             text-align: center;
             margin: 15px 0;
@@ -474,65 +456,12 @@
 </div>
 
 <div class="content">
-    <!-- PAGE 1: MEMORANDUM LETTER -->
-    <div class="memorandum">
-        <div class="memo-date">
-            {{ $report_date }}
-        </div>
-
-        <div class="memo-to">
-            <strong>OPQMS Memorandum Order<br>No. 78, s. 2025</strong>
-        </div>
-
-        <div class="memo-to">
-            <strong>TO :</strong> {{ $organization_name }}<br>Organization Adviser
-        </div>
-
-        <div class="memo-from">
-            <strong>FROM :</strong> THE HEAD<br>Office of the Planning and Quality Management Services
-        </div>
-
-        <div class="memo-subject">
-            <strong>Subject:</strong> EVENT EVALUATION RESULT OF {{ strtoupper($event->event_name) }}
-        </div>
-
-        <div class="memo-body">
-            <p>Submitting herewith the results of the event evaluation survey conducted during {{ $event->event_name }}. The event evaluation survey aimed to gather feedback from participants to assess the effectiveness of the activity and identify areas of improvement.</p>
-            
-            <p>In the context, the event evaluation survey result covers the following details:</p>
-            <ul class="memo-list">
-                <li>Profile of the Respondents</li>
-                <li>Information Dissemination</li>
-                <li>Secretariat</li>
-                <li>Facilities</li>
-                <li>Design of the Event</li>
-                <li>Outcomes of the Event</li>
-                <li>Food</li>
-                <li>Other Comments and Suggestions</li>
-            </ul>
-            
-            <p>Overall, the results indicate a general mean of <strong>{{ number_format($overall_satisfaction, 2) }}</strong> with a descriptive rating of <strong>{{ $satisfaction_interpretation }}</strong>. While feedback was generally positive, participants provided several useful suggestions and recommendations for future improvements.</p>
-            
-            <p>For your information and appropriate action.</p>
-        </div>
-
-        <div class="memo-signature">
-            <div class="signature-line"></div>
-            <div class="signature-name">ALMA LIGAYA A. BERMUDEZ, PhD</div>
-            <div class="signature-title">Head, OPQMS</div>
-        </div>
-
-        <div class="memo-signature" style="margin-top: 20px;">
-            <div class="signature-line"></div>
-            <div class="signature-name">RONALD A. MONZON, MIT</div>
-            <div class="signature-title">Division Chief for Executive Operations</div>
-        </div>
-    </div>
-
     <!-- ==================== PER-DAY COMPLETE REPORTS ==================== -->
     @if(isset($per_date_data) && count($per_date_data) > 0)
-        @foreach($per_date_data as $dateData)
-            <div class="page-break"></div>
+        @foreach($per_date_data as $index => $dateData)
+            @if($index > 0)
+                <div class="page-break"></div>
+            @endif
             
             <!-- DAY HEADER -->
             <div class="date-header">
