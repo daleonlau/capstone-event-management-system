@@ -297,14 +297,17 @@ class CollectionController extends Controller
             
             $wasPreviouslyPaid = $oldPayment && $oldPayment->status === 'Paid';
 
-            // Use updateOrCreateComposite instead of find/update
+            // Get the currently logged-in treasurer
+            $treasurer = Auth::guard('org_user')->user();
+
+            // Use updateOrCreateComposite
             $payment = EventStudent::updateOrCreateComposite(
                 $event->id,
                 $studentId,
                 [
                     'status' => 'Paid',
                     'amount_paid' => $event->event_fee,
-                    'user_id' => $this->organizationId,
+                    'user_id' => $treasurer->id,
                     'receipt_number' => $receiptNumber,
                     'payment_method' => 'cash',
                     'payment_notes' => $request->notes,
@@ -325,6 +328,8 @@ class CollectionController extends Controller
                 'payment_notes' => $request->notes,
                 'was_previously_paid' => $wasPreviouslyPaid,
                 'payment_method' => 'cash',
+                'processed_by_treasurer' => $treasurer->name,
+                'treasurer_id' => $treasurer->id,
             ]);
 
             // Generate PDF
@@ -344,7 +349,6 @@ class CollectionController extends Controller
             
             if ($sendEmail && $student->email) {
                 try {
-                    // Use send() instead of queue() to avoid serialization issues
                     Mail::to($student->email)->send(new PaymentReceiptMail($payment));
                     
                     DB::table('event_student')
@@ -362,6 +366,7 @@ class CollectionController extends Controller
                         'student_name' => $student->firstname . ' ' . $student->lastname,
                         'student_email' => $student->email,
                         'receipt_number' => $receiptNumber,
+                        'processed_by_treasurer' => $treasurer->name,
                     ]);
                 } catch (\Exception $e) {
                     Log::warning('Email sending failed but payment was recorded: ' . $e->getMessage());
@@ -386,6 +391,7 @@ class CollectionController extends Controller
                 'event_id' => $event->id,
                 'student_id' => $student->student_id,
                 'email_sent' => $emailSent,
+                'processed_by' => $treasurer->name,
             ]);
 
         } catch (\Exception $e) {
@@ -403,42 +409,42 @@ class CollectionController extends Controller
     }
 
     /**
- * Generate unique receipt number
- */
-private function generateReceiptNumber()
-{
-    $year = date('Y');
-    $month = date('m');
-    $prefix = "REC-{$year}{$month}-";
-    
-    // Get the latest receipt number for this month/year using raw SQL to avoid issues
-    $lastReceipt = EventStudent::where('receipt_number', 'LIKE', $prefix . '%')
-        ->orderBy('created_at', 'desc')
-        ->first();
-    
-    if ($lastReceipt && $lastReceipt->receipt_number) {
-        // Extract the number part (last 4 digits)
-        $lastNumber = (int) substr($lastReceipt->receipt_number, -4);
-        $newNumber = str_pad($lastNumber + 1, 4, '0', STR_PAD_LEFT);
-    } else {
-        $newNumber = '0001';
-    }
-    
-    // Generate the full receipt number
-    $newReceiptNumber = $prefix . $newNumber;
-    
-    // Safety check - if this number already exists, keep incrementing until we find a free one
-    $counter = 0;
-    while (EventStudent::where('receipt_number', $newReceiptNumber)->exists() && $counter < 100) {
-        $newNumber = str_pad((int)$newNumber + 1, 4, '0', STR_PAD_LEFT);
+     * Generate unique receipt number
+     */
+    private function generateReceiptNumber()
+    {
+        $year = date('Y');
+        $month = date('m');
+        $prefix = "REC-{$year}{$month}-";
+        
+        // Get the latest receipt number for this month/year
+        $lastReceipt = EventStudent::where('receipt_number', 'like', $prefix . '%')
+            ->orderBy('created_at', 'desc')
+            ->first();
+
+        if ($lastReceipt && $lastReceipt->receipt_number) {
+            // Extract the number part (last 4 digits)
+            $lastNumber = (int) substr($lastReceipt->receipt_number, -4);
+            $newNumber = str_pad($lastNumber + 1, 4, '0', STR_PAD_LEFT);
+        } else {
+            $newNumber = '0001';
+        }
+        
+        // Generate the full receipt number
         $newReceiptNumber = $prefix . $newNumber;
-        $counter++;
+        
+        // Safety check - if this number already exists, keep incrementing
+        $counter = 0;
+        while (EventStudent::where('receipt_number', $newReceiptNumber)->exists() && $counter < 100) {
+            $newNumber = str_pad((int)$newNumber + 1, 4, '0', STR_PAD_LEFT);
+            $newReceiptNumber = $prefix . $newNumber;
+            $counter++;
+        }
+        
+        Log::info('Generated receipt number: ' . $newReceiptNumber);
+        
+        return $newReceiptNumber;
     }
-    
-    Log::info('Generated receipt number: ' . $newReceiptNumber);
-    
-    return $newReceiptNumber;
-}
 
     /**
      * Generate receipt PDF
@@ -699,7 +705,7 @@ private function generateReceiptNumber()
                     ->first();
             }
 
-            // Use send() instead of queue() to avoid serialization issues
+            // Send the email
             Log::info('Sending email to: ' . $student->email);
             
             Mail::to($student->email)->send(new PaymentReceiptMail($payment));
@@ -748,8 +754,6 @@ private function generateReceiptNumber()
      */
     public function bulkPay(Request $request, Event $event)
     {
-        // This method would be implemented similarly with logging
-        // For now, returning placeholder
         return response()->json(['message' => 'Bulk pay feature coming soon'], 501);
     }
     
@@ -858,7 +862,6 @@ private function generateReceiptNumber()
                 LogService::action($action, $description, $user, $details);
             }
         } catch (\Exception $e) {
-            // Silent fail - don't let logging break the application
             Log::warning('Failed to log action: ' . $e->getMessage());
         }
     }
@@ -871,7 +874,6 @@ private function generateReceiptNumber()
         try {
             LogService::error($action, $description, $exception, $details);
         } catch (\Exception $e) {
-            // Silent fail
             Log::warning('Failed to log error: ' . $e->getMessage());
         }
     }
@@ -885,7 +887,6 @@ private function generateReceiptNumber()
             $user = Auth::guard('org_user')->user();
             LogService::security($action, $description, $user, $details);
         } catch (\Exception $e) {
-            // Silent fail
             Log::warning('Failed to log security event: ' . $e->getMessage());
         }
     }
