@@ -50,6 +50,17 @@
       0 => 'Maatwebsite\\Excel\\ExcelServiceProvider',
     ),
   ),
+  'mailjet/laravel-mailjet' => 
+  array (
+    'aliases' => 
+    array (
+      'Mailjet' => 'Mailjet\\LaravelMailjet\\Facades\\Mailjet',
+    ),
+    'providers' => 
+    array (
+      0 => 'Mailjet\\LaravelMailjet\\MailjetServiceProvider',
+    ),
+  ),
   'nesbot/carbon' => 
   array (
     'providers' => 
