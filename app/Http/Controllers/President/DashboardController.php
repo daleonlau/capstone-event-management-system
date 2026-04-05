@@ -172,13 +172,13 @@ class DashboardController extends Controller
                             'positive_percentage' => $sentimentAnalysis['positive_percentage'] ?? 0,
                             'negative_percentage' => $sentimentAnalysis['negative_percentage'] ?? 0,
                             'neutral_percentage' => $sentimentAnalysis['neutral_percentage'] ?? 0,
-                            'strengths' => array_slice($strengths, 0, 3),
-                            'weaknesses' => array_slice($weaknesses, 0, 3),
-                            'recommendations' => is_array($recommendations) ? array_slice($recommendations, 0, 3) : [],
+                            'strengths' => array_slice($strengths, 0, 5),
+                            'weaknesses' => array_slice($weaknesses, 0, 5),
+                            'recommendations' => is_array($recommendations) ? array_slice($recommendations, 0, 5) : [],
                             'category_breakdown' => $categoryBreakdown,
-                            'common_themes' => array_slice($sentimentAnalysis['common_themes'] ?? [], 0, 5),
-                            'sample_positive_comments' => array_slice($sentimentAnalysis['positive_comments'] ?? [], 0, 3),
-                            'sample_negative_comments' => array_slice($sentimentAnalysis['negative_comments'] ?? [], 0, 3),
+                            'common_themes' => array_slice($sentimentAnalysis['common_themes'] ?? [], 0, 8),
+                            'sample_positive_comments' => array_slice($sentimentAnalysis['positive_comments'] ?? [], 0, 5),
+                            'sample_negative_comments' => array_slice($sentimentAnalysis['negative_comments'] ?? [], 0, 5),
                         ];
                     }
                 }

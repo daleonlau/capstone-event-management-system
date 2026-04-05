@@ -6,8 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\Evaluation;
 use App\Models\AIAnalysis;
-use App\Models\OrganizationUser;
-use App\Models\EventApproval;  // Add this if you have an approvals table
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -108,18 +106,30 @@ class DashboardController extends Controller
                     $analysis = $evaluation->aiAnalyses->first();
                     if ($analysis) {
                         $sentimentAnalysis = $this->safeJsonDecode($analysis->sentiment_analysis);
+                        $recommendations = $this->safeJsonDecode($analysis->recommendations);
+                        $strengths = $this->safeJsonDecode($analysis->strengths);
+                        $weaknesses = $this->safeJsonDecode($analysis->weaknesses);
+                        $categoryBreakdown = $this->safeJsonDecode($analysis->category_breakdown);
                         
                         $aiInsightsList[] = [
                             'id' => $evaluation->id,
+                            'evaluation_id' => $evaluation->id,
                             'event_name' => $event->event_name,
                             'evaluation_title' => $evaluation->title,
+                            'total_responses' => $evaluation->total_responses,
+                            'analyzed_at' => $analysis->analyzed_at,
                             'predicted_satisfaction' => $analysis->predicted_satisfaction,
                             'success_probability' => $analysis->success_probability,
                             'positive_percentage' => $sentimentAnalysis['positive_percentage'] ?? 0,
                             'negative_percentage' => $sentimentAnalysis['negative_percentage'] ?? 0,
                             'neutral_percentage' => $sentimentAnalysis['neutral_percentage'] ?? 0,
-                            'total_responses' => $evaluation->total_responses,
-                            'analyzed_at' => $analysis->analyzed_at,
+                            'strengths' => array_slice($strengths, 0, 5),
+                            'weaknesses' => array_slice($weaknesses, 0, 5),
+                            'recommendations' => is_array($recommendations) ? array_slice($recommendations, 0, 5) : [],
+                            'category_breakdown' => $categoryBreakdown,
+                            'common_themes' => array_slice($sentimentAnalysis['common_themes'] ?? [], 0, 8),
+                            'sample_positive_comments' => array_slice($sentimentAnalysis['positive_comments'] ?? [], 0, 5),
+                            'sample_negative_comments' => array_slice($sentimentAnalysis['negative_comments'] ?? [], 0, 5),
                         ];
                     }
                 }
@@ -129,7 +139,6 @@ class DashboardController extends Controller
         }
 
         // ==================== APPROVAL TRENDS (Last 6 months) ====================
-        // FIXED: Use updated_at or approval_status changes instead of approved_at
         $approvalTrends = Event::where('user_id', $this->organizationId)
             ->whereNotNull('updated_at')
             ->where('updated_at', '>=', now()->subMonths(6))
@@ -143,30 +152,15 @@ class DashboardController extends Controller
             ->get();
 
         // ==================== AVERAGE APPROVAL TIME ====================
-        // FIXED: Use event_approvals table if it exists, otherwise skip or use updated_at - created_at
-        $avgApprovalTime = 0;
-        
-        // Try to get approval time from event_approvals table if it exists
-        if (\Schema::hasTable('event_approvals')) {
-            $avgApprovalTime = DB::table('event_approvals')
-                ->join('events', 'event_approvals.event_id', '=', 'events.id')
-                ->where('events.user_id', $this->organizationId)
-                ->whereNotNull('event_approvals.created_at')
-                ->select(DB::raw('AVG(TIMESTAMPDIFF(HOUR, events.created_at, event_approvals.created_at)) as avg_hours'))
-                ->value('avg_hours');
-        } else {
-            // Fallback: Use events that have been approved and use updated_at as approval time
-            $avgApprovalTime = Event::where('user_id', $this->organizationId)
-                ->where('approval_status', 'approved')
-                ->whereNotNull('updated_at')
-                ->select(DB::raw('AVG(TIMESTAMPDIFF(HOUR, created_at, updated_at)) as avg_hours'))
-                ->value('avg_hours');
-        }
+        $avgApprovalTime = Event::where('user_id', $this->organizationId)
+            ->where('approval_status', 'approved')
+            ->whereNotNull('updated_at')
+            ->select(DB::raw('AVG(TIMESTAMPDIFF(HOUR, created_at, updated_at)) as avg_hours'))
+            ->value('avg_hours');
         
         $avgApprovalTime = $avgApprovalTime ? round($avgApprovalTime, 1) : 0;
 
         // ==================== RECENT APPROVALS ====================
-        // FIXED: Get recently approved/rejected events
         $recentApprovals = Event::where('user_id', $this->organizationId)
             ->whereIn('approval_status', ['approved', 'rejected'])
             ->orderBy('updated_at', 'desc')
@@ -180,32 +174,6 @@ class DashboardController extends Controller
                     'rejection_reason' => $event->rejection_reason,
                 ];
             });
-
-        // ==================== EVENT TYPE DISTRIBUTION ====================
-        $eventTypeDistribution = Event::where('user_id', $this->organizationId)
-            ->select('event_type_id', DB::raw('count(*) as total'))
-            ->with(['eventType' => function($q) {
-                $q->select('id', 'name');
-            }])
-            ->groupBy('event_type_id')
-            ->get()
-            ->map(function ($item) {
-                return [
-                    'type' => $item->eventType->name ?? 'Unknown',
-                    'total' => $item->total,
-                ];
-            });
-
-        // ==================== MONTHLY EVENT CREATION TRENDS ====================
-        $monthlyEventTrends = Event::where('user_id', $this->organizationId)
-            ->where('created_at', '>=', now()->subMonths(6))
-            ->select(
-                DB::raw('DATE_FORMAT(created_at, "%Y-%m") as month'),
-                DB::raw('count(*) as total')
-            )
-            ->groupBy('month')
-            ->orderBy('month', 'asc')
-            ->get();
 
         $stats = [
             'pending_approval' => $pendingApproval,
@@ -224,8 +192,6 @@ class DashboardController extends Controller
             'aiInsightsList' => $aiInsightsList,
             'approvalTrends' => $approvalTrends,
             'recentApprovals' => $recentApprovals,
-            'eventTypeDistribution' => $eventTypeDistribution,
-            'monthlyEventTrends' => $monthlyEventTrends,
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
