@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Payment Receipt</title>
+    <title>Payment Receipt - {{ $payment->receipt_number }}</title>
     <style>
         @page {
             size: A4;
@@ -11,7 +11,7 @@
         }
         
         body {
-            font-family: 'DejaVu Sans', 'Segoe UI', Arial, sans-serif;
+            font-family: 'DejaVu Sans', 'Arial', sans-serif;
             font-size: 10px;
             line-height: 1.4;
             color: #333;
@@ -32,16 +32,10 @@
             color: #10b981;
         }
         
-        .organization-name {
-            font-size: 16px;
+        .school-name {
+            font-size: 14px;
             font-weight: bold;
             color: #065f46;
-            margin: 5px 0;
-        }
-        
-        .school-name {
-            font-size: 12px;
-            color: #047857;
             margin: 5px 0;
         }
         
@@ -51,6 +45,7 @@
             color: #047857;
             margin: 20px 0;
             text-align: center;
+            text-decoration: underline;
         }
         
         .receipt-box {
@@ -126,64 +121,34 @@
         }
         
         .contact-info p {
-            margin: 5px 0;
-        }
-        
-        .org-footer {
-            background-color: #f0fdf4;
-            padding: 8px;
-            border-radius: 6px;
-            margin-top: 10px;
-            text-align: center;
-            font-size: 9px;
-        }
-        
-        .signature-section {
-            margin-top: 40px;
-            display: flex;
-            justify-content: space-between;
-        }
-        
-        .signature-box {
-            text-align: center;
-            width: 180px;
+            margin: 3px 0;
         }
         
         .signature-line {
             border-top: 1px solid #000;
-            margin-top: 30px;
+            margin-top: 40px;
             padding-top: 5px;
-            width: 160px;
+            width: 200px;
+            margin-left: auto;
+            margin-right: auto;
         }
         
         .signature-name {
             font-weight: bold;
             margin-top: 5px;
-            font-size: 9px;
+            text-align: center;
         }
         
         .signature-title {
             font-size: 8px;
             color: #666;
-        }
-        
-        .text-center {
             text-align: center;
-        }
-        
-        .text-right {
-            text-align: right;
-        }
-        
-        .font-bold {
-            font-weight: bold;
         }
     </style>
 </head>
 <body>
     <div class="header">
-        <div class="logo">EventFlow</div>
-        <div class="organization-name">{{ $organization->name ?? $organizationName ?? 'Organization' }}</div>
+        <div class="logo">CSUCC EMS</div>
         <div class="school-name">Caraga State University - Cabadbaran Campus</div>
         <div class="receipt-title">OFFICIAL RECEIPT</div>
     </div>
@@ -243,40 +208,18 @@
         Thank you for your payment!
     </div>
 
-    <!-- Organization Footer -->
-    <div class="org-footer">
-        <strong>{{ $organization->name ?? $organizationName ?? 'Organization' }}</strong><br>
-        This is an official receipt from {{ $organization->name ?? $organizationName ?? 'Organization' }}. Please keep this for your records.
-    </div>
-
-    <!-- Contact Info with Treasurer's Email -->
     <div class="contact-info">
         <p><strong>Processed by:</strong> {{ $treasurer->name ?? 'Treasurer' }}</p>
-        <p><strong>Contact Email:</strong> {{ $treasurer->email ?? config('mail.from.address') }}</p>
+        <p><strong>Email:</strong> {{ $treasurer->email ?? config('mail.from.address') }}</p>
     </div>
 
-    <!-- Signature Section -->
-    <div class="signature-section">
-        <div class="signature-box">
-            <div class="signature-line"></div>
-            <div class="signature-name">{{ $treasurer->name ?? 'Treasurer' }}</div>
-            <div class="signature-title">Treasurer</div>
-        </div>
-        <div class="signature-box">
-            <div class="signature-line"></div>
-            <div class="signature-name">_____________________</div>
-            <div class="signature-title">Organization Adviser</div>
-        </div>
-        <div class="signature-box">
-            <div class="signature-line"></div>
-            <div class="signature-name">_____________________</div>
-            <div class="signature-title">President</div>
-        </div>
-    </div>
+    <div class="signature-line"></div>
+    <div class="signature-name">{{ $treasurer->name ?? 'Treasurer' }}</div>
+    <div class="signature-title">Treasurer / Finance Officer</div>
 
     <div class="footer">
-        This is a system-generated official receipt from CSUCC EMS.<br>
-        Generated on: {{ now()->format('F d, Y h:i A') }} | Receipt No: {{ $payment->receipt_number }}
+        <p>This is an official receipt from CSUCC EMS. Please keep this for your records.</p>
+        <p>Generated on {{ now()->format('F d, Y h:i A') }}</p>
     </div>
 </body>
 </html>
