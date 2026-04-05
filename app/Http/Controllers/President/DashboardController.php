@@ -154,8 +154,8 @@ class DashboardController extends Controller
                         // Calculate response rate
                         $eventDates = $evaluation->event_dates ?: [];
                         $totalStudentsCount = EventStudent::where('event_id', $event->id)->count();
-                        $totalGuests = EventGuest::where('event_id', $event->id)->count();
-                        $totalExpected = ($totalStudentsCount * max(count($eventDates), 1)) + $totalGuests;
+                        $totalGuestsCount = EventGuest::where('event_id', $event->id)->count();
+                        $totalExpected = ($totalStudentsCount * max(count($eventDates), 1)) + $totalGuestsCount;
                         $responseRate = $totalExpected > 0 ? round(($evaluation->total_responses / $totalExpected) * 100, 1) : 0;
                         
                         $aiInsightsList[] = [

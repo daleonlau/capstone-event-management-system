@@ -7,6 +7,7 @@ use App\Models\Event;
 use App\Models\Evaluation;
 use App\Models\AIAnalysis;
 use App\Models\OrganizationUser;
+use App\Models\EventApproval;  // Add this if you have an approvals table
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -128,6 +129,7 @@ class DashboardController extends Controller
         }
 
         // ==================== APPROVAL TRENDS (Last 6 months) ====================
+        // FIXED: Use updated_at or approval_status changes instead of approved_at
         $approvalTrends = Event::where('user_id', $this->organizationId)
             ->whereNotNull('updated_at')
             ->where('updated_at', '>=', now()->subMonths(6))
@@ -141,24 +143,40 @@ class DashboardController extends Controller
             ->get();
 
         // ==================== AVERAGE APPROVAL TIME ====================
-        $avgApprovalTime = Event::where('user_id', $this->organizationId)
-            ->whereNotNull('approved_at')
-            ->select(DB::raw('AVG(TIMESTAMPDIFF(HOUR, created_at, approved_at)) as avg_hours'))
-            ->value('avg_hours');
+        // FIXED: Use event_approvals table if it exists, otherwise skip or use updated_at - created_at
+        $avgApprovalTime = 0;
+        
+        // Try to get approval time from event_approvals table if it exists
+        if (\Schema::hasTable('event_approvals')) {
+            $avgApprovalTime = DB::table('event_approvals')
+                ->join('events', 'event_approvals.event_id', '=', 'events.id')
+                ->where('events.user_id', $this->organizationId)
+                ->whereNotNull('event_approvals.created_at')
+                ->select(DB::raw('AVG(TIMESTAMPDIFF(HOUR, events.created_at, event_approvals.created_at)) as avg_hours'))
+                ->value('avg_hours');
+        } else {
+            // Fallback: Use events that have been approved and use updated_at as approval time
+            $avgApprovalTime = Event::where('user_id', $this->organizationId)
+                ->where('approval_status', 'approved')
+                ->whereNotNull('updated_at')
+                ->select(DB::raw('AVG(TIMESTAMPDIFF(HOUR, created_at, updated_at)) as avg_hours'))
+                ->value('avg_hours');
+        }
         
         $avgApprovalTime = $avgApprovalTime ? round($avgApprovalTime, 1) : 0;
 
         // ==================== RECENT APPROVALS ====================
+        // FIXED: Get recently approved/rejected events
         $recentApprovals = Event::where('user_id', $this->organizationId)
-            ->whereNotNull('approved_at')
-            ->orderBy('approved_at', 'desc')
+            ->whereIn('approval_status', ['approved', 'rejected'])
+            ->orderBy('updated_at', 'desc')
             ->limit(5)
             ->get()
             ->map(function ($event) {
                 return [
                     'event_name' => $event->event_name,
                     'status' => $event->approval_status,
-                    'approved_at' => $event->approved_at ? $event->approved_at->diffForHumans() : null,
+                    'approved_at' => $event->updated_at ? $event->updated_at->diffForHumans() : null,
                     'rejection_reason' => $event->rejection_reason,
                 ];
             });
