@@ -709,6 +709,11 @@ import { Link, router } from '@inertiajs/vue3';
 import OrganizationUserLayout from '@/Layouts/OrganizationUserLayout.vue';
 import axios from 'axios';
 
+// Helper function to get CSRF token
+const getCsrfToken = () => {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+};
+
 const props = defineProps({
   event: {
     type: Object,
@@ -836,6 +841,12 @@ async function processSinglePayment() {
       {
         notes: paymentForm.value.notes,
         send_email: paymentForm.value.send_email
+      },
+      {
+        headers: {
+          'X-CSRF-TOKEN': getCsrfToken(),
+          'X-Requested-With': 'XMLHttpRequest'
+        }
       }
     );
     
@@ -873,6 +884,12 @@ async function processBulkPayment() {
       {
         student_ids: selectedStudents.value,
         send_email: bulkSendEmail.value
+      },
+      {
+        headers: {
+          'X-CSRF-TOKEN': getCsrfToken(),
+          'X-Requested-With': 'XMLHttpRequest'
+        }
       }
     );
     
@@ -914,7 +931,16 @@ async function resendReceipt(eventId, studentId) {
   if (!confirm(`Resend receipt email to ${student.email}?`)) return;
   
   try {
-    const response = await axios.post(`/treasurer/receipts/${eventId}/${studentId}/resend`);
+    const response = await axios.post(
+      `/treasurer/receipts/${eventId}/${studentId}/resend`,
+      {},
+      {
+        headers: {
+          'X-CSRF-TOKEN': getCsrfToken(),
+          'X-Requested-With': 'XMLHttpRequest'
+        }
+      }
+    );
     showToast('✅ Receipt email resent successfully', 'success');
   } catch (error) {
     console.error('Resend error:', error);
