@@ -8,6 +8,7 @@ use App\Models\Student;
 use App\Models\EventStudent;
 use App\Models\OrganizationSetting;
 use App\Models\Course;
+use App\Models\Department;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -55,17 +56,24 @@ class ReportController extends Controller
         }
 
         $events = $query->get()->map(function ($event) {
+            // Get department names from IDs
+            $departmentNames = [];
+            if (!empty($event->departments) && is_array($event->departments)) {
+                $departmentNames = Department::whereIn('id', $event->departments)->pluck('name')->toArray();
+            }
+
             // Get course names from IDs
             $courseNames = [];
             if (!empty($event->courses) && is_array($event->courses)) {
-                $courseNames = Course::whereIn('id', $event->courses)
-                    ->pluck('name')
-                    ->toArray();
+                $courseNames = Course::whereIn('id', $event->courses)->pluck('name')->toArray();
             }
 
-            // Count eligible students
+            // Count eligible students based on event criteria
             $studentQuery = Student::where('user_id', $this->organizationId);
             
+            if (!empty($departmentNames)) {
+                $studentQuery->whereIn('department', $departmentNames);
+            }
             if (!empty($courseNames)) {
                 $studentQuery->whereIn('course', $courseNames);
             }
@@ -75,7 +83,7 @@ class ReportController extends Controller
             
             $totalStudents = $studentQuery->count();
 
-            // Get payment stats
+            // Get payment stats from event_students table
             $paidStudents = EventStudent::where('event_id', $event->id)
                 ->where('status', 'Paid')
                 ->count();
@@ -164,17 +172,24 @@ class ReportController extends Controller
                 return response()->json(['error' => 'Unauthorized'], 403);
             }
 
+            // Get department names from IDs
+            $departmentNames = [];
+            if (!empty($event->departments) && is_array($event->departments)) {
+                $departmentNames = Department::whereIn('id', $event->departments)->pluck('name')->toArray();
+            }
+
             // Get course names from IDs
             $courseNames = [];
             if (!empty($event->courses) && is_array($event->courses)) {
-                $courseNames = Course::whereIn('id', $event->courses)
-                    ->pluck('name')
-                    ->toArray();
+                $courseNames = Course::whereIn('id', $event->courses)->pluck('name')->toArray();
             }
 
-            // Build query for eligible students
+            // Build query for eligible students based on event criteria
             $query = Student::where('user_id', $this->organizationId);
 
+            if (!empty($departmentNames)) {
+                $query->whereIn('department', $departmentNames);
+            }
             if (!empty($courseNames)) {
                 $query->whereIn('course', $courseNames);
             }
@@ -182,7 +197,7 @@ class ReportController extends Controller
                 $query->whereIn('yearlevel', $event->year_levels);
             }
 
-            // Get all students with payment status
+            // Get all students with payment status from event_students table
             $students = $query->get()->map(function ($student) use ($event) {
                 $payment = EventStudent::where('event_id', $event->id)
                     ->where('student_id', $student->student_id)
@@ -194,9 +209,9 @@ class ReportController extends Controller
                     'course' => $student->course,
                     'year_level' => $student->yearlevel,
                     'status' => $payment ? $payment->status : 'Not Paid',
-                    'amount' => $payment ? $payment->amount_paid : 0,
+                    'amount' => $payment ? floatval($payment->amount_paid) : 0,
                     'paid_at' => $payment && $payment->updated_at ? $payment->updated_at->format('M d, Y h:i A') : null,
-                    'receipt_number' => $payment ? $payment->receipt_number : null,
+                    'receipt_number' => $payment && $payment->receipt_number ? $payment->receipt_number : null,
                 ];
             });
 
@@ -206,7 +221,8 @@ class ReportController extends Controller
             $pendingStudents = $students->where('status', 'Pending')->count();
             $notPaidStudents = $students->where('status', 'Not Paid')->count();
             $totalCollected = $students->where('status', 'Paid')->sum('amount');
-            $expectedTotal = $totalStudents * $event->event_fee;
+            $expectedTotal = $totalStudents * floatval($event->event_fee);
+            $collectionRate = $expectedTotal > 0 ? round(($totalCollected / $expectedTotal) * 100, 2) : 0;
 
             // Get organization details
             $orgName = $this->organizationName;
@@ -226,7 +242,7 @@ class ReportController extends Controller
                     'not_paid_students' => $notPaidStudents,
                     'total_collected' => $totalCollected,
                     'expected_total' => $expectedTotal,
-                    'collection_rate' => $expectedTotal > 0 ? round(($totalCollected / $expectedTotal) * 100, 2) : 0,
+                    'collection_rate' => $collectionRate,
                 ],
                 'org_name' => $orgName,
                 'school_name' => 'CSUCC - Caraga State University Cabadbaran Campus',
@@ -235,6 +251,12 @@ class ReportController extends Controller
                 'header_image' => $headerImage,
             ];
 
+            // Create directory if it doesn't exist
+            $path = storage_path('app/public/collection-reports');
+            if (!file_exists($path)) {
+                mkdir($path, 0755, true);
+            }
+            
             // Generate PDF
             $pdf = Pdf::loadView('pdfs.collection-report', $data);
             $pdf->setPaper('A4', 'portrait');
@@ -245,29 +267,25 @@ class ReportController extends Controller
                 'chroot' => public_path(),
             ]);
             
-            // Save PDF to storage
-            $filename = 'collection-report-event-' . $event->id . '-' . now()->format('Y-m-d-His') . '.pdf';
-            $path = storage_path('app/public/collection-reports');
-            
-            if (!file_exists($path)) {
-                mkdir($path, 0755, true);
-            }
-            
-            $filePath = $path . '/' . $filename;
-            $pdf->save($filePath);
-            
-            // Also save as generic name for easy access
+            // Save PDF with generic name (overwrites old one)
             $genericPath = $path . '/event_' . $event->id . '.pdf';
-            copy($filePath, $genericPath);
+            $pdf->save($genericPath);
+            
+            // Also save a timestamped version for history
+            $timestampedPath = $path . '/collection-report-event-' . $event->id . '-' . now()->format('Y-m-d-His') . '.pdf';
+            copy($genericPath, $timestampedPath);
+            
+            Log::info('Report generated successfully for event: ' . $event->id);
             
             return response()->json([
                 'success' => true,
                 'message' => 'Report generated successfully',
-                'report_path' => '/storage/collection-reports/' . $filename
+                'report_path' => '/storage/collection-reports/event_' . $event->id . '.pdf'
             ]);
             
         } catch (\Exception $e) {
             Log::error('Generate report error: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
             return response()->json([
                 'error' => 'Failed to generate report: ' . $e->getMessage()
             ], 500);
@@ -317,35 +335,41 @@ class ReportController extends Controller
      */
     public function view($eventId)
     {
-        $event = Event::findOrFail($eventId);
-        
-        // Check if event belongs to organization
-        if ($event->user_id !== $this->organizationId) {
-            abort(403);
-        }
-        
-        // Find the latest report file
-        $path = storage_path('app/public/collection-reports');
-        $files = glob($path . '/collection-report-event-' . $eventId . '-*.pdf');
-        
-        if (empty($files)) {
-            // Try the generic name
+        try {
+            $event = Event::findOrFail($eventId);
+            
+            // Check if event belongs to organization
+            if ($event->user_id !== $this->organizationId) {
+                abort(403);
+            }
+            
+            // Find the report file
+            $path = storage_path('app/public/collection-reports');
             $genericFile = $path . '/event_' . $eventId . '.pdf';
+            
             if (file_exists($genericFile)) {
                 return response()->file($genericFile, [
                     'Content-Type' => 'application/pdf',
                     'Content-Disposition' => 'inline; filename="collection-report-' . $event->event_name . '.pdf"'
                 ]);
             }
-            abort(404, 'Report not found');
+            
+            // Try to find a timestamped version
+            $files = glob($path . '/collection-report-event-' . $eventId . '-*.pdf');
+            if (!empty($files)) {
+                $latestFile = end($files);
+                return response()->file($latestFile, [
+                    'Content-Type' => 'application/pdf',
+                    'Content-Disposition' => 'inline; filename="collection-report-' . $event->event_name . '.pdf"'
+                ]);
+            }
+            
+            abort(404, 'Report not found. Please generate the report first.');
+            
+        } catch (\Exception $e) {
+            Log::error('View report error: ' . $e->getMessage());
+            abort(500, 'Error viewing report: ' . $e->getMessage());
         }
-        
-        $latestFile = end($files);
-        
-        return response()->file($latestFile, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="collection-report-' . $event->event_name . '.pdf"'
-        ]);
     }
 
     /**
@@ -353,150 +377,35 @@ class ReportController extends Controller
      */
     public function download($eventId)
     {
-        $event = Event::findOrFail($eventId);
-        
-        // Check if event belongs to organization
-        if ($event->user_id !== $this->organizationId) {
-            abort(403);
-        }
-        
-        // Find the latest report file
-        $path = storage_path('app/public/collection-reports');
-        $files = glob($path . '/collection-report-event-' . $eventId . '-*.pdf');
-        
-        if (empty($files)) {
-            // Try the generic name
+        try {
+            $event = Event::findOrFail($eventId);
+            
+            // Check if event belongs to organization
+            if ($event->user_id !== $this->organizationId) {
+                abort(403);
+            }
+            
+            // Find the report file
+            $path = storage_path('app/public/collection-reports');
             $genericFile = $path . '/event_' . $eventId . '.pdf';
+            
             if (file_exists($genericFile)) {
                 return response()->download($genericFile, 'collection-report-' . $event->event_name . '.pdf');
             }
-            abort(404, 'Report not found');
+            
+            // Try to find a timestamped version
+            $files = glob($path . '/collection-report-event-' . $eventId . '-*.pdf');
+            if (!empty($files)) {
+                $latestFile = end($files);
+                return response()->download($latestFile, 'collection-report-' . $event->event_name . '.pdf');
+            }
+            
+            abort(404, 'Report not found. Please generate the report first.');
+            
+        } catch (\Exception $e) {
+            Log::error('Download report error: ' . $e->getMessage());
+            abort(500, 'Error downloading report: ' . $e->getMessage());
         }
-        
-        $latestFile = end($files);
-        
-        return response()->download($latestFile, 'collection-report-' . $event->event_name . '.pdf');
-    }
-
-    /**
-     * Generate Summary Report PDF (Legacy - keep for backward compatibility)
-     */
-    public function summaryReport(Request $request)
-    {
-        $request->validate([
-            'date_from' => 'required|date',
-            'date_to' => 'required|date|after_or_equal:date_from',
-        ]);
-
-        // Get all approved payment events within date range
-        $events = Event::where('user_id', $this->organizationId)
-            ->where('approval_status', 'approved')
-            ->where('payment', 'Payment')
-            ->whereBetween('created_at', [
-                $request->date_from . ' 00:00:00', 
-                $request->date_to . ' 23:59:59'
-            ])
-            ->with(['eventType'])
-            ->get();
-
-        $mappedEvents = $events->map(function ($event) {
-            // Get course names from IDs
-            $courseNames = [];
-            if (!empty($event->courses) && is_array($event->courses)) {
-                $courseNames = Course::whereIn('id', $event->courses)
-                    ->pluck('name')
-                    ->toArray();
-            }
-
-            // Count eligible students
-            $studentQuery = Student::where('user_id', $this->organizationId);
-            
-            if (!empty($courseNames)) {
-                $studentQuery->whereIn('course', $courseNames);
-            }
-            if (!empty($event->year_levels) && is_array($event->year_levels)) {
-                $studentQuery->whereIn('yearlevel', $event->year_levels);
-            }
-            
-            $totalStudents = $studentQuery->count();
-
-            // Get payment stats
-            $paidCount = EventStudent::where('event_id', $event->id)
-                ->where('status', 'Paid')
-                ->count();
-                
-            $totalCollected = EventStudent::where('event_id', $event->id)
-                ->where('status', 'Paid')
-                ->sum('amount_paid');
-
-            return [
-                'event_name' => $event->event_name,
-                'event_date' => $event->event_date_start instanceof \Carbon\Carbon 
-                    ? $event->event_date_start->format('M d, Y') 
-                    : date('M d, Y', strtotime($event->event_date_start)),
-                'event_fee' => $event->event_fee,
-                'total_students' => $totalStudents,
-                'paid_count' => $paidCount,
-                'total_collected' => $totalCollected,
-                'collection_rate' => $totalStudents > 0 ? round(($paidCount / $totalStudents) * 100, 2) : 0,
-            ];
-        });
-
-        // Calculate overall totals
-        $totalEvents = $mappedEvents->count();
-        $totalStudents = $mappedEvents->sum('total_students');
-        $totalPaid = $mappedEvents->sum('paid_count');
-        $totalCollected = $mappedEvents->sum('total_collected');
-        $overallRate = $totalStudents > 0 ? round(($totalPaid / $totalStudents) * 100, 2) : 0;
-
-        // Load header image
-        $headerImage = $this->loadHeaderImage();
-
-        $data = [
-            'events' => $mappedEvents,
-            'summary' => [
-                'total_events' => $totalEvents,
-                'total_students' => $totalStudents,
-                'total_paid' => $totalPaid,
-                'total_collected' => $totalCollected,
-                'overall_rate' => $overallRate,
-            ],
-            'date_range' => [
-                'from' => $request->date_from,
-                'to' => $request->date_to,
-            ],
-            'org_name' => $this->organizationName,
-            'school_name' => 'CSUCC - Caraga State University Cabadbaran Campus',
-            'report_date' => now()->format('F d, Y'),
-            'generated_by' => Auth::guard('org_user')->user()->name,
-            'header_image' => $headerImage,
-        ];
-
-        $pdf = Pdf::loadView('pdfs.summary-report', $data);
-        $pdf->setPaper('A4', 'portrait');
-        $pdf->setOptions([
-            'defaultFont' => 'sans-serif',
-            'isHtml5ParserEnabled' => true,
-            'isRemoteEnabled' => true,
-            'chroot' => public_path(),
-        ]);
-        
-        return $pdf->download('summary-report-' . now()->format('Y-m-d') . '.pdf');
-    }
-
-    /**
-     * Legacy collection report method (keep for backward compatibility)
-     */
-    public function collectionReport(Request $request)
-    {
-        $request->validate([
-            'event_id' => 'required|exists:events,id',
-            'date_from' => 'nullable|date',
-            'date_to' => 'nullable|date|after_or_equal:date_from',
-            'status' => 'nullable|in:all,paid,pending,not_paid'
-        ]);
-
-        return $this->generate($request, $request->event_id);
     }
 
     /**
@@ -512,23 +421,7 @@ class ReportController extends Controller
                 return response()->json(['error' => 'Unauthorized'], 403);
             }
 
-            // Delete old report files for this event
-            $path = storage_path('app/public/collection-reports');
-            $oldFiles = glob($path . '/collection-report-event-' . $eventId . '-*.pdf');
-            foreach ($oldFiles as $oldFile) {
-                if (file_exists($oldFile)) {
-                    unlink($oldFile);
-                    Log::info('Deleted old report file: ' . basename($oldFile));
-                }
-            }
-            
-            // Also delete generic file
-            $genericFile = $path . '/event_' . $eventId . '.pdf';
-            if (file_exists($genericFile)) {
-                unlink($genericFile);
-            }
-
-            // Generate fresh report
+            // Generate fresh report (this will overwrite the existing generic file)
             return $this->generate($request, $eventId);
             
         } catch (\Exception $e) {
@@ -536,6 +429,125 @@ class ReportController extends Controller
             return response()->json([
                 'error' => 'Failed to regenerate report: ' . $e->getMessage()
             ], 500);
+        }
+    }
+
+    /**
+     * Generate Summary Report PDF
+     */
+    public function summaryReport(Request $request)
+    {
+        try {
+            $request->validate([
+                'date_from' => 'required|date',
+                'date_to' => 'required|date|after_or_equal:date_from',
+            ]);
+
+            // Get all approved payment events within date range
+            $events = Event::where('user_id', $this->organizationId)
+                ->where('approval_status', 'approved')
+                ->where('payment', 'Payment')
+                ->whereBetween('event_date_start', [
+                    $request->date_from, 
+                    $request->date_to
+                ])
+                ->with(['eventType'])
+                ->get();
+
+            $mappedEvents = $events->map(function ($event) {
+                // Get department names from IDs
+                $departmentNames = [];
+                if (!empty($event->departments) && is_array($event->departments)) {
+                    $departmentNames = Department::whereIn('id', $event->departments)->pluck('name')->toArray();
+                }
+
+                // Get course names from IDs
+                $courseNames = [];
+                if (!empty($event->courses) && is_array($event->courses)) {
+                    $courseNames = Course::whereIn('id', $event->courses)->pluck('name')->toArray();
+                }
+
+                // Count eligible students
+                $studentQuery = Student::where('user_id', $this->organizationId);
+                
+                if (!empty($departmentNames)) {
+                    $studentQuery->whereIn('department', $departmentNames);
+                }
+                if (!empty($courseNames)) {
+                    $studentQuery->whereIn('course', $courseNames);
+                }
+                if (!empty($event->year_levels) && is_array($event->year_levels)) {
+                    $studentQuery->whereIn('yearlevel', $event->year_levels);
+                }
+                
+                $totalStudents = $studentQuery->count();
+
+                // Get payment stats
+                $paidCount = EventStudent::where('event_id', $event->id)
+                    ->where('status', 'Paid')
+                    ->count();
+                    
+                $totalCollected = EventStudent::where('event_id', $event->id)
+                    ->where('status', 'Paid')
+                    ->sum('amount_paid');
+
+                return [
+                    'event_name' => $event->event_name,
+                    'event_date' => $event->event_date_start instanceof \Carbon\Carbon 
+                        ? $event->event_date_start->format('M d, Y') 
+                        : date('M d, Y', strtotime($event->event_date_start)),
+                    'event_fee' => $event->event_fee,
+                    'total_students' => $totalStudents,
+                    'paid_count' => $paidCount,
+                    'total_collected' => $totalCollected,
+                    'collection_rate' => $totalStudents > 0 ? round(($paidCount / $totalStudents) * 100, 2) : 0,
+                ];
+            });
+
+            // Calculate overall totals
+            $totalEvents = $mappedEvents->count();
+            $totalStudents = $mappedEvents->sum('total_students');
+            $totalPaid = $mappedEvents->sum('paid_count');
+            $totalCollected = $mappedEvents->sum('total_collected');
+            $overallRate = $totalStudents > 0 ? round(($totalPaid / $totalStudents) * 100, 2) : 0;
+
+            // Load header image
+            $headerImage = $this->loadHeaderImage();
+
+            $data = [
+                'events' => $mappedEvents,
+                'summary' => [
+                    'total_events' => $totalEvents,
+                    'total_students' => $totalStudents,
+                    'total_paid' => $totalPaid,
+                    'total_collected' => $totalCollected,
+                    'overall_rate' => $overallRate,
+                ],
+                'date_range' => [
+                    'from' => $request->date_from,
+                    'to' => $request->date_to,
+                ],
+                'org_name' => $this->organizationName,
+                'school_name' => 'CSUCC - Caraga State University Cabadbaran Campus',
+                'report_date' => now()->format('F d, Y'),
+                'generated_by' => Auth::guard('org_user')->user()->name,
+                'header_image' => $headerImage,
+            ];
+
+            $pdf = Pdf::loadView('pdfs.summary-report', $data);
+            $pdf->setPaper('A4', 'portrait');
+            $pdf->setOptions([
+                'defaultFont' => 'sans-serif',
+                'isHtml5ParserEnabled' => true,
+                'isRemoteEnabled' => true,
+                'chroot' => public_path(),
+            ]);
+            
+            return $pdf->download('summary-report-' . now()->format('Y-m-d') . '.pdf');
+            
+        } catch (\Exception $e) {
+            Log::error('Summary report error: ' . $e->getMessage());
+            return back()->with('error', 'Failed to generate summary report: ' . $e->getMessage());
         }
     }
 }
