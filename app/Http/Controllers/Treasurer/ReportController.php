@@ -6,8 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\Student;
 use App\Models\EventStudent;
-use App\Models\OrganizationSetting;
-use App\Models\Course;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -168,7 +166,7 @@ class ReportController extends Controller
                 'isRemoteEnabled' => true,
             ]);
             
-            // Store PDF using Storage facade (like Admin controller)
+            // Store PDF using Storage facade
             $pdfPath = 'collection-reports/event_' . $event->id . '.pdf';
             $pdfContent = $pdf->output();
             Storage::disk('public')->put($pdfPath, $pdfContent);
@@ -185,7 +183,7 @@ class ReportController extends Controller
             Log::error('Generate report error: ' . $e->getMessage());
             Log::error('Stack trace: ' . $e->getTraceAsString());
             return response()->json([
-                'error' => 'Failed to generate report: ' . $e->getMessage()
+                'error' => 'Failed to generate report: ' . $e->getMessage() . ' on line ' . $e->getLine()
             ], 500);
         }
     }

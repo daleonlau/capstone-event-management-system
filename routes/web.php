@@ -661,3 +661,17 @@ Route::get('/debug-report-error/{eventId}', function($eventId) {
         ], 500);
     }
 });
+
+
+Route::get('/test-controller-load', function() {
+    try {
+        return response()->json([
+            'status' => 'ok',
+            'controller_exists' => class_exists('App\Http\Controllers\Treasurer\ReportController'),
+            'dompdf_exists' => class_exists('Barryvdh\DomPDF\Facade\Pdf'),
+            'storage_exists' => class_exists('Illuminate\Support\Facades\Storage'),
+        ]);
+    } catch (\Exception $e) {
+        return response()->json(['error' => $e->getMessage()], 500);
+    }
+});
