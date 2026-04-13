@@ -87,28 +87,41 @@ class ReportController extends Controller
     }
 
     public function generate(Request $request, $eventId)
-    {
-        try {
-            Log::info('Starting collection report generation for event: ' . $eventId);
-            
-            $event = Event::findOrFail($eventId);
-            
-            if ($event->user_id !== $this->organizationId) {
-                return response()->json(['error' => 'Unauthorized'], 403);
-            }
+{
+    try {
+        Log::info('Starting collection report generation for event: ' . $eventId);
+        
+        $event = Event::findOrFail($eventId);
+        
+        if ($event->user_id !== $this->organizationId) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
 
-            // Get all students with their payment status
-            $students = Student::where('user_id', $this->organizationId)->get();
-            
-            $studentData = [];
-            $paidCount = 0;
-            $pendingCount = 0;
-            $totalCollected = 0;
+        // OPTIMIZED: Use chunking to process 540 students without memory issues
+        $studentData = [];
+        $paidCount = 0;
+        $pendingCount = 0;
+        $totalCollected = 0;
+        
+        // Get all student IDs first (lightweight)
+        $studentIds = Student::where('user_id', $this->organizationId)->pluck('student_id');
+        $totalStudents = $studentIds->count();
+        
+        Log::info('Total students to process: ' . $totalStudents);
+        
+        // Get all payments for this event in one query (much faster)
+        $payments = EventStudent::where('event_id', $event->id)
+            ->get()
+            ->keyBy('student_id');
+        
+        Log::info('Payments found: ' . $payments->count());
+        
+        // Process students in chunks of 100
+        foreach ($studentIds->chunk(100) as $chunk) {
+            $students = Student::whereIn('student_id', $chunk)->get();
             
             foreach ($students as $student) {
-                $payment = EventStudent::where('event_id', $event->id)
-                    ->where('student_id', $student->student_id)
-                    ->first();
+                $payment = $payments->get($student->student_id);
                 
                 $status = $payment ? $payment->status : 'Not Paid';
                 $amount = $payment ? floatval($payment->amount_paid) : 0;
@@ -134,59 +147,85 @@ class ReportController extends Controller
                 ];
             }
             
-            $totalStudents = count($studentData);
-            $notPaidCount = $totalStudents - $paidCount - $pendingCount;
-            $expectedTotal = $totalStudents * floatval($event->event_fee);
-            $collectionRate = $expectedTotal > 0 ? round(($totalCollected / $expectedTotal) * 100, 2) : 0;
-            
-            $data = [
-                'event' => $event,
-                'students' => $studentData,
-                'summary' => [
-                    'total_students' => $totalStudents,
-                    'paid_students' => $paidCount,
-                    'pending_students' => $pendingCount,
-                    'not_paid_students' => $notPaidCount,
-                    'total_collected' => $totalCollected,
-                    'expected_total' => $expectedTotal,
-                    'collection_rate' => $collectionRate,
-                ],
-                'org_name' => $this->organizationName,
-                'report_date' => now()->format('F d, Y'),
-                'generated_by' => Auth::guard('org_user')->user()->name,
-                'header_image' => null,
-            ];
-            
-            // Generate PDF
-            $pdf = Pdf::loadView('pdfs.collection-report', $data);
-            $pdf->setPaper('A4', 'portrait');
-            $pdf->setOptions([
-                'defaultFont' => 'sans-serif',
-                'isHtml5ParserEnabled' => true,
-                'isRemoteEnabled' => true,
-            ]);
-            
-            // Store PDF using Storage facade
-            $pdfPath = 'collection-reports/event_' . $event->id . '.pdf';
-            $pdfContent = $pdf->output();
-            Storage::disk('public')->put($pdfPath, $pdfContent);
-            
-            Log::info('Collection report generated successfully for event: ' . $event->id);
-            
-            return response()->json([
-                'success' => true,
-                'message' => 'Report generated successfully',
-                'report_path' => Storage::disk('public')->url($pdfPath)
-            ]);
-            
-        } catch (\Exception $e) {
-            Log::error('Generate report error: ' . $e->getMessage());
-            Log::error('Stack trace: ' . $e->getTraceAsString());
-            return response()->json([
-                'error' => 'Failed to generate report: ' . $e->getMessage() . ' on line ' . $e->getLine()
-            ], 500);
+            // Free memory after each chunk
+            unset($students);
         }
+        
+        $notPaidCount = $totalStudents - $paidCount - $pendingCount;
+        $expectedTotal = $totalStudents * floatval($event->event_fee);
+        $collectionRate = $expectedTotal > 0 ? round(($totalCollected / $expectedTotal) * 100, 2) : 0;
+        
+        Log::info('Summary - Total: ' . $totalStudents . ', Paid: ' . $paidCount . ', Collected: ' . $totalCollected);
+        
+        // Limit students for PDF to avoid memory issues (show first 500 if more)
+        $studentsForPdf = $studentData;
+        if (count($studentData) > 500) {
+            Log::warning('Too many students (' . count($studentData) . '), limiting to 500 for PDF');
+            $studentsForPdf = array_slice($studentData, 0, 500);
+            $studentsForPdf[] = [
+                'student_id' => '...',
+                'name' => 'And ' . (count($studentData) - 500) . ' more students',
+                'course' => '...',
+                'year_level' => '...',
+                'status' => '...',
+                'amount' => 0,
+                'paid_at' => null,
+                'receipt_number' => '...',
+            ];
+        }
+        
+        $data = [
+            'event' => $event,
+            'students' => $studentsForPdf,
+            'summary' => [
+                'total_students' => $totalStudents,
+                'paid_students' => $paidCount,
+                'pending_students' => $pendingCount,
+                'not_paid_students' => $notPaidCount,
+                'total_collected' => $totalCollected,
+                'expected_total' => $expectedTotal,
+                'collection_rate' => $collectionRate,
+            ],
+            'org_name' => $this->organizationName,
+            'report_date' => now()->format('F d, Y'),
+            'generated_by' => Auth::guard('org_user')->user()->name,
+            'header_image' => null,
+        ];
+        
+        // Generate PDF with memory optimization
+        $pdf = Pdf::loadView('pdfs.collection-report', $data);
+        $pdf->setPaper('A4', 'portrait');
+        $pdf->setOptions([
+            'defaultFont' => 'sans-serif',
+            'isHtml5ParserEnabled' => true,
+            'isRemoteEnabled' => true,
+            'tempDir' => storage_path('temp/dompdf'),
+            'logOutputFile' => storage_path('logs/dompdf.log'),
+            'enable_remote' => true,
+            'chroot' => public_path(),
+        ]);
+        
+        // Store PDF
+        $pdfPath = 'collection-reports/event_' . $event->id . '.pdf';
+        $pdfContent = $pdf->output();
+        Storage::disk('public')->put($pdfPath, $pdfContent);
+        
+        Log::info('Collection report generated successfully for event: ' . $event->id);
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Report generated successfully',
+            'report_path' => Storage::disk('public')->url($pdfPath)
+        ]);
+        
+    } catch (\Exception $e) {
+        Log::error('Generate report error: ' . $e->getMessage());
+        Log::error('Stack trace: ' . $e->getTraceAsString());
+        return response()->json([
+            'error' => 'Failed to generate report: ' . $e->getMessage() . ' on line ' . $e->getLine()
+        ], 500);
     }
+}
 
     public function view($eventId)
     {
