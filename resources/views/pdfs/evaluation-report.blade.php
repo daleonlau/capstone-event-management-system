@@ -719,50 +719,174 @@
                 </div>
             </div>
 
-            <!-- PART IV: AI-Powered Insights for this day -->
-            @if($dateData['has_ai_insights'])
-            <div class="section-header">IV. AI-POWERED INSIGHTS</div>
+          <!-- PART IV: DECISION SUPPORT INSIGHTS for this day -->
+@if($dateData['has_ai_insights'])
+<div class="section-header">IV. DECISION SUPPORT INSIGHTS</div>
 
-                @if(count($dateData['strengths']) > 0)
-                <div class="comment-group">
-                    <div class="comment-group-title" style="background: #e8f5e9; color: #2e7d32;">✅ STRENGTHS & SUCCESS FACTORS</div>
-                    <div class="comments-list">
-                        @foreach($dateData['strengths'] as $strength)
-                            <div class="comment-item">✓ {{ $strength }}</div>
-                        @endforeach
+    <!-- 1. OVERALL RATING CARD -->
+    <div class="comment-group">
+        
+
+    <!-- 4. CATEGORY PERFORMANCE -->
+    @if(!empty($dateData['category_scores']))
+    <div class="comment-group">
+        <div class="comment-group-title" style="background: #e8f5e9; color: #2e7d32;">📈 CATEGORY PERFORMANCE</div>
+        <div class="comments-list">
+            <div class="comment-item" style="font-style: italic; margin-bottom: 8px;">Detailed breakdown of each evaluation category</div>
+            @foreach($dateData['category_scores'] as $categoryName => $categoryData)
+                @php
+                    $catScore = $categoryData['average'] ?? 0;
+                    if($catScore >= 4.50) $catRating = 'Outstanding';
+                    elseif($catScore >= 3.50) $catRating = 'Very Satisfactory';
+                    elseif($catScore >= 2.50) $catRating = 'Satisfactory';
+                    elseif($catScore >= 1.50) $catRating = 'Poor';
+                    else $catRating = 'Very Poor';
+                    
+                    $catPercent = ($catScore / 5) * 100;
+                @endphp
+                <div class="comment-item">
+                    <strong>{{ $categoryName }}</strong>
+                    <div style="float: right;">{{ number_format($catScore, 2) }}/5.0 - <span style="color: #27ae60;">{{ $catRating }}</span></div>
+                    <div style="clear: both;"></div>
+                    <div style="width: 100%; height: 8px; background-color: #e0e0e0; border-radius: 4px; margin-top: 4px;">
+                        <div style="width: {{ $catPercent }}%; height: 100%; background-color: #27ae60; border-radius: 4px;"></div>
                     </div>
                 </div>
-                @endif
+            @endforeach
+        </div>
+    </div>
+    @endif
 
-                @if(count($dateData['weaknesses']) > 0)
-                <div class="comment-group">
-                    <div class="comment-group-title" style="background: #ffebee; color: #c62828;">⚠️ AREAS FOR IMPROVEMENT</div>
-                    <div class="comments-list">
-                        @foreach($dateData['weaknesses'] as $weakness)
-                            <div class="comment-item">• {{ $weakness }}</div>
-                        @endforeach
+    <!-- 5. LOW SCORING QUESTIONS (Below 3.5) -->
+    @php
+        $lowScoringQuestions = [];
+        if(!empty($dateData['category_scores'])){
+            foreach($dateData['category_scores'] as $categoryName => $categoryData){
+                if(!empty($categoryData['questions'])){
+                    foreach($categoryData['questions'] as $questionText => $qScore){
+                        if($qScore < 3.5){
+                            $lowScoringQuestions[] = [
+                                'question' => $questionText,
+                                'score' => $qScore,
+                                'category' => $categoryName
+                            ];
+                        }
+                    }
+                }
+            }
+        }
+        usort($lowScoringQuestions, function($a, $b) { return $a['score'] <=> $b['score']; });
+    @endphp
+
+    @if(count($lowScoringQuestions) > 0)
+    <div class="comment-group">
+        <div class="comment-group-title" style="background: #ffebee; color: #c62828;">⚠️ LOW SCORING QUESTIONS</div>
+        <div class="comments-list">
+            <div class="comment-item" style="font-style: italic; margin-bottom: 8px;">Questions with average rating below 3.5/5.0 - Requires immediate attention</div>
+            @foreach($lowScoringQuestions as $index => $item)
+                <div class="comment-item">
+                    <strong>#{{ $index + 1 }}</strong> {{ $item['question'] }}
+                    <div style="float: right;"><strong>{{ number_format($item['score'], 2) }}/5.0</strong></div>
+                    <div style="clear: both;"></div>
+                    <div>Category: {{ $item['category'] }}</div>
+                    <div><span style="color: #e74c3c;">High Priority</span> 💡 Review and address this area for improvement</div>
+                </div>
+            @endforeach
+        </div>
+    </div>
+    @endif
+
+    <!-- 6. CRITICAL SUCCESS FACTORS -->
+    @if(!empty($dateData['category_scores']))
+    <div class="comment-group">
+        <div class="comment-group-title" style="background: #fff3e0; color: #ef6c00;">🔥 CRITICAL SUCCESS FACTORS</div>
+        <div class="comments-list">
+            <div class="comment-item" style="font-style: italic; margin-bottom: 8px;">Factors that have the highest impact on overall satisfaction</div>
+            @php
+                $sortedCategories = [];
+                foreach($dateData['category_scores'] as $catName => $catData){
+                    $sortedCategories[] = ['name' => $catName, 'score' => $catData['average'] ?? 0];
+                }
+                usort($sortedCategories, function($a, $b) { return $b['score'] <=> $a['score']; });
+            @endphp
+            @foreach($sortedCategories as $cat)
+                @php
+                    $impactPercent = ($cat['score'] / 5) * 100;
+                    $needsText = $cat['score'] < 3.5 ? 'Needs improvement to meet expectations' : 'Meeting expectations';
+                @endphp
+                <div class="comment-item">
+                    <strong>{{ $cat['name'] }}</strong>
+                    <div style="float: right;">{{ number_format($cat['score'], 2) }}/5.0 - {{ $impactPercent }}% impact</div>
+                    <div style="clear: both;"></div>
+                    <div style="color: {{ $cat['score'] < 3.5 ? '#e74c3c' : '#27ae60' }};">{{ $needsText }}</div>
+                    <div style="width: 100%; height: 6px; background-color: #e0e0e0; border-radius: 3px; margin-top: 4px;">
+                        <div style="width: {{ $impactPercent }}%; height: 100%; background-color: {{ $cat['score'] < 3.5 ? '#e74c3c' : '#27ae60' }}; border-radius: 3px;"></div>
                     </div>
                 </div>
-                @endif
+            @endforeach
+        </div>
+    </div>
+    @endif
 
-                @if(count($dateData['recommendations']) > 0)
-                <div class="comment-group">
-                    <div class="comment-group-title" style="background: #fff3e0; color: #ef6c00;">💡 ACTIONABLE RECOMMENDATIONS</div>
-                    <div class="comments-list">
-                        @foreach($dateData['recommendations'] as $rec)
-                            @php
-                                $priority = is_array($rec) ? ($rec['priority'] ?? 'medium') : 'medium';
-                                $title = is_array($rec) ? ($rec['title'] ?? $rec) : $rec;
-                            @endphp
-                            <div class="rec-card rec-priority-{{ $priority }}">
-                                <strong>{{ strtoupper($priority) }} PRIORITY:</strong> {{ $title }}
-                            </div>
-                        @endforeach
-                    </div>
+    <!-- 7. STRENGTHS -->
+    @if(count($dateData['strengths']) > 0)
+    <div class="comment-group">
+        <div class="comment-group-title" style="background: #e8f5e9; color: #2e7d32;">✅ STRENGTHS</div>
+        <div class="comments-list">
+            @foreach($dateData['strengths'] as $strength)
+                <div class="comment-item">✓ {{ $strength }}</div>
+            @endforeach
+        </div>
+    </div>
+    @endif
+
+    <!-- 8. AREAS FOR IMPROVEMENT -->
+    @if(count($dateData['weaknesses']) > 0)
+    <div class="comment-group">
+        <div class="comment-group-title" style="background: #ffebee; color: #c62828;">⚠️ AREAS FOR IMPROVEMENT</div>
+        <div class="comments-list">
+            @foreach($dateData['weaknesses'] as $weakness)
+                <div class="comment-item">[Needs Improvement] {{ $weakness }}</div>
+            @endforeach
+        </div>
+    </div>
+    @endif
+
+    
+    <!-- 10. ACTIONABLE RECOMMENDATIONS -->
+    @if(count($lowScoringQuestions) > 0 || count($dateData['recommendations']) > 0)
+    <div class="comment-group">
+        <div class="comment-group-title" style="background: #fff3e0; color: #ef6c00;">💡 ACTIONABLE RECOMMENDATIONS</div>
+        <div class="comments-list">
+            <div class="comment-item" style="font-style: italic; margin-bottom: 8px;">Based on participant feedback and scores</div>
+            @foreach($lowScoringQuestions as $item)
+                @php
+                    $targetScore = $item['score'] < 3.0 ? 4.0 : 3.5;
+                    $categoryName = $item['category'];
+                @endphp
+                <div class="rec-card rec-priority-high">
+                    <strong>{{ strtoupper($item['score'] < 3.0 ? 'HIGH' : 'MEDIUM') }} PRIORITY</strong>
+                    <div>{{ number_format($item['score'], 2) }}/5.0 → {{ $targetScore }}/5.0</div>
+                    <div>Improve {{ $categoryName }}</div>
+                    <div style="margin-top: 5px;">{{ $categoryName }} is currently at {{ number_format($item['score'], 2) }}/5.0, below the target of 3.50.</div>
+                    <div style="margin-top: 5px;"><strong>Action Steps:</strong> → Review current processes → Gather more specific feedback → Implement targeted improvements</div>
+                    <div style="margin-top: 5px;">🎯 Increase {{ $categoryName }} satisfaction to {{ $targetScore }}+</div>
                 </div>
-                @endif
-            @endif
+            @endforeach
+            @foreach($dateData['recommendations'] as $rec)
+                @php
+                    $priority = is_array($rec) ? ($rec['priority'] ?? 'medium') : 'medium';
+                    $title = is_array($rec) ? ($rec['title'] ?? $rec) : $rec;
+                @endphp
+                <div class="rec-card rec-priority-{{ $priority }}">
+                    <strong>{{ strtoupper($priority) }} PRIORITY:</strong> {{ $title }}
+                </div>
+            @endforeach
+        </div>
+    </div>
+    @endif
 
+@endif
             <!-- Signature for this day's report -->
             <div class="signature-section">
                 <div class="signature-box">
