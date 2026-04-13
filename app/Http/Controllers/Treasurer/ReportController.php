@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\Student;
 use App\Models\EventStudent;
-use App\Models\Course;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -96,49 +95,23 @@ class ReportController extends Controller
                 return response()->json(['error' => 'Unauthorized'], 403);
             }
 
-            // Get counts (lightweight)
+            // SIMPLE DATA - NO STUDENT PROCESSING
             $totalStudents = Student::where('user_id', $this->organizationId)->count();
             $paidCount = EventStudent::where('event_id', $event->id)->where('status', 'Paid')->count();
             $pendingCount = EventStudent::where('event_id', $event->id)->where('status', 'Pending')->count();
             $totalCollected = EventStudent::where('event_id', $event->id)->where('status', 'Paid')->sum('amount_paid');
             
-            $notPaidCount = $totalStudents - $paidCount - $pendingCount;
-            $expectedTotal = $totalStudents * floatval($event->event_fee);
-            $collectionRate = $expectedTotal > 0 ? round(($totalCollected / $expectedTotal) * 100, 2) : 0;
-            
-            // ONLY get paid students for detailed list (this is the key - much smaller dataset)
-            $paidPayments = EventStudent::where('event_id', $event->id)
-                ->where('status', 'Paid')
-                ->with('student')
-                ->get();
-            
-            $studentData = [];
-            foreach ($paidPayments as $payment) {
-                if ($payment->student) {
-                    $studentData[] = [
-                        'student_id' => $payment->student->student_id,
-                        'name' => $payment->student->firstname . ' ' . $payment->student->lastname,
-                        'course' => $payment->student->course ?? 'N/A',
-                        'year_level' => $payment->student->yearlevel ?? 'N/A',
-                        'status' => 'Paid',
-                        'amount' => floatval($payment->amount_paid),
-                        'paid_at' => $payment->updated_at ? $payment->updated_at->format('M d, Y') : null,
-                        'receipt_number' => $payment->receipt_number ?? '—',
-                    ];
-                }
-            }
-            
             $data = [
                 'event' => $event,
-                'students' => $studentData,
+                'students' => [],  // EMPTY - no student details
                 'summary' => [
                     'total_students' => $totalStudents,
                     'paid_students' => $paidCount,
                     'pending_students' => $pendingCount,
-                    'not_paid_students' => $notPaidCount,
+                    'not_paid_students' => $totalStudents - $paidCount - $pendingCount,
                     'total_collected' => $totalCollected,
-                    'expected_total' => $expectedTotal,
-                    'collection_rate' => $collectionRate,
+                    'expected_total' => $totalStudents * $event->event_fee,
+                    'collection_rate' => $totalStudents > 0 ? round(($totalCollected / ($totalStudents * $event->event_fee)) * 100, 2) : 0,
                 ],
                 'org_name' => $this->organizationName,
                 'report_date' => now()->format('F d, Y'),
@@ -166,7 +139,6 @@ class ReportController extends Controller
             ]);
             
         } catch (\Exception $e) {
-            Log::error('Generate error: ' . $e->getMessage());
             return response()->json([
                 'error' => $e->getMessage() . ' on line ' . $e->getLine()
             ], 500);
