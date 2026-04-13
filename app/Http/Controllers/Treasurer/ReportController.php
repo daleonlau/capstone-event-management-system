@@ -95,23 +95,57 @@ class ReportController extends Controller
                 return response()->json(['error' => 'Unauthorized'], 403);
             }
 
-            // SIMPLE DATA - NO STUDENT PROCESSING
+            // Get all payments for this event in ONE query (eager loaded)
+            $payments = EventStudent::where('event_id', $event->id)
+                ->get()
+                ->keyBy('student_id');
+            
+            // Get counts
             $totalStudents = Student::where('user_id', $this->organizationId)->count();
-            $paidCount = EventStudent::where('event_id', $event->id)->where('status', 'Paid')->count();
-            $pendingCount = EventStudent::where('event_id', $event->id)->where('status', 'Pending')->count();
-            $totalCollected = EventStudent::where('event_id', $event->id)->where('status', 'Paid')->sum('amount_paid');
+            $paidCount = $payments->where('status', 'Paid')->count();
+            $pendingCount = $payments->where('status', 'Pending')->count();
+            $totalCollected = $payments->where('status', 'Paid')->sum('amount_paid');
+            
+            // Process students in CHUNKS to avoid memory issues
+            $studentData = [];
+            
+            Student::where('user_id', $this->organizationId)
+                ->chunk(100, function($students) use ($payments, &$studentData) {
+                    foreach ($students as $student) {
+                        $payment = $payments->get($student->student_id);
+                        
+                        $status = $payment ? $payment->status : 'Not Paid';
+                        $amount = $payment ? floatval($payment->amount_paid) : 0;
+                        
+                        $studentData[] = [
+                            'student_id' => $student->student_id,
+                            'name' => $student->firstname . ' ' . $student->lastname,
+                            'course' => $student->course ?? 'N/A',
+                            'year_level' => $student->yearlevel ?? 'N/A',
+                            'status' => $status,
+                            'amount' => $amount,
+                            'paid_at' => ($payment && $payment->status === 'Paid' && $payment->updated_at) 
+                                ? $payment->updated_at->format('M d, Y') 
+                                : null,
+                            'receipt_number' => $payment && $payment->receipt_number ? $payment->receipt_number : '—',
+                        ];
+                    }
+                });
+            
+            $expectedTotal = $totalStudents * floatval($event->event_fee);
+            $collectionRate = $expectedTotal > 0 ? round(($totalCollected / $expectedTotal) * 100, 2) : 0;
             
             $data = [
                 'event' => $event,
-                'students' => [],  // EMPTY - no student details
+                'students' => $studentData,
                 'summary' => [
                     'total_students' => $totalStudents,
                     'paid_students' => $paidCount,
                     'pending_students' => $pendingCount,
                     'not_paid_students' => $totalStudents - $paidCount - $pendingCount,
                     'total_collected' => $totalCollected,
-                    'expected_total' => $totalStudents * $event->event_fee,
-                    'collection_rate' => $totalStudents > 0 ? round(($totalCollected / ($totalStudents * $event->event_fee)) * 100, 2) : 0,
+                    'expected_total' => $expectedTotal,
+                    'collection_rate' => $collectionRate,
                 ],
                 'org_name' => $this->organizationName,
                 'report_date' => now()->format('F d, Y'),
@@ -128,6 +162,11 @@ class ReportController extends Controller
             // Generate PDF
             $pdf = Pdf::loadView('pdfs.collection-report', $data);
             $pdf->setPaper('A4', 'portrait');
+            $pdf->setOptions([
+                'defaultFont' => 'sans-serif',
+                'isHtml5ParserEnabled' => true,
+                'isRemoteEnabled' => true,
+            ]);
             
             $filePath = $path . '/event_' . $event->id . '.pdf';
             $pdf->save($filePath);
@@ -139,6 +178,7 @@ class ReportController extends Controller
             ]);
             
         } catch (\Exception $e) {
+            Log::error('Generate error: ' . $e->getMessage());
             return response()->json([
                 'error' => $e->getMessage() . ' on line ' . $e->getLine()
             ], 500);
