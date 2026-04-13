@@ -1,33 +1,44 @@
 """
-EventFlow AI Service - NLP Sentiment Analysis Only
+EventFlow AI Service - XLM-RoBERTa Sentiment Analysis
+Supports: Pre-trained model + Fine-tuned model (with synthetic data)
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-import joblib
-import os
+from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from transformers import pipeline, XLMRobertaTokenizer, XLMRobertaForSequenceClassification
+from peft import PeftModel
+import torch
+import uvicorn
+import os
 import logging
 import re
 import string
+from datetime import datetime
 from collections import Counter
 
-# ==================== Logging ====================
+# ============================================================
+# LOGGING
+# ============================================================
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# ==================== FastAPI App ====================
+# ============================================================
+# INITIALIZE FASTAPI APP
+# ============================================================
+
 app = FastAPI(
     title="EventFlow AI Service",
-    description="NLP Sentiment Analysis for Event Evaluation Comments",
-    version="3.0.0"
+    description="XLM-RoBERTa Sentiment Analysis for Event Feedback",
+    version="2.0.0"
 )
 
+# Enable CORS for Laravel integration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -36,276 +47,359 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ==================== Keyword Lists ====================
+# ============================================================
+# CONFIGURATION
+# ============================================================
 
-POSITIVE_KEYWORDS = [
-    'good', 'great', 'excellent', 'awesome', 'nice', 'love', 'perfect', 'fantastic',
-    'wonderful', 'amazing', 'helpful', 'clear', 'organized', 'satisfied', 'happy',
-    'enjoyed', 'informative', 'well', 'best', 'outstanding', 'impressive', 'valuable',
-    'recommend', 'superb', 'exceptional', 'brilliant', 'pleased', 'fun', 'exciting',
-    'well-organized', 'well-planned', 'smooth', 'efficient', 'professional',
-    'knowledgeable', 'engaging', 'interactive', 'entertaining', 'memorable', 'maayo',
-    'lami', 'nindot', 'ganahan', 'salamat', 'appreciated', 'impressed'
-]
+BASE_MODEL = "FacebookAI/xlm-roberta-base"
+FINETUNED_PATH = "./lora_finetuned/"
+FALLBACK_MODEL = "cardiffnlp/twitter-xlm-roberta-base-sentiment"
 
-NEGATIVE_KEYWORDS = [
-    'bad', 'poor', 'terrible', 'awful', 'worst', 'disappointed', 'waste', 'horrible',
-    'slow', 'boring', 'confusing', 'unclear', 'disorganized', 'unhelpful', 'rude',
-    'unsatisfied', 'lacking', 'insufficient', 'delay', 'problem', 'issue', 'complaint',
-    'difficult', 'frustrating', 'annoying', 'disappointing', 'dissatisfied', 'pangit',
-    'hindi maganda', 'mabagal', 'malamig', 'konti', 'kulang', 'late', 'rush'
-]
+# ============================================================
+# LOAD MODEL (Fine-tuned if exists, otherwise pre-trained)
+# ============================================================
 
-# ==================== Model Manager ====================
+print("=" * 70)
+print("EventFlow AI Service - Sentiment Analysis")
+print("=" * 70)
 
-class SentimentModelManager:
-    def __init__(self):
-        self.sentiment_model = None
-        self.vectorizer = None
-        self.label_encoder = None
-        self.model_loaded = False
-        self.load_models()
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"\n💻 Using device: {device}")
 
-    def load_models(self):
-        models_dir = os.path.join(os.path.dirname(__file__), 'models')
-        os.makedirs(models_dir, exist_ok=True)
+using_finetuned = False
+sentiment_analyzer = None
+tokenizer = None
+model = None
+label_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
 
+# Check if fine-tuned model exists
+print(f"\n📁 Checking for fine-tuned model at: {FINETUNED_PATH}")
+
+if os.path.exists(FINETUNED_PATH):
+    print(f"   ✅ Folder exists")
+    
+    # Check for adapter file (either .bin or .safetensors)
+    adapter_bin = os.path.join(FINETUNED_PATH, "adapter_model.bin")
+    adapter_safetensors = os.path.join(FINETUNED_PATH, "adapter_model.safetensors")
+    config_file = os.path.join(FINETUNED_PATH, "adapter_config.json")
+    
+    has_adapter = False
+    if os.path.exists(adapter_bin):
+        print(f"   ✅ Found adapter_model.bin")
+        has_adapter = True
+    elif os.path.exists(adapter_safetensors):
+        print(f"   ✅ Found adapter_model.safetensors")
+        has_adapter = True
+    else:
+        print(f"   ❌ No adapter file found")
+    
+    if os.path.exists(config_file):
+        print(f"   ✅ Found adapter_config.json")
+    else:
+        print(f"   ❌ adapter_config.json NOT FOUND")
+    
+    if has_adapter and os.path.exists(config_file):
+        print(f"\n📚 Loading FINE-TUNED model from {FINETUNED_PATH}")
+        print(f"   Base model: {BASE_MODEL}")
+        print(f"   This model combines pre-trained knowledge + your synthetic data")
+        
         try:
-            s_path = os.path.join(models_dir, 'sentiment_model.pkl')
-            v_path = os.path.join(models_dir, 'vectorizer.pkl')
-            e_path = os.path.join(models_dir, 'label_encoder.pkl')
-
-            if all(os.path.exists(p) for p in [s_path, v_path, e_path]):
-                self.sentiment_model = joblib.load(s_path)
-                self.vectorizer = joblib.load(v_path)
-                self.label_encoder = joblib.load(e_path)
-                self.model_loaded = True
-                logger.info("NLP Sentiment model loaded successfully")
-            else:
-                logger.warning("Sentiment model files not found — using keyword fallback")
-        except Exception as e:
-            logger.error(f"Failed to load sentiment model: {e}")
-
-    def preprocess_text(self, text: str) -> str:
-        if not text or not isinstance(text, str):
-            return ""
-        text = text.lower()
-        text = text.translate(str.maketrans('', '', string.punctuation))
-        text = re.sub(r'\d+', '', text)
-        return ' '.join(text.split())
-
-    def classify_comment(self, comment: str) -> str:
-        if self.model_loaded:
-            try:
-                processed = self.preprocess_text(comment)
-                if not processed:
-                    return 'neutral'
-                features = self.vectorizer.transform([processed])
-                prediction = self.sentiment_model.predict(features)
-                return str(self.label_encoder.inverse_transform(prediction)[0]).lower()
-            except Exception as e:
-                logger.warning(f"LR sentiment failed, falling back to keywords: {e}")
-
-        return self._keyword_classify(comment)
-
-    def _keyword_classify(self, comment: str) -> str:
-        comment_lower = comment.lower()
-        pos_count = sum(1 for kw in POSITIVE_KEYWORDS if kw in comment_lower)
-        neg_count = sum(1 for kw in NEGATIVE_KEYWORDS if kw in comment_lower)
-        
-        # Check for very positive indicators
-        very_positive = ['excellent', 'amazing', 'perfect', 'fantastic', 'outstanding', 'exceptional']
-        if any(w in comment_lower for w in very_positive):
-            return 'positive'
-        
-        # Check for very negative indicators
-        very_negative = ['disappointed', 'terrible', 'awful', 'poor', 'horrible']
-        if any(w in comment_lower for w in very_negative):
-            return 'negative'
-        
-        if pos_count > neg_count:
-            return 'positive'
-        elif neg_count > pos_count:
-            return 'negative'
-        
-        return 'neutral'
-
-    def analyze_sentiment(self, comments: List[str]) -> Dict[str, Any]:
-        """Perform NLP sentiment analysis on ALL open-ended comments (no limits)"""
-        method = "Logistic Regression NLP" if self.model_loaded else "keyword-based"
-        logger.info(f"Sentiment analysis [{method}] — {len(comments)} comments")
-
-        if not comments:
-            return self._empty_sentiment_result()
-
-        positive_comments = []
-        negative_comments = []
-        neutral_comments = []
-        sentiments = []
-
-        for comment in comments:
-            if not comment or not str(comment).strip():
-                continue
-            comment_str = str(comment).strip()
-            sentiment = self.classify_comment(comment_str)
-            sentiments.append(sentiment)
+            tokenizer = XLMRobertaTokenizer.from_pretrained(BASE_MODEL)
+            base_model = XLMRobertaForSequenceClassification.from_pretrained(
+                BASE_MODEL,
+                num_labels=3,
+                ignore_mismatched_sizes=True
+            )
+            model = PeftModel.from_pretrained(base_model, FINETUNED_PATH)
+            model.eval()
+            model.to(device)
             
-            if sentiment == 'positive':
-                positive_comments.append(comment_str)
-            elif sentiment == 'negative':
-                negative_comments.append(comment_str)
-            else:
-                neutral_comments.append(comment_str)
+            using_finetuned = True
+            print("\n✅ Fine-tuned model loaded successfully!")
+            print("   Model has been trained on event feedback data")
+            
+        except Exception as e:
+            print(f"\n⚠️ Error loading fine-tuned model: {e}")
+            print("   Falling back to pre-trained model...")
+            using_finetuned = False
+    else:
+        print(f"\n⚠️ Fine-tuned model files incomplete")
+        print("   Falling back to pre-trained model...")
+else:
+    print(f"   ❌ Folder does NOT exist")
+    print(f"   Falling back to pre-trained model...")
 
-        total = len(sentiments)
-        if total == 0:
-            return self._empty_sentiment_result()
+if not using_finetuned:
+    print(f"\n📚 Loading PRE-TRAINED model from HuggingFace")
+    print(f"   Model: {FALLBACK_MODEL}")
+    print("   This is the base model without fine-tuning")
+    
+    sentiment_analyzer = pipeline(
+        "sentiment-analysis",
+        model=FALLBACK_MODEL,
+        device=0 if torch.cuda.is_available() else -1
+    )
+    print("\n✅ Pre-trained model loaded successfully!")
 
-        pos_count = sentiments.count('positive')
-        neg_count = sentiments.count('negative')
-        neu_count = sentiments.count('neutral')
-        
-        sentiment_score = round((pos_count + (neu_count * 0.5)) / total, 2)
+print("\n" + "=" * 70)
+print()
 
-        # Extract common themes from ALL comments
-        all_text = ' '.join([c.lower() for c in comments if c])
-        all_words = all_text.split()
-        stopwords = {
-            'the', 'and', 'is', 'in', 'to', 'of', 'it', 'that', 'was', 'for', 'this',
-            'but', 'with', 'as', 'are', 'be', 'at', 'from', 'by', 'an', 'on', 'have',
-            'has', 'were', 'had', 'been', 'not', 'very', 'so', 'a', 'i', 'we', 'they',
-            'he', 'she', 'you', 'also', 'event', 'program', 'activity', 'activities'
-        }
-        word_freq = Counter(all_words)
-        common_themes = [
-            word for word, count in word_freq.most_common(15) 
-            if word not in stopwords and len(word) > 3
-        ][:10]
+# Test the model
+if using_finetuned:
+    test_comment = "Nindot kaayo ang event!"
+    inputs = tokenizer(test_comment, return_tensors="pt", truncation=True, max_length=64)
+    inputs = {k: v.to(device) for k, v in inputs.items()}
+    with torch.no_grad():
+        outputs = model(**inputs)
+        pred = torch.argmax(outputs.logits, dim=1).item()
+    print(f"🔍 Model test: '{test_comment}' -> {label_map[pred]}")
+else:
+    test_result = sentiment_analyzer("Nindot kaayo ang event!")[0]
+    print(f"🔍 Model test: 'Nindot kaayo ang event!' -> {test_result['label']}")
 
-        logger.info(
-            f"Sentiment results [{method}]: "
-            f"{pos_count} positive ({round(pos_count/total*100,1)}%), "
-            f"{neg_count} negative ({round(neg_count/total*100,1)}%), "
-            f"{neu_count} neutral ({round(neu_count/total*100,1)}%)"
-        )
+print("=" * 70)
+print()
 
-        # Return ALL comments (no limits)
-        return {
-            'positive_percentage': round((pos_count / total) * 100, 1),
-            'negative_percentage': round((neg_count / total) * 100, 1),
-            'neutral_percentage': round((neu_count / total) * 100, 1),
-            'sentiment_score': sentiment_score,
-            'total_comments': total,
-            'common_themes': common_themes,
-            'positive_comments': positive_comments,  # ALL positive comments
-            'negative_comments': negative_comments,  # ALL negative comments
-            'neutral_comments': neutral_comments,    # ALL neutral comments
-            'method_used': method,
-            'model_loaded': self.model_loaded,
-        }
+# ============================================================
+# REQUEST AND RESPONSE MODELS
+# ============================================================
 
-    def _empty_sentiment_result(self) -> Dict[str, Any]:
-        return {
-            'positive_percentage': 0,
-            'negative_percentage': 0,
-            'neutral_percentage': 0,
-            'sentiment_score': 0.5,
-            'total_comments': 0,
-            'common_themes': [],
-            'positive_comments': [],
-            'negative_comments': [],
-            'neutral_comments': [],
-            'method_used': 'none',
-            'model_loaded': self.model_loaded,
-        }
-
-
-sentiment_manager = SentimentModelManager()
-
-
-# ==================== Pydantic Models ====================
-
-class AnalysisRequest(BaseModel):
-    data: Optional[Dict[str, Any]] = Field(default_factory=dict)
-    year_level: Optional[int] = 1
-    respondent_type: Optional[int] = 0
-    positive_comments: Optional[List[str]] = []
-    suggestion_comments: Optional[List[str]] = []
+class AnalyzeRequest(BaseModel):
+    """Request format for sentiment analysis"""
+    positive_comments: List[str] = []
+    suggestion_comments: List[str] = []
     total_respondents: Optional[int] = 0
     response_rate: Optional[float] = 0
     event_date: Optional[str] = None
 
+# ============================================================
+# SENTIMENT ANALYSIS FUNCTIONS
+# ============================================================
 
-# ==================== API Endpoints ====================
+def classify_sentiment_finetuned(comment: str) -> str:
+    """Classify using fine-tuned LoRA model"""
+    try:
+        if not comment or len(comment.strip()) < 2:
+            return 'Neutral'
+        
+        inputs = tokenizer(comment, return_tensors="pt", truncation=True, max_length=64)
+        inputs = {k: v.to(device) for k, v in inputs.items()}
+        
+        with torch.no_grad():
+            outputs = model(**inputs)
+            pred = torch.argmax(outputs.logits, dim=1).item()
+        
+        return label_map[pred]
+        
+    except Exception as e:
+        logger.error(f"Error in fine-tuned classification: {e}")
+        return 'Neutral'
+
+def classify_sentiment_pretrained(comment: str) -> str:
+    """Classify using pre-trained model"""
+    try:
+        if not comment or len(comment.strip()) < 2:
+            return 'Neutral'
+        
+        result = sentiment_analyzer(comment)[0]
+        label = result['label'].lower()
+        
+        if label == 'positive':
+            return 'Positive'
+        elif label == 'negative':
+            return 'Negative'
+        else:
+            return 'Neutral'
+            
+    except Exception as e:
+        logger.error(f"Error in pre-trained classification: {e}")
+        return 'Neutral'
+
+# Select the appropriate classification function
+if using_finetuned:
+    classify_sentiment = classify_sentiment_finetuned
+    method_name = "XLM-RoBERTa (Fine-tuned on Event Data + LoRA)"
+else:
+    classify_sentiment = classify_sentiment_pretrained
+    method_name = "XLM-RoBERTa (Pre-trained)"
+
+# ============================================================
+# HELPER FUNCTIONS
+# ============================================================
+
+def extract_common_themes(comments: List[str]) -> List[str]:
+    """Extract common themes from comments"""
+    if not comments:
+        return []
+    
+    all_text = ' '.join([c.lower() for c in comments if c])
+    words = re.findall(r'\b[a-z]{4,}\b', all_text)
+    
+    stopwords = {
+        'the', 'and', 'is', 'in', 'to', 'of', 'it', 'that', 'was', 'for', 'this',
+        'but', 'with', 'as', 'are', 'be', 'at', 'from', 'by', 'an', 'on', 'have',
+        'has', 'were', 'had', 'been', 'not', 'very', 'so', 'a', 'i', 'we', 'they',
+        'he', 'she', 'you', 'also', 'event', 'program', 'activity', 'activities',
+        'can', 'will', 'would', 'could', 'should', 'because', 'then', 'than'
+    }
+    
+    word_freq = Counter([w for w in words if w not in stopwords])
+    common_themes = [word for word, count in word_freq.most_common(10)][:10]
+    
+    return common_themes
+
+# ============================================================
+# API ENDPOINTS
+# ============================================================
 
 @app.get("/")
 async def root():
+    """Root endpoint - service information"""
     return {
         "service": "EventFlow AI Service",
-        "version": "3.0.0",
-        "status": "healthy",
-        "purpose": "NLP Sentiment Analysis Only",
-        "methods": {
-            "sentiment_analysis": "Logistic Regression NLP (TF-IDF) with keyword fallback"
-        },
-        "models": {
-            "sentiment_model_loaded": sentiment_manager.model_loaded,
-        },
-        "note": "Satisfaction scores are calculated in Laravel DSS"
+        "version": "2.0.0",
+        "status": "running",
+        "model_type": "Fine-tuned XLM-RoBERTa + LoRA" if using_finetuned else "Pre-trained XLM-RoBERTa",
+        "fine_tuned": using_finetuned,
+        "capabilities": ["Positive", "Neutral", "Negative"],
+        "languages_supported": ["Bisaya", "Tagalog", "English", "Code-switching"]
     }
 
-
 @app.get("/health")
-async def health_check():
+async def health():
+    """Health check endpoint"""
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
-        "service": "sentiment-analysis-only",
-        "sentiment_model_loaded": sentiment_manager.model_loaded,
-        "version": "3.0.0"
+        "fine_tuned": using_finetuned,
+        "model_loaded": True
     }
 
-
 @app.post("/analyze")
-async def analyze_sentiment(request: AnalysisRequest):
-    """Sentiment analysis endpoint - analyzes ALL comments with no limits"""
-    logger.info(
-        f"Sentiment analysis request — "
-        f"{len(request.positive_comments or [])} positive comments | "
-        f"{len(request.suggestion_comments or [])} suggestion comments"
-    )
-
-    try:
-        all_comments = list(request.positive_comments or []) + list(request.suggestion_comments or [])
+async def analyze_comments(request: AnalyzeRequest):
+    """
+    Analyze comments and return sentiment classification.
+    """
+    
+    # Combine all comments from both input arrays
+    all_comments = []
+    
+    # Add positive_comments
+    for comment in request.positive_comments:
+        if comment and comment.strip():
+            all_comments.append(comment.strip())
+    
+    # Add suggestion_comments
+    for comment in request.suggestion_comments:
+        if comment and comment.strip():
+            all_comments.append(comment.strip())
+    
+    # Handle empty request
+    if not all_comments:
+        return {
+            "method_used": method_name,
+            "sentiment_score": 0.5,
+            "positive_percentage": 0,
+            "negative_percentage": 0,
+            "neutral_percentage": 0,
+            "total_comments": 0,
+            "common_themes": [],
+            "positive_comments": [],
+            "negative_comments": [],
+            "neutral_comments": [],
+            "fine_tuned": using_finetuned,
+            "total_respondents": request.total_respondents,
+            "response_rate": request.response_rate,
+            "event_date": request.event_date,
+            "analyzed_at": datetime.now().isoformat()
+        }
+    
+    # Classify each comment
+    positive_results = []
+    negative_results = []
+    neutral_results = []
+    
+    for comment in all_comments:
+        sentiment = classify_sentiment(comment)
         
-        result = sentiment_manager.analyze_sentiment(all_comments)
-        
-        result['total_respondents'] = request.total_respondents
-        result['response_rate'] = request.response_rate
-        result['event_date'] = request.event_date
-        result['analyzed_at'] = datetime.now().isoformat()
-        result['note'] = "Satisfaction scores are calculated in Laravel DSS"
-        
-        logger.info(f"Sentiment analysis complete — {result['total_comments']} comments processed")
-        
-        return result
-
-    except Exception as e:
-        logger.error(f"Sentiment analysis failed: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Sentiment analysis failed: {str(e)}")
-
+        if sentiment == "Positive":
+            positive_results.append(comment)
+        elif sentiment == "Negative":
+            negative_results.append(comment)
+        else:
+            neutral_results.append(comment)
+    
+    # Calculate percentages
+    total = len(all_comments)
+    pos_count = len(positive_results)
+    neg_count = len(negative_results)
+    neu_count = len(neutral_results)
+    
+    positive_percentage = round((pos_count / total) * 100, 1) if total > 0 else 0
+    negative_percentage = round((neg_count / total) * 100, 1) if total > 0 else 0
+    neutral_percentage = round((neu_count / total) * 100, 1) if total > 0 else 0
+    
+    # Calculate sentiment score
+    sentiment_score = round((pos_count + (neu_count * 0.5)) / total, 2) if total > 0 else 0.5
+    
+    # Extract common themes
+    common_themes = extract_common_themes(all_comments)
+    
+    logger.info(f"Sentiment analysis complete: {pos_count} positive, {neg_count} negative, {neu_count} neutral")
+    
+    return {
+        "method_used": method_name,
+        "sentiment_score": sentiment_score,
+        "positive_percentage": positive_percentage,
+        "negative_percentage": negative_percentage,
+        "neutral_percentage": neutral_percentage,
+        "total_comments": total,
+        "common_themes": common_themes,
+        "positive_comments": positive_results,
+        "negative_comments": negative_results,
+        "neutral_comments": neutral_results,
+        "fine_tuned": using_finetuned,
+        "total_respondents": request.total_respondents,
+        "response_rate": request.response_rate,
+        "event_date": request.event_date,
+        "analyzed_at": datetime.now().isoformat(),
+        "note": "Satisfaction scores are calculated in Laravel DSS"
+    }
 
 @app.post("/test-sentiment")
 async def test_sentiment(data: dict):
+    """Test endpoint for debugging"""
     comments = data.get('comments', [])
-    result = sentiment_manager.analyze_sentiment(comments)
-    result['analyzed_at'] = datetime.now().isoformat()
-    return result
+    
+    results = []
+    for comment in comments:
+        sentiment = classify_sentiment(comment)
+        results.append({
+            "comment": comment,
+            "sentiment": sentiment
+        })
+    
+    return {
+        "results": results,
+        "method_used": method_name,
+        "fine_tuned": using_finetuned,
+        "analyzed_at": datetime.now().isoformat()
+    }
 
+# ============================================================
+# RUN THE SERVICE
+# ============================================================
 
 if __name__ == "__main__":
-    import uvicorn
-    port = int(os.getenv("PORT", 8001))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    port = int(os.environ.get("PORT", 8001))
+    print(f"\n🚀 Starting server on port {port}...")
+    print(f"   Local: http://127.0.0.1:{port}")
+    print(f"   Health check: http://127.0.0.1:{port}/health")
+    print("=" * 70)
+    
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=port,
+        log_level="info"
+    )

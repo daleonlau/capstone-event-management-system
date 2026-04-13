@@ -1,0 +1,44 @@
+# Model files - KEEP for Railway, but don't commit to GitHub
+# Instead, use Git LFS or Railway's direct upload
+lora_finetuned/
+*.safetensors
+*.bin
+
+# Keep adapter_config.json (it's small text file, needed for model)
+# adapter_config.json  ← REMOVE THIS LINE
+
+# Data files (exclude from git)
+event_data*.csv
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environment
+venv/
+env/
+ENV/
+.venv
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Railway specific
+.railway/

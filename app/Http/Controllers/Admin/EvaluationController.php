@@ -867,82 +867,80 @@ class EvaluationController extends Controller
     // GENERATE INSIGHTS - DSS + Python Sentiment Analysis
     // ============================================================
     
-    public function generateInsights(Evaluation $evaluation, Request $request)
-    {
-        try {
-            $eventDate = $request->get('event_date');
-            $generateAll = $request->get('generate_all', false);
+  public function generateInsights(Evaluation $evaluation, Request $request)
+{
+    set_time_limit(600);
+    ini_set('max_execution_time', 600);
+    
+    try {
+        $generateAll = $request->get('generate_all', false);
+        
+        $aiService = app(AIAnalysisService::class);
+        
+        if ($generateAll) {
+            // Generate for all dates AND overall
+            $availableDates = $aiService->getAvailableDates($evaluation);
+            $results = [];
             
-            if ($generateAll) {
-                $availableDates = $this->getAvailableDatesForInsights($evaluation);
-                
-                if (empty($availableDates)) {
-                    return response()->json([
-                        'error' => 'No responses found to generate insights.'
-                    ], 400);
+            Log::info('Generating insights for ALL dates', [
+                'evaluation_id' => $evaluation->id,
+                'dates' => $availableDates
+            ]);
+            
+            // Generate for each date
+            foreach ($availableDates as $date) {
+                Log::info('Generating insights for date: ' . $date);
+                $result = $aiService->analyzeEvaluation($evaluation, $date, true);
+                if ($result) {
+                    $results[$date] = $result;
                 }
-                
-                dispatch(new AnalyzeEvaluationJob($evaluation, null, true));
-                
-                $this->logAction('generate_all_insights', 'Started AI insights generation for all dates', [
-                    'evaluation_id' => $evaluation->id,
-                    'title' => $evaluation->title,
-                    'available_dates' => $availableDates,
-                ]);
-                
-                return response()->json([
-                    'success' => true,
-                    'message' => 'AI analysis for all dates and overall started. This may take a few minutes.'
-                ]);
             }
             
-            if ($eventDate) {
-                try {
-                    $eventDate = Carbon::parse($eventDate)->format('Y-m-d');
-                } catch (\Exception $e) {}
+            // Generate overall
+            Log::info('Generating overall insights');
+            $overallResult = $aiService->analyzeEvaluation($evaluation, null, true);
+            if ($overallResult) {
+                $results['overall'] = $overallResult;
             }
             
-            $aiService = app(AIAnalysisService::class);
-            if (!$aiService->canGenerateInsights($evaluation, $eventDate)) {
-                $responseRate = $aiService->getResponseRateForDate($evaluation, $eventDate);
-                return response()->json([
-                    'error' => sprintf(
-                        'Response rate is %.1f%%. At least 75%% of eligible participants must respond before generating insights.',
-                        $responseRate * 100
-                    )
-                ], 400);
-            }
-            
-            dispatch(new AnalyzeEvaluationJob($evaluation, $eventDate));
-            
-            $this->logAction('generate_insights', 'Started AI insights generation for evaluation', [
+            $this->logAction('generate_all_insights', 'Generated AI insights for all dates', [
                 'evaluation_id' => $evaluation->id,
                 'title' => $evaluation->title,
-                'event_date' => $eventDate,
+                'dates_processed' => count($results)
             ]);
             
             return response()->json([
                 'success' => true,
-                'message' => sprintf(
-                    'AI analysis for %s started.',
-                    $eventDate ?: 'overall evaluation'
-                )
+                'message' => 'AI insights generated successfully for all dates.',
+                'results' => $results
             ]);
-            
-        } catch (\Exception $e) {
-            Log::error('Error in generateInsights: ' . $e->getMessage());
-            
-            $this->logError('generate_insights_failed', 'Failed to generate insights: ' . $e->getMessage(), $e, [
-                'evaluation_id' => $evaluation->id,
-                'title' => $evaluation->title,
-            ]);
-            
-            return response()->json([
-                'error' => 'Failed to start AI analysis: ' . $e->getMessage()
-            ], 500);
         }
+        
+        // Single date generation (fallback - not used from UI anymore)
+        $eventDate = $request->get('event_date');
+        $result = $aiService->analyzeEvaluation($evaluation, $eventDate, true);
+        
+        if (!$result) {
+            return response()->json([
+                'error' => 'Failed to generate insights. No data available.'
+            ], 400);
+        }
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'AI insights generated successfully.',
+            'insights' => $result
+        ]);
+        
+    } catch (\Exception $e) {
+        Log::error('Error in generateInsights: ' . $e->getMessage());
+        Log::error('Stack trace: ' . $e->getTraceAsString());
+        
+        return response()->json([
+            'error' => 'Failed to generate insights: ' . $e->getMessage()
+        ], 500);
     }
-
+}
     // ============================================================
     // GET AI INSIGHTS - Enhanced with DSS Dashboard Data
     // ============================================================

@@ -299,52 +299,83 @@ class AIAnalysisService
         ];
     }
     
-    try {
-        Log::info('Calling AI service for sentiment analysis', [
-            'url' => $this->apiUrl . '/analyze',
-            'comments_count' => count($comments),
-            'sample_comments' => array_slice($comments, 0, 3)
-        ]);
-        
-        $response = Http::timeout($this->timeout)->post("{$this->apiUrl}/analyze", [
-            'positive_comments' => $comments,  // Send all comments as positive_comments
-            'suggestion_comments' => [],        // Empty array
-            'total_respondents' => count($comments),
-            'response_rate' => 1.0,
-        ]);
-        
-        Log::info('AI service response', [
-            'status' => $response->status(),
-            'successful' => $response->successful(),
-            'response_data' => $response->json()
-        ]);
-        
-        if ($response->successful()) {
-            $data = $response->json();
-            return [
-                'positive_percentage' => $data['positive_percentage'] ?? 0,
-                'negative_percentage' => $data['negative_percentage'] ?? 0,
-                'neutral_percentage' => $data['neutral_percentage'] ?? 0,
-                'sentiment_score' => $data['sentiment_score'] ?? 0.5,
-                'total_comments' => $data['total_comments'] ?? 0,
-                'common_themes' => $data['common_themes'] ?? [],
-                'positive_comments' => $data['positive_comments'] ?? [],
-                'negative_comments' => $data['negative_comments'] ?? [],
-                'neutral_comments' => $data['neutral_comments'] ?? [],
-                'method_used' => $data['method_used'] ?? 'python_service'
-            ];
+    // Split comments into batches of 50 to avoid timeout
+    $batchSize = 50;
+    $batches = array_chunk($comments, $batchSize);
+    $totalBatches = count($batches);
+    
+    Log::info('Starting batch sentiment analysis', [
+        'total_comments' => count($comments),
+        'batch_size' => $batchSize,
+        'total_batches' => $totalBatches
+    ]);
+    
+    $allPositiveComments = [];
+    $allNegativeComments = [];
+    $allNeutralComments = [];
+    
+    foreach ($batches as $batchIndex => $batch) {
+        try {
+            Log::info('Processing batch ' . ($batchIndex + 1) . ' of ' . $totalBatches, [
+                'comments_in_batch' => count($batch)
+            ]);
+            
+            $response = Http::timeout(120)->post("{$this->apiUrl}/analyze", [
+                'positive_comments' => [],
+                'suggestion_comments' => $batch,
+            ]);
+            
+            if ($response->successful()) {
+                $data = $response->json();
+                $allPositiveComments = array_merge($allPositiveComments, $data['positive_comments'] ?? []);
+                $allNegativeComments = array_merge($allNegativeComments, $data['negative_comments'] ?? []);
+                $allNeutralComments = array_merge($allNeutralComments, $data['neutral_comments'] ?? []);
+                
+                Log::info('Batch ' . ($batchIndex + 1) . ' completed', [
+                    'positive' => count($data['positive_comments'] ?? []),
+                    'negative' => count($data['negative_comments'] ?? []),
+                    'neutral' => count($data['neutral_comments'] ?? [])
+                ]);
+            } else {
+                Log::warning('Batch ' . ($batchIndex + 1) . ' failed', [
+                    'status' => $response->status(),
+                    'body' => $response->body()
+                ]);
+            }
+            
+        } catch (\Exception $e) {
+            Log::error('Batch ' . ($batchIndex + 1) . ' error: ' . $e->getMessage());
         }
-        
-        Log::warning('Sentiment analysis failed, using fallback', [
-            'status' => $response->status(),
-            'body' => $response->body()
-        ]);
-        
-    } catch (\Exception $e) {
-        Log::error('Sentiment analysis exception: ' . $e->getMessage());
     }
     
-    return $this->fallbackSentimentAnalysis($comments);
+    $total = count($comments);
+    $posCount = count($allPositiveComments);
+    $negCount = count($allNegativeComments);
+    $neuCount = count($allNeutralComments);
+    
+    Log::info('Sentiment analysis completed', [
+        'total_comments' => $total,
+        'positive' => $posCount,
+        'negative' => $negCount,
+        'neutral' => $neuCount
+    ]);
+    
+    return [
+        'positive_percentage' => $total > 0 ? round(($posCount / $total) * 100, 1) : 0,
+        'negative_percentage' => $total > 0 ? round(($negCount / $total) * 100, 1) : 0,
+        'neutral_percentage' => $total > 0 ? round(($neuCount / $total) * 100, 1) : 0,
+        'sentiment_score' => $total > 0 ? round(($posCount + ($neuCount * 0.5)) / $total, 2) : 0.5,
+        'total_comments' => $total,
+        'common_themes' => $this->extractCommonThemes($comments),
+        'positive_comments' => $allPositiveComments,
+        'negative_comments' => $allNegativeComments,
+        'neutral_comments' => $allNeutralComments,
+        'method_used' => 'XLM-RoBERTa (Batched)'
+    ];
+}
+public function forceGenerateInsights(Evaluation $evaluation, ?string $eventDate = null): ?array
+{
+    return $this->analyzeEvaluation($evaluation, $eventDate, true);
 }
     
     private function fallbackSentimentAnalysis(array $comments): array

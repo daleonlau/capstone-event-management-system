@@ -94,9 +94,10 @@
               Reopen Evaluation
             </button>
 
+            <!-- Generate AI Insights Button - Generates ALL (overall + per date) -->
             <button
               v-if="evaluation.status === 'closed'"
-              @click="generateInsights"
+              @click="generateAllInsights"
               class="px-4 py-2 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition flex items-center gap-2"
               :disabled="generatingInsights"
             >
@@ -104,7 +105,10 @@
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" />
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
               </svg>
-              <span>{{ generatingInsights ? 'Generating...' : 'Generate AI Insights' }}</span>
+              <svg v-else class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+              </svg>
+              <span>{{ generatingInsights ? 'Generating All Insights... (please wait)' : 'Generate AI Insights' }}</span>
             </button>
 
             <button
@@ -117,6 +121,23 @@
               </svg>
               Delete
             </button>
+          </div>
+        </div>
+
+        <!-- Progress Indicator for AI Insights Generation -->
+        <div v-if="generatingInsights" class="mb-8 bg-gradient-to-r from-purple-50 to-purple-100 rounded-2xl shadow-lg p-6 border border-purple-200">
+          <div class="flex items-center gap-4">
+            <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-purple-600"></div>
+            <div class="flex-1">
+              <h3 class="text-lg font-semibold text-purple-800">Generating AI Insights for ALL Dates</h3>
+              <p class="text-purple-600 text-sm">Processing {{ evaluation.total_responses }} responses with {{ totalCommentsCount }} comments...</p>
+              <p class="text-purple-500 text-xs mt-1">This will generate insights for Overall + each event date. May take 3-5 minutes.</p>
+            </div>
+            <div class="w-32">
+              <div class="w-full bg-purple-200 rounded-full h-2">
+                <div class="bg-purple-600 h-2 rounded-full animate-pulse" style="width: 100%"></div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -313,7 +334,7 @@
             </svg>
             <div class="text-sm text-blue-800">
               <p class="font-medium">Evaluation is Closed</p>
-              <p>No more responses can be submitted. You can generate AI insights and view the results below.</p>
+              <p>Click "Generate AI Insights" to analyze all responses for Overall + each event date.</p>
               <p class="mt-1 text-xs">Total responses collected: <span class="font-bold">{{ evaluation.total_responses_overall || evaluation.total_responses }}</span> out of {{ evaluation.total_expected_overall }} expected ({{ evaluation.overall_response_rate }}%)</p>
             </div>
           </div>
@@ -516,7 +537,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { Link, router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import BulkUpload from './BulkUpload.vue';
@@ -558,6 +579,18 @@ const generatingInsights = ref(false);
 const toast = ref({ show: false, message: '', type: 'success', bgClass: '' });
 const aiInsightsComponent = ref(null);
 const rawDataComponent = ref(null);
+
+// Calculate total comments count
+const totalCommentsCount = computed(() => {
+  if (!props.comments) return 0;
+  let count = 0;
+  for (const key in props.comments) {
+    if (props.comments[key]?.responses) {
+      count += props.comments[key].responses.length;
+    }
+  }
+  return count;
+});
 
 const totalQuestions = computed(() => {
   let count = 0;
@@ -641,7 +674,8 @@ function showToast(message, type = 'success') {
   const colors = {
     success: 'border-green-500 bg-green-50 text-green-800',
     error: 'border-red-500 bg-red-50 text-red-800',
-    info: 'border-blue-500 bg-blue-50 text-blue-800'
+    info: 'border-blue-500 bg-blue-50 text-blue-800',
+    warning: 'border-yellow-500 bg-yellow-50 text-yellow-800'
   };
   
   toast.value = { 
@@ -651,7 +685,7 @@ function showToast(message, type = 'success') {
     bgClass: colors[type] || colors.success
   };
   
-  setTimeout(() => toast.value.show = false, 3000);
+  setTimeout(() => toast.value.show = false, 5000);
 }
 
 function handleUploadComplete(data) {
@@ -726,26 +760,60 @@ async function reopenEvaluation() {
   }
 }
 
-async function generateInsights() {
-  if (!confirm('Generate AI insights based on current responses? This may take a moment.')) return;
+// Generate ALL insights (overall + per date) in one click - FIXED VERSION
+async function generateAllInsights() {
+  // Check if already generating
+  if (generatingInsights.value) {
+    showToast('⏳ Insights are already generating. Please wait...', 'warning');
+    return;
+  }
   
+  // Check if insights already exist (optional - ask for confirmation to regenerate)
+  if (props.aiInsights && Object.keys(props.aiInsights).length > 0) {
+    const shouldRegenerate = confirm('AI insights already exist for this evaluation. Do you want to regenerate them?\n\nThis will overwrite existing insights.');
+    if (!shouldRegenerate) return;
+  }
+  
+  if (!confirm('Generate AI insights for ALL dates?\n\nThis will analyze all comments for:\n- Overall evaluation\n- Each event date\n\nThis may take 3-5 minutes. Please do not close this window while processing.')) return;
+  
+  // Start loading
   generatingInsights.value = true;
+  
+  showToast('⏳ AI Insights generation started for all dates. This may take 3-5 minutes. Please wait...', 'info');
+  
   try {
-    const response = await axios.post(`/admin/evaluations/${props.evaluation.id}/generate-insights`);
+    const response = await axios.post(`/admin/evaluations/${props.evaluation.id}/generate-insights`, null, { 
+      params: { generate_all: true },
+      timeout: 600000 // 10 minutes timeout
+    });
+    
+    // ✅ IMPORTANT: Stop the loading indicator FIRST
+    generatingInsights.value = false;
+    
     if (response.data.success) {
-      showToast('✅ AI insights generated successfully!', 'success');
-      if (aiInsightsComponent.value) {
-        await aiInsightsComponent.value.generateInsights();
-      }
-      setTimeout(() => router.reload(), 1500);
+      showToast('✅ AI insights generated successfully for all dates! Refreshing page...', 'success');
+      
+      // Refresh the page after a short delay to show the new insights
+      setTimeout(() => {
+        router.reload();
+      }, 1500);
     } else {
       showToast(response.data.error || 'Failed to generate insights', 'error');
     }
   } catch (error) {
-    const errorMessage = error.response?.data?.error || error.message || 'Unknown error';
-    showToast(`❌ Error: ${errorMessage}`, 'error');
-  } finally {
+    console.error('Generation error:', error);
+    
+    // ✅ IMPORTANT: Stop loading on error as well
     generatingInsights.value = false;
+    
+    let errorMessage = 'Failed to generate insights';
+    if (error.code === 'ECONNABORTED') {
+      errorMessage = 'Request timed out. The analysis may still be running in the background. Please refresh the page in a few minutes to check results.';
+    } else if (error.response?.data?.error) {
+      errorMessage = error.response.data.error;
+    }
+    
+    showToast(`❌ ${errorMessage}`, 'error');
   }
 }
 
@@ -766,6 +834,11 @@ async function deleteEvaluation() {
     showDeleteModal.value = false;
   }
 }
+
+// Safety: Reset generating state when component unmounts
+onBeforeUnmount(() => {
+  generatingInsights.value = false;
+});
 </script>
 
 <style scoped>
@@ -776,4 +849,4 @@ async function deleteEvaluation() {
 .animate-spin {
   animation: spin 1s linear infinite;
 }
-</style>
+</style>  

@@ -5,17 +5,15 @@
       <div class="date-selector-header">
         <h3>Analysis View</h3>
         <button 
-          v-if="!generatingAll" 
-          @click="generateAllInsights" 
-          :disabled="generatingAll"
+          @click="fetchAllInsights" 
+          :disabled="loading"
           class="btn-refresh"
         >
-          <svg v-if="!generatingAll" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M23 4v6h-6M1 20v-6h6"/>
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
           </svg>
-          <div v-else class="spinner-small"></div>
-          <span>{{ generatingAll ? 'Generating...' : 'Refresh All' }}</span>
+          <span>Refresh</span>
         </button>
       </div>
       <div class="date-tabs">
@@ -35,19 +33,17 @@
     <!-- Loading State -->
     <div v-if="loading" class="loading-state">
       <div class="loading-spinner"></div>
-      <p>Analyzing evaluation data...</p>
+      <p>Loading AI insights...</p>
     </div>
 
     <!-- Error State -->
     <div v-else-if="error" class="error-state">
       <div class="error-icon">⚠️</div>
       <p>{{ error }}</p>
-      <button @click="generateAllInsights" class="btn-primary">Generate Insights</button>
     </div>
 
     <!-- Main Dashboard -->
     <div v-else-if="currentInsight" class="dashboard-content">
-      
       <!-- Hero Score Card -->
       <div class="hero-card" :class="getHeroClass(currentInsight.predicted_satisfaction)">
         <div class="hero-bg"></div>
@@ -130,7 +126,7 @@
         </div>
       </div>
 
-      <!-- ==================== LOW SCORING QUESTIONS (NEW) ==================== -->
+      <!-- Low Scoring Questions -->
       <div v-if="currentInsight.low_scoring_questions && currentInsight.low_scoring_questions.length > 0" class="section-card low-scoring">
         <div class="section-header">
           <div class="section-title">
@@ -171,7 +167,7 @@
         </div>
       </div>
 
-      <!-- ==================== CRITICAL FACTORS (NEW) ==================== -->
+      <!-- Critical Factors -->
       <div v-if="currentInsight.critical_factors && currentInsight.critical_factors.length > 0" class="section-card critical-factors">
         <div class="section-header">
           <div class="section-title">
@@ -437,10 +433,7 @@
     <div v-else class="empty-state-card">
       <div class="empty-icon">📋</div>
       <h3>No Insights Available</h3>
-      <p>Click "Generate Insights" to analyze responses and get actionable recommendations</p>
-      <button @click="generateAllInsights" :disabled="generatingAll" class="btn-primary btn-large">
-        {{ generatingAll ? 'Generating...' : 'Generate Insights' }}
-      </button>
+      <p>Click "Generate AI Insights" in the main evaluation page to analyze responses.</p>
     </div>
   </div>
 </template>
@@ -453,13 +446,24 @@ const props = defineProps({
   evaluationId: {
     type: Number,
     required: true
+  },
+  totalResponses: {
+    type: Number,
+    default: 0
+  },
+  stats: {
+    type: Object,
+    default: () => ({})
+  },
+  comments: {
+    type: Object,
+    default: () => ({})
   }
 });
 
 const emit = defineEmits(['insights-loaded']);
 
 const loading = ref(false);
-const generatingAll = ref(false);
 const error = ref(null);
 const allInsights = ref({});
 const currentDate = ref('overall');
@@ -635,23 +639,6 @@ const selectDate = (date) => {
   updateSentimentData();
 };
 
-const generateAllInsights = async () => {
-  generatingAll.value = true;
-  error.value = null;
-  try {
-    const response = await axios.post(`/admin/evaluations/${props.evaluationId}/generate-insights`, null, { params: { generate_all: true } });
-    if (response.data.success) {
-      setTimeout(() => fetchAllInsights(), 5000);
-    } else {
-      error.value = response.data.error || 'Failed to generate insights';
-    }
-  } catch (err) {
-    error.value = err.response?.data?.error || 'Failed to generate insights';
-  } finally {
-    generatingAll.value = false;
-  }
-};
-
 const fetchAllInsights = async () => {
   loading.value = true;
   error.value = null;
@@ -662,7 +649,7 @@ const fetchAllInsights = async () => {
       selectDate(allInsights.value.overall ? 'overall' : Object.keys(allInsights.value)[0]);
       emit('insights-loaded', allInsights.value);
     } else if (response.data.available_dates?.length) {
-      error.value = 'No insights generated yet. Click "Generate All Insights" to start analysis.';
+      error.value = 'No insights generated yet. Click "Generate AI Insights" in the main evaluation page to start analysis.';
     } else {
       error.value = 'No responses found. Add responses first to generate insights.';
     }
@@ -673,9 +660,11 @@ const fetchAllInsights = async () => {
   }
 };
 
-onMounted(() => { if (props.evaluationId) fetchAllInsights(); });
+onMounted(() => { 
+  if (props.evaluationId) fetchAllInsights(); 
+});
 
-defineExpose({ generateInsights: generateAllInsights });
+defineExpose({ fetchAllInsights });
 </script>
 
 <style scoped>
@@ -688,7 +677,6 @@ defineExpose({ generateInsights: generateAllInsights });
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
 }
 
-/* Date Selector */
 .date-selector {
   background: white;
   border-radius: 20px;
@@ -726,8 +714,13 @@ defineExpose({ generateInsights: generateAllInsights });
   transition: all 0.2s;
 }
 
-.btn-refresh:hover {
+.btn-refresh:hover:not(:disabled) {
   background: #e0e0e0;
+}
+
+.btn-refresh:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .date-tabs {
@@ -777,7 +770,6 @@ defineExpose({ generateInsights: generateAllInsights });
   background: rgba(255,255,255,0.2);
 }
 
-/* Loading State */
 .loading-state {
   background: white;
   border-radius: 20px;
@@ -799,7 +791,6 @@ defineExpose({ generateInsights: generateAllInsights });
   to { transform: rotate(360deg); }
 }
 
-/* Error State */
 .error-state {
   background: white;
   border-radius: 20px;
@@ -817,7 +808,6 @@ defineExpose({ generateInsights: generateAllInsights });
   margin-bottom: 20px;
 }
 
-/* Hero Card */
 .hero-card {
   position: relative;
   border-radius: 24px;
@@ -991,7 +981,6 @@ defineExpose({ generateInsights: generateAllInsights });
   color: rgba(255,255,255,0.6);
 }
 
-/* Section Cards */
 .section-card {
   background: white;
   border-radius: 20px;
@@ -1030,7 +1019,6 @@ defineExpose({ generateInsights: generateAllInsights });
   margin-left: 32px;
 }
 
-/* Category List */
 .category-list {
   display: flex;
   flex-direction: column;
@@ -1097,7 +1085,6 @@ defineExpose({ generateInsights: generateAllInsights });
   text-align: right;
 }
 
-/* Low Scoring Questions Styles */
 .low-scoring-list {
   display: flex;
   flex-direction: column;
@@ -1243,7 +1230,6 @@ defineExpose({ generateInsights: generateAllInsights });
   line-height: 1.4;
 }
 
-/* Critical Factors Styles */
 .critical-factors-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
@@ -1352,7 +1338,6 @@ defineExpose({ generateInsights: generateAllInsights });
   background: #10b981;
 }
 
-/* Grid Layout */
 .grid-2 {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -1365,7 +1350,6 @@ defineExpose({ generateInsights: generateAllInsights });
   }
 }
 
-/* Strengths & Weaknesses */
 .strengths-list, .weaknesses-list {
   display: flex;
   flex-direction: column;
@@ -1404,7 +1388,6 @@ defineExpose({ generateInsights: generateAllInsights });
   font-size: 14px;
 }
 
-/* Priority Grid */
 .priority-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -1461,7 +1444,6 @@ defineExpose({ generateInsights: generateAllInsights });
   color: #64748b;
 }
 
-/* Recommendations */
 .recommendations-list {
   display: flex;
   flex-direction: column;
@@ -1640,7 +1622,6 @@ defineExpose({ generateInsights: generateAllInsights });
   color: #64748b;
 }
 
-/* Sentiment Section */
 .sentiment-stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -1746,7 +1727,6 @@ defineExpose({ generateInsights: generateAllInsights });
   color: #4a5568;
 }
 
-/* Comment Section */
 .comment-section {
   margin-top: 20px;
   border-top: 1px solid #e9ecef;
@@ -1870,7 +1850,6 @@ defineExpose({ generateInsights: generateAllInsights });
   color: #64748b;
 }
 
-/* Empty State Card */
 .empty-state-card {
   background: white;
   border-radius: 24px;
@@ -1907,22 +1886,18 @@ defineExpose({ generateInsights: generateAllInsights });
   transition: all 0.2s;
 }
 
-.btn-primary:hover {
+.btn-primary:hover:not(:disabled) {
   background: #4f46e5;
   transform: translateY(-1px);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .btn-large {
   padding: 14px 32px;
   font-size: 16px;
-}
-
-.spinner-small {
-  width: 14px;
-  height: 14px;
-  border: 2px solid rgba(255,255,255,0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
 }
 </style>
