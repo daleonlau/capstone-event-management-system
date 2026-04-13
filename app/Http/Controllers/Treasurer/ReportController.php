@@ -97,86 +97,46 @@ class ReportController extends Controller
             return response()->json(['error' => 'Unauthorized'], 403);
         }
 
-        // OPTIMIZED: Use chunking to process 540 students without memory issues
-        $studentData = [];
-        $paidCount = 0;
-        $pendingCount = 0;
-        $totalCollected = 0;
+        // Get counts only - no need to process all students
+        $totalStudents = Student::where('user_id', $this->organizationId)->count();
         
-        // Get all student IDs first (lightweight)
-        $studentIds = Student::where('user_id', $this->organizationId)->pluck('student_id');
-        $totalStudents = $studentIds->count();
-        
-        Log::info('Total students to process: ' . $totalStudents);
-        
-        // Get all payments for this event in one query (much faster)
-        $payments = EventStudent::where('event_id', $event->id)
-            ->get()
-            ->keyBy('student_id');
-        
-        Log::info('Payments found: ' . $payments->count());
-        
-        // Process students in chunks of 100
-        foreach ($studentIds->chunk(100) as $chunk) {
-            $students = Student::whereIn('student_id', $chunk)->get();
-            
-            foreach ($students as $student) {
-                $payment = $payments->get($student->student_id);
-                
-                $status = $payment ? $payment->status : 'Not Paid';
-                $amount = $payment ? floatval($payment->amount_paid) : 0;
-                
-                if ($status === 'Paid') {
-                    $paidCount++;
-                    $totalCollected += $amount;
-                } elseif ($status === 'Pending') {
-                    $pendingCount++;
-                }
-                
-                $studentData[] = [
-                    'student_id' => $student->student_id,
-                    'name' => $student->firstname . ' ' . $student->lastname,
-                    'course' => $student->course ?? 'N/A',
-                    'year_level' => $student->yearlevel ?? 'N/A',
-                    'status' => $status,
-                    'amount' => $amount,
-                    'paid_at' => ($payment && $payment->status === 'Paid' && $payment->updated_at) 
-                        ? $payment->updated_at->format('M d, Y') 
-                        : null,
-                    'receipt_number' => $payment && $payment->receipt_number ? $payment->receipt_number : '—',
-                ];
-            }
-            
-            // Free memory after each chunk
-            unset($students);
-        }
+        // Get payment stats
+        $paidCount = EventStudent::where('event_id', $event->id)->where('status', 'Paid')->count();
+        $pendingCount = EventStudent::where('event_id', $event->id)->where('status', 'Pending')->count();
+        $totalCollected = EventStudent::where('event_id', $event->id)->where('status', 'Paid')->sum('amount_paid');
         
         $notPaidCount = $totalStudents - $paidCount - $pendingCount;
         $expectedTotal = $totalStudents * floatval($event->event_fee);
         $collectionRate = $expectedTotal > 0 ? round(($totalCollected / $expectedTotal) * 100, 2) : 0;
         
-        Log::info('Summary - Total: ' . $totalStudents . ', Paid: ' . $paidCount . ', Collected: ' . $totalCollected);
+        // ONLY get detailed data for PAID students (much smaller dataset)
+        $paidStudents = EventStudent::where('event_id', $event->id)
+            ->where('status', 'Paid')
+            ->with('student')
+            ->get();
         
-        // Limit students for PDF to avoid memory issues (show first 500 if more)
-        $studentsForPdf = $studentData;
-        if (count($studentData) > 500) {
-            Log::warning('Too many students (' . count($studentData) . '), limiting to 500 for PDF');
-            $studentsForPdf = array_slice($studentData, 0, 500);
-            $studentsForPdf[] = [
-                'student_id' => '...',
-                'name' => 'And ' . (count($studentData) - 500) . ' more students',
-                'course' => '...',
-                'year_level' => '...',
-                'status' => '...',
-                'amount' => 0,
-                'paid_at' => null,
-                'receipt_number' => '...',
-            ];
+        $studentData = [];
+        foreach ($paidStudents as $payment) {
+            $student = $payment->student;
+            if ($student) {
+                $studentData[] = [
+                    'student_id' => $student->student_id,
+                    'name' => $student->firstname . ' ' . $student->lastname,
+                    'course' => $student->course ?? 'N/A',
+                    'year_level' => $student->yearlevel ?? 'N/A',
+                    'status' => 'Paid',
+                    'amount' => floatval($payment->amount_paid),
+                    'paid_at' => $payment->updated_at ? $payment->updated_at->format('M d, Y') : null,
+                    'receipt_number' => $payment->receipt_number ?? '—',
+                ];
+            }
         }
+        
+        Log::info('Paid students details: ' . count($studentData) . ' (out of ' . $totalStudents . ' total)');
         
         $data = [
             'event' => $event,
-            'students' => $studentsForPdf,
+            'students' => $studentData,  // Only paid students
             'summary' => [
                 'total_students' => $totalStudents,
                 'paid_students' => $paidCount,
@@ -192,17 +152,13 @@ class ReportController extends Controller
             'header_image' => null,
         ];
         
-        // Generate PDF with memory optimization
+        // Generate PDF
         $pdf = Pdf::loadView('pdfs.collection-report', $data);
         $pdf->setPaper('A4', 'portrait');
         $pdf->setOptions([
             'defaultFont' => 'sans-serif',
             'isHtml5ParserEnabled' => true,
             'isRemoteEnabled' => true,
-            'tempDir' => storage_path('temp/dompdf'),
-            'logOutputFile' => storage_path('logs/dompdf.log'),
-            'enable_remote' => true,
-            'chroot' => public_path(),
         ]);
         
         // Store PDF
