@@ -832,7 +832,8 @@ async function refreshEligibleStudents() {
       if (props.stats) {
         props.stats.total_students = response.data.total;
       }
-      alert(`✅ Student list updated!\n\nAdded: ${response.data.added} new students\nRemoved: ${response.data.removed} ineligible students\nTotal eligible: ${response.data.total}`);
+      // Updated to show the message from the server
+      alert(response.data.message || `✅ Student list updated!\n\nAdded: ${response.data.added} new students\nRemoved: ${response.data.removed} ineligible students\nTotal eligible: ${response.data.total}`);
     } else {
       alert(response.data.error || 'Failed to refresh students');
     }

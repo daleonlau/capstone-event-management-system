@@ -52,6 +52,13 @@ class EventController extends Controller
                 $courseNames = Course::whereIn('id', $event->courses)->pluck('name')->toArray();
             }
 
+            // Get year levels from event
+            $yearLevels = [];
+            if (!empty($event->year_levels) && is_array($event->year_levels)) {
+                $yearLevels = $event->year_levels;
+            }
+
+            // Filter students based on ALL criteria
             $eligibleStudents = Student::where('user_id', $this->organizationId)
                 ->when(!empty($departmentNames), function($q) use ($departmentNames) {
                     $q->whereIn('department', $departmentNames);
@@ -59,28 +66,52 @@ class EventController extends Controller
                 ->when(!empty($courseNames), function($q) use ($courseNames) {
                     $q->whereIn('course', $courseNames);
                 })
-                ->when(!empty($event->year_levels) && is_array($event->year_levels), function($q) use ($event) {
-                    $q->whereIn('yearlevel', $event->year_levels);
+                ->when(!empty($yearLevels), function($q) use ($yearLevels) {
+                    $q->whereIn('yearlevel', $yearLevels);
                 })
                 ->get();
 
-            // Clear existing and add new
-            EventStudent::where('event_id', $event->id)->delete();
-
-            foreach ($eligibleStudents as $student) {
+            // Get current eligible student IDs
+            $currentStudentIds = EventStudent::where('event_id', $event->id)
+                ->pluck('student_id')
+                ->toArray();
+            
+            // Get new eligible student IDs
+            $newStudentIds = $eligibleStudents->pluck('student_id')->toArray();
+            
+            // Students to remove (in current but not in new)
+            $studentsToRemove = array_diff($currentStudentIds, $newStudentIds);
+            
+            // Students to add (in new but not in current)
+            $studentsToAdd = array_diff($newStudentIds, $currentStudentIds);
+            
+            // Remove ineligible students
+            if (!empty($studentsToRemove)) {
+                EventStudent::where('event_id', $event->id)
+                    ->whereIn('student_id', $studentsToRemove)
+                    ->delete();
+            }
+            
+            // Add new eligible students
+            foreach ($studentsToAdd as $studentId) {
                 EventStudent::create([
                     'event_id' => $event->id,
-                    'student_id' => $student->student_id,
+                    'student_id' => $studentId,
                     'user_id' => $this->organizationId,
                     'status' => $event->payment === 'Payment' ? 'Pending' : 'Paid',
                     'amount_paid' => $event->payment === 'Payment' ? 0 : $event->event_fee,
                 ]);
             }
 
-            return $eligibleStudents->count();
+            return [
+                'added' => count($studentsToAdd),
+                'removed' => count($studentsToRemove),
+                'total' => count($newStudentIds)
+            ];
+            
         } catch (\Exception $e) {
             Log::error('Failed to sync students: ' . $e->getMessage());
-            return 0;
+            throw $e;
         }
     }
 
@@ -515,7 +546,7 @@ class EventController extends Controller
         }
         
         try {
-            $added = $this->syncEligibleStudents($event);
+            $result = $this->syncEligibleStudents($event);
             
             $eligibleStudents = EventStudent::where('event_id', $event->id)
                 ->with('student')
@@ -537,8 +568,11 @@ class EventController extends Controller
                 'success' => true,
                 'students' => $eligibleStudents,
                 'total' => $eligibleStudents->count(),
-                'added' => $added,
+                'added' => $result['added'],
+                'removed' => $result['removed'],
+                'message' => "Student list updated: +{$result['added']} added, -{$result['removed']} removed. Total: {$result['total']} eligible students."
             ]);
+            
         } catch (\Exception $e) {
             return response()->json([
                 'error' => 'Failed to refresh students: ' . $e->getMessage()
@@ -553,7 +587,33 @@ class EventController extends Controller
         }
         
         try {
-            $eligibleStudents = Student::where('user_id', $this->organizationId)->get();
+            // Get department names from IDs
+            $departmentNames = [];
+            if (!empty($event->departments) && is_array($event->departments)) {
+                $departmentNames = Department::whereIn('id', $event->departments)->pluck('name')->toArray();
+            }
+
+            // Get course names from IDs
+            $courseNames = [];
+            if (!empty($event->courses) && is_array($event->courses)) {
+                $courseNames = Course::whereIn('id', $event->courses)->pluck('name')->toArray();
+            }
+
+            // Get year levels
+            $yearLevels = $event->year_levels ?? [];
+
+            // Filter eligible students based on criteria
+            $eligibleStudents = Student::where('user_id', $this->organizationId)
+                ->when(!empty($departmentNames), function($q) use ($departmentNames) {
+                    $q->whereIn('department', $departmentNames);
+                })
+                ->when(!empty($courseNames), function($q) use ($courseNames) {
+                    $q->whereIn('course', $courseNames);
+                })
+                ->when(!empty($yearLevels), function($q) use ($yearLevels) {
+                    $q->whereIn('yearlevel', $yearLevels);
+                })
+                ->get();
             
             $existingStudents = EventStudent::where('event_id', $event->id)
                 ->pluck('student_id')
