@@ -588,4 +588,76 @@ Route::get('/debug-controller/{eventId}', function($eventId) {
             'trace' => explode("\n", $e->getTraceAsString())
         ], 500);
     }
+
+});
+
+Route::get('/debug-report-error/{eventId}', function($eventId) {
+    try {
+        $event = App\Models\Event::find($eventId);
+        
+        // Test if we can create directory
+        $testDir = storage_path('app/public/collection-reports');
+        if (!file_exists($testDir)) {
+            mkdir($testDir, 0755, true);
+        }
+        
+        // Get students
+        $students = App\Models\Student::where('user_id', $event->user_id)->get();
+        
+        $studentData = [];
+        foreach ($students as $student) {
+            $payment = App\Models\EventStudent::where('event_id', $event->id)
+                ->where('student_id', $student->student_id)
+                ->first();
+            
+            $studentData[] = [
+                'student_id' => $student->student_id,
+                'name' => $student->firstname . ' ' . $student->lastname,
+                'course' => $student->course ?? 'N/A',
+                'year_level' => $student->yearlevel ?? 'N/A',
+                'status' => $payment ? $payment->status : 'Not Paid',
+                'amount' => $payment ? floatval($payment->amount_paid) : 0,
+                'paid_at' => null,
+                'receipt_number' => '—',
+            ];
+        }
+        
+        $data = [
+            'event' => $event,
+            'students' => $studentData,
+            'summary' => [
+                'total_students' => count($studentData),
+                'paid_students' => 0,
+                'pending_students' => 0,
+                'not_paid_students' => count($studentData),
+                'total_collected' => 0,
+                'expected_total' => count($studentData) * $event->event_fee,
+                'collection_rate' => 0,
+            ],
+            'org_name' => 'Test',
+            'report_date' => now()->format('F d, Y'),
+            'generated_by' => 'Test',
+            'header_image' => null,
+        ];
+        
+        $pdf = Barryvdh\DomPDF\Facade\Pdf::loadView('pdfs.collection-report', $data);
+        $pdf->setPaper('A4', 'portrait');
+        
+        $pdfPath = 'collection-reports/event_' . $event->id . '.pdf';
+        $pdfContent = $pdf->output();
+        \Illuminate\Support\Facades\Storage::disk('public')->put($pdfPath, $pdfContent);
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'PDF generated successfully',
+            'path' => \Illuminate\Support\Facades\Storage::disk('public')->url($pdfPath)
+        ]);
+        
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => $e->getMessage(),
+            'file' => basename($e->getFile()),
+            'line' => $e->getLine()
+        ], 500);
+    }
 });
