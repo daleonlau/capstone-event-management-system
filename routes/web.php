@@ -530,3 +530,62 @@ Route::get('/test-real-pdf/{eventId}', function($eventId) {
         ], 500);
     }
 });
+
+
+Route::get('/debug-controller/{eventId}', function($eventId) {
+    try {
+        $event = App\Models\Event::find($eventId);
+        
+        $students = App\Models\Student::where('user_id', $event->user_id)->get()->map(function($student) use ($event) {
+            $payment = App\Models\EventStudent::where('event_id', $event->id)
+                ->where('student_id', $student->student_id)
+                ->first();
+            return [
+                'student_id' => $student->student_id,
+                'name' => $student->firstname . ' ' . $student->lastname,
+                'course' => $student->course ?? 'N/A',
+                'year_level' => $student->yearlevel ?? 'N/A',
+                'status' => $payment ? $payment->status : 'Not Paid',
+                'amount' => $payment ? floatval($payment->amount_paid) : 0,
+                'paid_at' => ($payment && $payment->status === 'Paid' && $payment->updated_at) ? $payment->updated_at->format('M d, Y') : null,
+                'receipt_number' => $payment && $payment->receipt_number ? $payment->receipt_number : '—',
+            ];
+        });
+        
+        $totalStudents = $students->count();
+        $paidStudents = $students->where('status', 'Paid')->count();
+        $pendingStudents = $students->where('status', 'Pending')->count();
+        $notPaidStudents = $students->where('status', 'Not Paid')->count();
+        $totalCollected = $students->where('status', 'Paid')->sum('amount');
+        $expectedTotal = $totalStudents * floatval($event->event_fee);
+        
+        $data = [
+            'event' => $event,
+            'students' => $students,
+            'summary' => [
+                'total_students' => $totalStudents,
+                'paid_students' => $paidStudents,
+                'pending_students' => $pendingStudents,
+                'not_paid_students' => $notPaidStudents,
+                'total_collected' => $totalCollected,
+                'expected_total' => $expectedTotal,
+                'collection_rate' => $expectedTotal > 0 ? round(($totalCollected / $expectedTotal) * 100, 2) : 0,
+            ],
+            'org_name' => 'Your Organization',
+            'report_date' => now()->format('F d, Y'),
+            'generated_by' => 'Treasurer',
+            'header_image' => null,
+        ];
+        
+        $pdf = Barryvdh\DomPDF\Facade\Pdf::loadView('pdfs.collection-report', $data);
+        return $pdf->download('report.pdf');
+        
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => $e->getMessage(),
+            'line' => $e->getLine(),
+            'file' => $e->getFile(),
+            'trace' => explode("\n", $e->getTraceAsString())
+        ], 500);
+    }
+});
