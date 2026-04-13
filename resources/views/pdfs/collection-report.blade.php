@@ -2,7 +2,6 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Collection Report - {{ $event->event_name ?? 'N/A' }}</title>
     <style>
         @page {
@@ -330,26 +329,23 @@
 </head>
 <body>
 
-<!-- FIXED HEADER - REPEATS ON EVERY PAGE (SAME AS EVALUATION REPORT) -->
+<!-- FIXED HEADER -->
 <div class="fixed-header">
     <div class="header-content">
         @if(isset($header_image) && $header_image)
-            <img src="data:image/png;base64,{{ $header_image }}" class="header-image" alt="CSUCC Logo">
+            <img src="data:image/png;base64,{{ $header_image }}" class="header-image" alt="Logo">
         @endif
     </div>
 </div>
 
 <div class="content">
-    <!-- PAGE 1: SUMMARY SECTION -->
     <div>
-        <!-- Report Header -->
         <div style="text-align: center; margin-bottom: 20px;">
             <div class="report-title">COLLECTION REPORT</div>
             <h2 style="font-size: 14px; font-weight: bold; color: #1a472a; margin-bottom: 6px;">{{ $event->event_name ?? 'N/A' }}</h2>
             <p style="font-size: 9px; color: #6b7280;">Generated on: {{ $report_date ?? date('F d, Y') }} | By: {{ $generated_by ?? 'System' }} | Organization: {{ $org_name ?? 'N/A' }}</p>
         </div>
 
-        <!-- Event Information Row -->
         <div class="info-row">
             <div class="info-group">
                 <div class="info-item">
@@ -374,190 +370,104 @@
             </div>
         </div>
 
-        <!-- Compact Stats Row -->
         <div class="stats-row">
             <div class="stat-compact">
                 <div class="stat-number stat-number-paid">{{ $summary['paid_students'] ?? 0 }}</div>
                 <div class="stat-label-compact">Fully Paid</div>
-                <div class="stat-label-compact" style="font-size: 7px;">{{ number_format((($summary['paid_students'] ?? 0) / max(($summary['total_students'] ?? 1), 1)) * 100, 1) }}%</div>
             </div>
             <div class="divider"></div>
             <div class="stat-compact">
                 <div class="stat-number stat-number-pending">{{ $summary['pending_students'] ?? 0 }}</div>
-                <div class="stat-label-compact">Partial Payment</div>
-                <div class="stat-label-compact" style="font-size: 7px;">{{ number_format((($summary['pending_students'] ?? 0) / max(($summary['total_students'] ?? 1), 1)) * 100, 1) }}%</div>
+                <div class="stat-label-compact">Pending</div>
             </div>
             <div class="divider"></div>
             <div class="stat-compact">
                 <div class="stat-number stat-number-unpaid">{{ $summary['not_paid_students'] ?? 0 }}</div>
                 <div class="stat-label-compact">Not Paid</div>
-                <div class="stat-label-compact" style="font-size: 7px;">{{ number_format((($summary['not_paid_students'] ?? 0) / max(($summary['total_students'] ?? 1), 1)) * 100, 1) }}%</div>
             </div>
             <div class="divider"></div>
             <div class="stat-compact">
                 <div class="stat-number stat-number-rate">₱{{ number_format($summary['total_collected'] ?? 0, 2) }}</div>
                 <div class="stat-label-compact">Total Collected</div>
-                <div class="stat-label-compact" style="font-size: 7px;">of ₱{{ number_format($summary['expected_total'] ?? 0, 2) }}</div>
             </div>
         </div>
 
-        <!-- SUMMARY TABLE -->
         <div class="section-header">📊 COLLECTION SUMMARY</div>
         <table class="summary-table">
-            <thead>
-                <tr>
-                    <th style="width: 40%">Collection Metrics</th>
-                    <th style="width: 20%">Count</th>
-                    <th style="width: 20%">Amount (₱)</th>
-                    <th style="width: 20%">Percentage</th>
-                </tr>
-            </thead>
+            <thead><tr><th>Collection Metrics</th><th>Count</th><th>Amount (₱)</th><th>Percentage</th></tr></thead>
             <tbody>
-                <tr>
-                    <td class="font-bold">Total Students Assigned</td>
-                    <td class="text-center font-bold">{{ $summary['total_students'] ?? 0 }}</td>
-                    <td class="text-right">—</td>
-                    <td class="text-center">100%</td>
-                </tr>
-                <tr>
-                    <td>✓ Fully Paid Students</td>
-                    <td class="text-center">{{ $summary['paid_students'] ?? 0 }}</td>
-                    <td class="text-right" style="color: #27ae60; font-weight: bold;">₱{{ number_format($summary['total_collected'] ?? 0, 2) }}</td>
-                    <td class="text-center">{{ $summary['collection_rate'] ?? 0 }}%</td>
-                </tr>
-                <tr>
-                    <td>⏳ Pending Students (Partial Payment)</td>
-                    <td class="text-center">{{ $summary['pending_students'] ?? 0 }}</td>
-                    <td class="text-right">—</td>
-                    <td class="text-center">{{ ($summary['total_students'] ?? 0) > 0 ? number_format((($summary['pending_students'] ?? 0) / ($summary['total_students'] ?? 1)) * 100, 1) : 0 }}%</td>
-                </tr>
-                <tr>
-                    <td>❌ Unpaid Students (No Payment)</td>
-                    <td class="text-center">{{ $summary['not_paid_students'] ?? 0 }}</td>
-                    <td class="text-right">—</td>
-                    <td class="text-center">{{ ($summary['total_students'] ?? 0) > 0 ? number_format((($summary['not_paid_students'] ?? 0) / ($summary['total_students'] ?? 1)) * 100, 1) : 0 }}%</td>
-                </tr>
-                <tr style="background-color: #f0fdf4;">
-                    <td class="font-bold">Expected Total Collection</td>
-                    <td class="text-center">—</td>
-                    <td class="text-right font-bold">₱{{ number_format($summary['expected_total'] ?? 0, 2) }}</td>
-                    <td class="text-center">100%</td>
-                </tr>
-                <tr style="background-color: #e8f5e9;">
-                    <td class="font-bold">Actual Total Collected</td>
-                    <td class="text-center">—</td>
-                    <td class="text-right font-bold" style="color: #27ae60;">₱{{ number_format($summary['total_collected'] ?? 0, 2) }}</td>
-                    <td class="text-center font-bold">{{ $summary['collection_rate'] ?? 0 }}%</td>
-                </tr>
-                <tr style="background-color: #fff3e0;">
-                    <td class="font-bold">Outstanding Balance (To be Collected)</td>
-                    <td class="text-center">{{ ($summary['pending_students'] ?? 0) + ($summary['not_paid_students'] ?? 0) }}</td>
-                    <td class="text-right font-bold" style="color: #f39c12;">₱{{ number_format(($summary['expected_total'] ?? 0) - ($summary['total_collected'] ?? 0), 2) }}</td>
-                    <td class="text-center">{{ ($summary['expected_total'] ?? 0) > 0 ? number_format((((($summary['expected_total'] ?? 0) - ($summary['total_collected'] ?? 0)) / ($summary['expected_total'] ?? 1)) * 100), 1) : 0 }}%</td>
-                </tr>
+                <tr><td class="font-bold">Total Students Assigned</td><td class="text-center font-bold">{{ $summary['total_students'] ?? 0 }}</td><td class="text-right">—</td><td class="text-center">100%</td></tr>
+                <tr><td>✓ Fully Paid Students</td><td class="text-center">{{ $summary['paid_students'] ?? 0 }}</td><td class="text-right" style="color: #27ae60; font-weight: bold;">₱{{ number_format($summary['total_collected'] ?? 0, 2) }}</td><td class="text-center">{{ $summary['collection_rate'] ?? 0 }}%</td></tr>
+                <tr><td>⏳ Pending Students</td><td class="text-center">{{ $summary['pending_students'] ?? 0 }}</td><td class="text-right">—</td><td class="text-center">-</td></tr>
+                <tr><td>❌ Not Paid Students</td><td class="text-center">{{ $summary['not_paid_students'] ?? 0 }}</td><td class="text-right">—</td><td class="text-center">-</td></tr>
+                <tr style="background-color: #e8f5e9;"><td class="font-bold">Total Collected</td><td class="text-center">—</td><td class="text-right font-bold">₱{{ number_format($summary['total_collected'] ?? 0, 2) }}</td><td class="text-center font-bold">{{ $summary['collection_rate'] ?? 0 }}%</td></tr>
             </tbody>
         </table>
-
-        <!-- Note Box -->
-        @if((($summary['pending_students'] ?? 0) + ($summary['not_paid_students'] ?? 0)) > 0)
-        <div class="note-box">
-            <p class="note-text"><strong>📌 Note:</strong> {{ ($summary['pending_students'] ?? 0) + ($summary['not_paid_students'] ?? 0) }} student(s) have outstanding balances totaling <strong>₱{{ number_format(($summary['expected_total'] ?? 0) - ($summary['total_collected'] ?? 0), 2) }}</strong>. Please see detailed student list below.</p>
-        </div>
-        @else
-        <div class="success-box">
-            <p class="success-text"><strong>✅ Fully Collected!</strong> All {{ $summary['total_students'] ?? 0 }} assigned students have successfully paid their event fees. Total collected: <strong>₱{{ number_format($summary['total_collected'] ?? 0, 2) }}</strong></p>
-        </div>
-        @endif
     </div>
 
-    <!-- PAGE 2: DETAILED STUDENT PAYMENT LIST -->
-    <div class="page-break">
-        <div class="section-header">👥 DETAILED STUDENT PAYMENT LIST</div>
-        
-        <div style="overflow-x: auto;">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th style="width: 12%">Student ID</th>
-                        <th style="width: 28%">Student Name</th>
-                        <th style="width: 12%">Program</th>
-                        <th style="width: 8%">Year</th>
-                        <th style="width: 12%">Amount (₱)</th>
-                        <th style="width: 12%">Status</th>
-                        <th style="width: 12%">Payment Date</th>
-                        <th style="width: 8%">Receipt No.</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @forelse($students as $index => $student)
-                    <tr style="{{ $index % 2 == 0 ? 'background-color: #f9fafb;' : '' }}">
-                        <td class="text-center" style="font-family: monospace;">{{ $student['student_id'] ?? 'N/A' }}</td>
-                        <td class="text-left">{{ $student['name'] ?? 'N/A' }}</td>
-                        <td class="text-center">{{ $student['course'] ?? 'N/A' }}</td>
-                        <td class="text-center">{{ $student['year_level'] ?? 'N/A' }}</td>
-                        <td class="text-right">₱{{ number_format($student['amount'] ?? 0, 2) }}</td>
-                        <td class="text-center">
-                            @if(($student['status'] ?? '') == 'Paid')
-                                <span class="badge badge-paid">Paid</span>
-                            @elseif(($student['status'] ?? '') == 'Pending')
-                                <span class="badge badge-pending">Pending</span>
-                            @else
-                                <span class="badge badge-unpaid">Not Paid</span>
-                            @endif
-                        </td>
-                        <td class="text-center">{{ $student['paid_at'] ?? '—' }}</td>
-                        <td class="text-center" style="font-family: monospace; font-size: 8px;">
-                            {{ $student['receipt_number'] ?? '—' }}
-                        </td>
-                      </tr>
-                    @empty
-                    <tr>
-                        <td colspan="8" style="text-align: center; padding: 40px;">
-                            No students found for this event.
-                        </td>
-                      </tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
+    <!-- STUDENT DETAILS TABLE -->
+    <div class="section-header">👥 DETAILED STUDENT PAYMENT LIST</div>
+    
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Student ID</th>
+                <th>Student Name</th>
+                <th>Program</th>
+                <th>Year</th>
+                <th>Amount (₱)</th>
+                <th>Status</th>
+                <th>Payment Date</th>
+                <th>Receipt No.</th>
+            </tr>
+        </thead>
+        <tbody>
+            @forelse($students as $index => $student)
+            <tr style="{{ $index % 2 == 0 ? 'background-color: #f9fafb;' : '' }}">
+                <td class="text-center">{{ $student['student_id'] ?? 'N/A' }}</td>
+                <td>{{ $student['name'] ?? 'N/A' }}</td>
+                <td class="text-center">{{ $student['course'] ?? 'N/A' }}</td>
+                <td class="text-center">{{ $student['year_level'] ?? 'N/A' }}</td>
+                <td class="text-right">₱{{ number_format($student['amount'] ?? 0, 2) }}</td>
+                <td class="text-center">
+                    @if(($student['status'] ?? '') == 'Paid')
+                        <span class="badge badge-paid">Paid</span>
+                    @elseif(($student['status'] ?? '') == 'Pending')
+                        <span class="badge badge-pending">Pending</span>
+                    @else
+                        <span class="badge badge-unpaid">Not Paid</span>
+                    @endif
+                </td>
+                <td class="text-center">{{ $student['paid_at'] ?? '—' }}</td>
+                <td class="text-center">{{ $student['receipt_number'] ?? '—' }}</td>
+            </tr>
+            @empty
+            <tr><td colspan="8" class="text-center">No students found</td></tr>
+            @endforelse
+        </tbody>
+    </table>
 
-        <!-- Table Footer Summary -->
-        <div class="table-footer">
-            <div class="footer-stats">
-                <div>👥 Total Students: <strong>{{ $summary['total_students'] ?? 0 }}</strong></div>
-                <div>✅ Fully Paid: <strong>{{ $summary['paid_students'] ?? 0 }}</strong></div>
-                <div>⏳ Pending: <strong>{{ $summary['pending_students'] ?? 0 }}</strong></div>
-                <div>❌ Unpaid: <strong>{{ $summary['not_paid_students'] ?? 0 }}</strong></div>
-                <div>💰 Total Collected: <strong style="color: #27ae60;">₱{{ number_format($summary['total_collected'] ?? 0, 2) }}</strong></div>
-            </div>
+    <div class="table-footer">
+        <div class="footer-stats">
+            <div>👥 Total: <strong>{{ $summary['total_students'] ?? 0 }}</strong></div>
+            <div>✅ Paid: <strong>{{ $summary['paid_students'] ?? 0 }}</strong></div>
+            <div>⏳ Pending: <strong>{{ $summary['pending_students'] ?? 0 }}</strong></div>
+            <div>❌ Unpaid: <strong>{{ $summary['not_paid_students'] ?? 0 }}</strong></div>
+            <div>💰 Collected: <strong>₱{{ number_format($summary['total_collected'] ?? 0, 2) }}</strong></div>
         </div>
     </div>
 
-    <!-- SIGNATURE SECTION (Same as evaluation report) -->
+    @if((($summary['pending_students'] ?? 0) + ($summary['not_paid_students'] ?? 0)) > 0)
+    <div class="note-box"><p class="note-text"><strong>⚠️ Reminder:</strong> {{ ($summary['pending_students'] ?? 0) + ($summary['not_paid_students'] ?? 0) }} student(s) have outstanding balances.</p></div>
+    @endif
+
     <div class="signature-section">
-        <div class="signature-box">
-            <div class="signature-line"></div>
-            <div class="signature-name">{{ $generated_by ?? '_____________________' }}</div>
-            <div class="signature-title">Treasurer / Finance Officer</div>
-        </div>
-        <div class="signature-box">
-            <div class="signature-line"></div>
-            <div class="signature-name">_____________________</div>
-            <div class="signature-title">Adviser</div>
-        </div>
-        <div class="signature-box">
-            <div class="signature-line"></div>
-            <div class="signature-name">_____________________</div>
-            <div class="signature-title">President</div>
-        </div>
+        <div class="signature-box"><div class="signature-line"></div><div class="signature-name">{{ $generated_by ?? '_____________________' }}</div><div class="signature-title">Treasurer</div></div>
+        <div class="signature-box"><div class="signature-line"></div><div class="signature-name">_____________________</div><div class="signature-title">Adviser</div></div>
+        <div class="signature-box"><div class="signature-line"></div><div class="signature-name">_____________________</div><div class="signature-title">President</div></div>
     </div>
 
-    <!-- FOOTER (Same as evaluation report) -->
-    <div class="footer">
-        This is a system-generated report from CSUCC EMS. For official use only.<br>
-        Generated on {{ $report_date ?? date('F d, Y') }} | Report ID: COL-{{ date('Ymd') }}-{{ $event->id ?? '000' }}
-    </div>
+    <div class="footer">Generated on {{ $report_date ?? date('F d, Y') }} | Report ID: COL-{{ date('Ymd') }}-{{ $event->id ?? '000' }}</div>
 </div>
-
 </body>
 </html>

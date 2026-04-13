@@ -95,45 +95,64 @@ class ReportController extends Controller
                 return response()->json(['error' => 'Unauthorized'], 403);
             }
 
-            // Get all payments for this event in ONE query (eager loaded)
+            // FIRST: Get all payment records in ONE query
             $payments = EventStudent::where('event_id', $event->id)
                 ->get()
                 ->keyBy('student_id');
             
-            // Get counts
+            // SECOND: Get counts from the payments collection (no extra DB queries)
             $totalStudents = Student::where('user_id', $this->organizationId)->count();
             $paidCount = $payments->where('status', 'Paid')->count();
             $pendingCount = $payments->where('status', 'Pending')->count();
             $totalCollected = $payments->where('status', 'Paid')->sum('amount_paid');
+            $expectedTotal = $totalStudents * floatval($event->event_fee);
             
-            // Process students in CHUNKS to avoid memory issues
+            // THIRD: Build student data ONLY for students that exist in event_student
+            // This is the key - we only process students that have payment records
             $studentData = [];
             
+            foreach ($payments as $payment) {
+                $student = Student::where('student_id', $payment->student_id)
+                    ->where('user_id', $this->organizationId)
+                    ->first();
+                
+                if ($student) {
+                    $studentData[] = [
+                        'student_id' => $student->student_id,
+                        'name' => $student->firstname . ' ' . $student->lastname,
+                        'course' => $student->course ?? 'N/A',
+                        'year_level' => $student->yearlevel ?? 'N/A',
+                        'status' => $payment->status,
+                        'amount' => floatval($payment->amount_paid),
+                        'paid_at' => ($payment->status === 'Paid' && $payment->updated_at) 
+                            ? $payment->updated_at->format('M d, Y') 
+                            : null,
+                        'receipt_number' => $payment->receipt_number ?? '—',
+                    ];
+                }
+            }
+            
+            // Add students with "Not Paid" status (no payment record)
+            // Get all student IDs that have payments
+            $paidStudentIds = $payments->pluck('student_id')->toArray();
+            
+            // Get students without payments (Not Paid) - use chunking here
             Student::where('user_id', $this->organizationId)
-                ->chunk(100, function($students) use ($payments, &$studentData) {
-                    foreach ($students as $student) {
-                        $payment = $payments->get($student->student_id);
-                        
-                        $status = $payment ? $payment->status : 'Not Paid';
-                        $amount = $payment ? floatval($payment->amount_paid) : 0;
-                        
+                ->whereNotIn('student_id', $paidStudentIds)
+                ->chunk(100, function($notPaidStudents) use (&$studentData) {
+                    foreach ($notPaidStudents as $student) {
                         $studentData[] = [
                             'student_id' => $student->student_id,
                             'name' => $student->firstname . ' ' . $student->lastname,
                             'course' => $student->course ?? 'N/A',
                             'year_level' => $student->yearlevel ?? 'N/A',
-                            'status' => $status,
-                            'amount' => $amount,
-                            'paid_at' => ($payment && $payment->status === 'Paid' && $payment->updated_at) 
-                                ? $payment->updated_at->format('M d, Y') 
-                                : null,
-                            'receipt_number' => $payment && $payment->receipt_number ? $payment->receipt_number : '—',
+                            'status' => 'Not Paid',
+                            'amount' => 0,
+                            'paid_at' => null,
+                            'receipt_number' => '—',
                         ];
                     }
                 });
-            
-            $expectedTotal = $totalStudents * floatval($event->event_fee);
-            $collectionRate = $expectedTotal > 0 ? round(($totalCollected / $expectedTotal) * 100, 2) : 0;
             
             $data = [
                 'event' => $event,
@@ -145,7 +164,7 @@ class ReportController extends Controller
                     'not_paid_students' => $totalStudents - $paidCount - $pendingCount,
                     'total_collected' => $totalCollected,
                     'expected_total' => $expectedTotal,
-                    'collection_rate' => $collectionRate,
+                    'collection_rate' => $expectedTotal > 0 ? round(($totalCollected / $expectedTotal) * 100, 2) : 0,
                 ],
                 'org_name' => $this->organizationName,
                 'report_date' => now()->format('F d, Y'),
@@ -162,14 +181,11 @@ class ReportController extends Controller
             // Generate PDF
             $pdf = Pdf::loadView('pdfs.collection-report', $data);
             $pdf->setPaper('A4', 'portrait');
-            $pdf->setOptions([
-                'defaultFont' => 'sans-serif',
-                'isHtml5ParserEnabled' => true,
-                'isRemoteEnabled' => true,
-            ]);
             
             $filePath = $path . '/event_' . $event->id . '.pdf';
             $pdf->save($filePath);
+            
+            Log::info('Report generated for event: ' . $event->id . ' with ' . count($studentData) . ' students');
             
             return response()->json([
                 'success' => true,
