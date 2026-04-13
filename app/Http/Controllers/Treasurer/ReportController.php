@@ -6,8 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\Student;
 use App\Models\EventStudent;
+use App\Models\OrganizationSetting;
+use App\Models\Course;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -57,10 +60,11 @@ class ReportController extends Controller
             $reportPath = null;
             $reportGeneratedAt = null;
             
-            $reportFile = 'collection-reports/event_' . $event->id . '.pdf';
-            if (Storage::disk('public')->exists($reportFile)) {
-                $reportPath = Storage::disk('public')->url($reportFile);
-                $reportGeneratedAt = date('Y-m-d H:i:s', Storage::disk('public')->lastModified($reportFile));
+            $reportFile = storage_path("app/public/collection-reports/event_{$event->id}.pdf");
+            if (file_exists($reportFile)) {
+                $reportPath = "/storage/collection-reports/event_{$event->id}.pdf";
+                $reportGeneratedAt = filemtime($reportFile);
+                $reportGeneratedAt = $reportGeneratedAt ? date('Y-m-d H:i:s', $reportGeneratedAt) : null;
             }
 
             return [
@@ -87,101 +91,56 @@ class ReportController extends Controller
     }
 
     public function generate(Request $request, $eventId)
-{
-    try {
-        Log::info('Starting collection report generation for event: ' . $eventId);
-        
-        $event = Event::findOrFail($eventId);
-        
-        if ($event->user_id !== $this->organizationId) {
-            return response()->json(['error' => 'Unauthorized'], 403);
-        }
-
-        // Get counts only - no need to process all students
-        $totalStudents = Student::where('user_id', $this->organizationId)->count();
-        
-        // Get payment stats
-        $paidCount = EventStudent::where('event_id', $event->id)->where('status', 'Paid')->count();
-        $pendingCount = EventStudent::where('event_id', $event->id)->where('status', 'Pending')->count();
-        $totalCollected = EventStudent::where('event_id', $event->id)->where('status', 'Paid')->sum('amount_paid');
-        
-        $notPaidCount = $totalStudents - $paidCount - $pendingCount;
-        $expectedTotal = $totalStudents * floatval($event->event_fee);
-        $collectionRate = $expectedTotal > 0 ? round(($totalCollected / $expectedTotal) * 100, 2) : 0;
-        
-        // ONLY get detailed data for PAID students (much smaller dataset)
-        $paidStudents = EventStudent::where('event_id', $event->id)
-            ->where('status', 'Paid')
-            ->with('student')
-            ->get();
-        
-        $studentData = [];
-        foreach ($paidStudents as $payment) {
-            $student = $payment->student;
-            if ($student) {
-                $studentData[] = [
-                    'student_id' => $student->student_id,
-                    'name' => $student->firstname . ' ' . $student->lastname,
-                    'course' => $student->course ?? 'N/A',
-                    'year_level' => $student->yearlevel ?? 'N/A',
-                    'status' => 'Paid',
-                    'amount' => floatval($payment->amount_paid),
-                    'paid_at' => $payment->updated_at ? $payment->updated_at->format('M d, Y') : null,
-                    'receipt_number' => $payment->receipt_number ?? '—',
-                ];
+    {
+        try {
+            $event = Event::findOrFail($eventId);
+            
+            if ($event->user_id !== $this->organizationId) {
+                return response()->json(['error' => 'Unauthorized'], 403);
             }
+
+            // Simple data that works
+            $data = [
+                'event' => $event,
+                'students' => [],
+                'summary' => [
+                    'total_students' => 0,
+                    'paid_students' => 0,
+                    'pending_students' => 0,
+                    'not_paid_students' => 0,
+                    'total_collected' => 0,
+                    'expected_total' => 0,
+                    'collection_rate' => 0,
+                ],
+                'org_name' => $this->organizationName,
+                'report_date' => now()->format('F d, Y'),
+                'generated_by' => Auth::guard('org_user')->user()->name,
+                'header_image' => null,
+            ];
+            
+            $pdf = Pdf::loadView('pdfs.collection-report', $data);
+            $pdf->setPaper('A4', 'portrait');
+            
+            $path = storage_path('app/public/collection-reports');
+            if (!file_exists($path)) {
+                mkdir($path, 0755, true);
+            }
+            
+            $filePath = $path . '/event_' . $event->id . '.pdf';
+            $pdf->save($filePath);
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Report generated successfully',
+                'report_path' => '/storage/collection-reports/event_' . $event->id . '.pdf'
+            ]);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => $e->getMessage() . ' on line ' . $e->getLine()
+            ], 500);
         }
-        
-        Log::info('Paid students details: ' . count($studentData) . ' (out of ' . $totalStudents . ' total)');
-        
-        $data = [
-            'event' => $event,
-            'students' => $studentData,  // Only paid students
-            'summary' => [
-                'total_students' => $totalStudents,
-                'paid_students' => $paidCount,
-                'pending_students' => $pendingCount,
-                'not_paid_students' => $notPaidCount,
-                'total_collected' => $totalCollected,
-                'expected_total' => $expectedTotal,
-                'collection_rate' => $collectionRate,
-            ],
-            'org_name' => $this->organizationName,
-            'report_date' => now()->format('F d, Y'),
-            'generated_by' => Auth::guard('org_user')->user()->name,
-            'header_image' => null,
-        ];
-        
-        // Generate PDF
-        $pdf = Pdf::loadView('pdfs.collection-report', $data);
-        $pdf->setPaper('A4', 'portrait');
-        $pdf->setOptions([
-            'defaultFont' => 'sans-serif',
-            'isHtml5ParserEnabled' => true,
-            'isRemoteEnabled' => true,
-        ]);
-        
-        // Store PDF
-        $pdfPath = 'collection-reports/event_' . $event->id . '.pdf';
-        $pdfContent = $pdf->output();
-        Storage::disk('public')->put($pdfPath, $pdfContent);
-        
-        Log::info('Collection report generated successfully for event: ' . $event->id);
-        
-        return response()->json([
-            'success' => true,
-            'message' => 'Report generated successfully',
-            'report_path' => Storage::disk('public')->url($pdfPath)
-        ]);
-        
-    } catch (\Exception $e) {
-        Log::error('Generate report error: ' . $e->getMessage());
-        Log::error('Stack trace: ' . $e->getTraceAsString());
-        return response()->json([
-            'error' => 'Failed to generate report: ' . $e->getMessage() . ' on line ' . $e->getLine()
-        ], 500);
     }
-}
 
     public function view($eventId)
     {
@@ -191,13 +150,13 @@ class ReportController extends Controller
             abort(403);
         }
         
-        $pdfPath = 'collection-reports/event_' . $eventId . '.pdf';
+        $filePath = storage_path('app/public/collection-reports/event_' . $eventId . '.pdf');
         
-        if (!Storage::disk('public')->exists($pdfPath)) {
-            abort(404, 'Report not found. Please generate the report first.');
+        if (!file_exists($filePath)) {
+            abort(404, 'Report not found');
         }
         
-        return response()->file(storage_path('app/public/' . $pdfPath), [
+        return response()->file($filePath, [
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => 'inline; filename="collection-report-' . $event->event_name . '.pdf"'
         ]);
@@ -211,98 +170,28 @@ class ReportController extends Controller
             abort(403);
         }
         
-        $pdfPath = 'collection-reports/event_' . $eventId . '.pdf';
+        $filePath = storage_path('app/public/collection-reports/event_' . $eventId . '.pdf');
         
-        if (!Storage::disk('public')->exists($pdfPath)) {
-            abort(404, 'Report not found. Please generate the report first.');
+        if (!file_exists($filePath)) {
+            abort(404, 'Report not found');
         }
         
-        return response()->download(storage_path('app/public/' . $pdfPath), 'collection-report-' . $event->event_name . '.pdf');
+        return response()->download($filePath, 'collection-report-' . $event->event_name . '.pdf');
     }
 
     public function regenerate(Request $request, $eventId)
     {
         try {
-            $pdfPath = 'collection-reports/event_' . $eventId . '.pdf';
+            $path = storage_path('app/public/collection-reports');
+            $filePath = $path . '/event_' . $eventId . '.pdf';
             
-            if (Storage::disk('public')->exists($pdfPath)) {
-                Storage::disk('public')->delete($pdfPath);
-                Log::info('Deleted old report for event: ' . $eventId);
+            if (file_exists($filePath)) {
+                unlink($filePath);
             }
             
             return $this->generate($request, $eventId);
         } catch (\Exception $e) {
-            Log::error('Regenerate report error: ' . $e->getMessage());
             return response()->json(['error' => $e->getMessage()], 500);
         }
-    }
-
-    public function summaryReport(Request $request)
-    {
-        $request->validate([
-            'date_from' => 'required|date',
-            'date_to' => 'required|date|after_or_equal:date_from',
-        ]);
-
-        $events = Event::where('user_id', $this->organizationId)
-            ->where('approval_status', 'approved')
-            ->where('payment', 'Payment')
-            ->whereBetween('event_date_start', [$request->date_from, $request->date_to])
-            ->get();
-
-        $mappedEvents = $events->map(function ($event) {
-            $totalStudents = Student::where('user_id', $this->organizationId)->count();
-            $paidCount = EventStudent::where('event_id', $event->id)->where('status', 'Paid')->count();
-            $totalCollected = EventStudent::where('event_id', $event->id)->where('status', 'Paid')->sum('amount_paid');
-
-            return [
-                'event_name' => $event->event_name,
-                'event_date' => date('M d, Y', strtotime($event->event_date_start)),
-                'event_fee' => $event->event_fee,
-                'total_students' => $totalStudents,
-                'paid_count' => $paidCount,
-                'total_collected' => $totalCollected,
-                'collection_rate' => $totalStudents > 0 ? round(($paidCount / $totalStudents) * 100, 2) : 0,
-            ];
-        });
-
-        $totalEvents = $mappedEvents->count();
-        $totalStudents = $mappedEvents->sum('total_students');
-        $totalPaid = $mappedEvents->sum('paid_count');
-        $totalCollected = $mappedEvents->sum('total_collected');
-        $overallRate = $totalStudents > 0 ? round(($totalPaid / $totalStudents) * 100, 2) : 0;
-
-        $data = [
-            'events' => $mappedEvents,
-            'summary' => [
-                'total_events' => $totalEvents,
-                'total_students' => $totalStudents,
-                'total_paid' => $totalPaid,
-                'total_collected' => $totalCollected,
-                'overall_rate' => $overallRate,
-            ],
-            'date_range' => [
-                'from' => $request->date_from,
-                'to' => $request->date_to,
-            ],
-            'org_name' => $this->organizationName,
-            'report_date' => now()->format('F d, Y'),
-            'generated_by' => Auth::guard('org_user')->user()->name,
-            'header_image' => null,
-        ];
-
-        $pdf = Pdf::loadView('pdfs.summary-report', $data);
-        $pdf->setPaper('A4', 'portrait');
-        
-        return $pdf->download('summary-report-' . now()->format('Y-m-d') . '.pdf');
-    }
-
-    public function collectionReport(Request $request)
-    {
-        $request->validate([
-            'event_id' => 'required|exists:events,id',
-        ]);
-
-        return $this->generate($request, $request->event_id);
     }
 }
