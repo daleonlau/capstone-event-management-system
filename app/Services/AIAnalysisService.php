@@ -25,7 +25,7 @@ class AIAnalysisService
     {
         $this->dssService = $dssService;
         $this->apiUrl = env('AI_SERVICE_URL', 'http://127.0.0.1:8001');
-        $this->timeout = env('AI_SERVICE_TIMEOUT', 60);
+        $this->timeout = env('AI_SERVICE_TIMEOUT', 120);
         
         Log::info('AIAnalysisService initialized', [
             'api_url' => $this->apiUrl,
@@ -176,7 +176,7 @@ class AIAnalysisService
         // Step 3: Analyze sentiment using Python service
         $sentiment = $this->analyzeSentiment($comments);
         
-        // Step 4: Extract categorized comments - THESE ARE THE COMMENTS FROM PYTHON SERVICE
+        // Step 4: Extract categorized comments
         $positiveComments = $sentiment['positive_comments'] ?? [];
         $negativeComments = $sentiment['negative_comments'] ?? [];
         $neutralComments = $sentiment['neutral_comments'] ?? [];
@@ -185,9 +185,6 @@ class AIAnalysisService
             'positive_count' => count($positiveComments),
             'negative_count' => count($negativeComments),
             'neutral_count' => count($neutralComments),
-            'sample_positive' => array_slice($positiveComments, 0, 2),
-            'sample_negative' => array_slice($negativeComments, 0, 2),
-            'sample_neutral' => array_slice($neutralComments, 0, 2),
         ]);
         
         // Step 5: Generate recommendations from DSS
@@ -282,114 +279,171 @@ class AIAnalysisService
         
         return $comments;
     }
+    
+    /**
+     * Analyze sentiment using Python AI service
+     * UPDATED: Smaller batch size, better error handling, correct parameter format
+     */
     private function analyzeSentiment(array $comments): array
-{
-    if (empty($comments)) {
+    {
+        if (empty($comments)) {
+            return [
+                'positive_percentage' => 0,
+                'negative_percentage' => 0,
+                'neutral_percentage' => 0,
+                'sentiment_score' => 0.5,
+                'total_comments' => 0,
+                'common_themes' => [],
+                'positive_comments' => [],
+                'negative_comments' => [],
+                'neutral_comments' => [],
+                'method_used' => 'none'
+            ];
+        }
+        
+        // REDUCED batch size for Railway (from 50 to 15 for faster processing)
+        $batchSize = 15;
+        $batches = array_chunk($comments, $batchSize);
+        $totalBatches = count($batches);
+        
+        Log::info('Starting batch sentiment analysis', [
+            'total_comments' => count($comments),
+            'batch_size' => $batchSize,
+            'total_batches' => $totalBatches,
+            'api_url' => $this->apiUrl
+        ]);
+        
+        $allPositiveComments = [];
+        $allNegativeComments = [];
+        $allNeutralComments = [];
+        
+        foreach ($batches as $batchIndex => $batch) {
+            $batchStartTime = microtime(true);
+            
+            try {
+                Log::info('Processing batch ' . ($batchIndex + 1) . ' of ' . $totalBatches, [
+                    'comments_in_batch' => count($batch)
+                ]);
+                
+                // CORRECTED: Send comments in positive_comments array
+                $response = Http::timeout(120)
+                    ->retry(3, 2000)  // Retry 3 times with 2 second delay
+                    ->post("{$this->apiUrl}/analyze", [
+                        'positive_comments' => $batch,      // Send all comments here
+                        'suggestion_comments' => [],        // Empty array
+                        'total_respondents' => count($batch),
+                        'response_rate' => 100,
+                        'event_date' => now()->format('Y-m-d')
+                    ]);
+                
+                $batchEndTime = microtime(true);
+                $duration = round($batchEndTime - $batchStartTime, 2);
+                
+                if ($response->successful()) {
+                    $data = $response->json();
+                    
+                    $allPositiveComments = array_merge($allPositiveComments, $data['positive_comments'] ?? []);
+                    $allNegativeComments = array_merge($allNegativeComments, $data['negative_comments'] ?? []);
+                    $allNeutralComments = array_merge($allNeutralComments, $data['neutral_comments'] ?? []);
+                    
+                    Log::info('Batch ' . ($batchIndex + 1) . ' completed', [
+                        'duration_seconds' => $duration,
+                        'positive' => count($data['positive_comments'] ?? []),
+                        'negative' => count($data['negative_comments'] ?? []),
+                        'neutral' => count($data['neutral_comments'] ?? [])
+                    ]);
+                } else {
+                    Log::error('Batch ' . ($batchIndex + 1) . ' HTTP error', [
+                        'status' => $response->status(),
+                        'body' => substr($response->body(), 0, 500)
+                    ]);
+                    
+                    // Fallback for failed batch - use keyword analysis
+                    $fallback = $this->fallbackSentimentAnalysis($batch);
+                    $allPositiveComments = array_merge($allPositiveComments, $fallback['positive_comments']);
+                    $allNegativeComments = array_merge($allNegativeComments, $fallback['negative_comments']);
+                    $allNeutralComments = array_merge($allNeutralComments, $fallback['neutral_comments']);
+                }
+                
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                Log::error('Batch ' . ($batchIndex + 1) . ' connection error: ' . $e->getMessage());
+                
+                // Use fallback for connection errors
+                $fallback = $this->fallbackSentimentAnalysis($batch);
+                $allPositiveComments = array_merge($allPositiveComments, $fallback['positive_comments']);
+                $allNegativeComments = array_merge($allNegativeComments, $fallback['negative_comments']);
+                $allNeutralComments = array_merge($allNeutralComments, $fallback['neutral_comments']);
+                
+            } catch (\Exception $e) {
+                Log::error('Batch ' . ($batchIndex + 1) . ' error: ' . $e->getMessage());
+                
+                // Use fallback for any error
+                $fallback = $this->fallbackSentimentAnalysis($batch);
+                $allPositiveComments = array_merge($allPositiveComments, $fallback['positive_comments']);
+                $allNegativeComments = array_merge($allNegativeComments, $fallback['negative_comments']);
+                $allNeutralComments = array_merge($allNeutralComments, $fallback['neutral_comments']);
+            }
+            
+            // Small delay between batches to prevent overwhelming the service
+            if ($batchIndex < $totalBatches - 1) {
+                usleep(500000); // 0.5 second delay
+            }
+        }
+        
+        // Remove duplicate comments
+        $allPositiveComments = array_values(array_unique($allPositiveComments));
+        $allNegativeComments = array_values(array_unique($allNegativeComments));
+        $allNeutralComments = array_values(array_unique($allNeutralComments));
+        
+        $total = count($comments);
+        $posCount = count($allPositiveComments);
+        $negCount = count($allNegativeComments);
+        $neuCount = count($allNeutralComments);
+        
+        Log::info('Sentiment analysis completed', [
+            'total_batches' => $totalBatches,
+            'total_comments' => $total,
+            'positive' => $posCount,
+            'negative' => $negCount,
+            'neutral' => $neuCount
+        ]);
+        
         return [
-            'positive_percentage' => 0,
-            'negative_percentage' => 0,
-            'neutral_percentage' => 0,
-            'sentiment_score' => 0.5,
-            'total_comments' => 0,
-            'common_themes' => [],
-            'positive_comments' => [],
-            'negative_comments' => [],
-            'neutral_comments' => [],
-            'method_used' => 'none'
+            'positive_percentage' => $total > 0 ? round(($posCount / $total) * 100, 1) : 0,
+            'negative_percentage' => $total > 0 ? round(($negCount / $total) * 100, 1) : 0,
+            'neutral_percentage' => $total > 0 ? round(($neuCount / $total) * 100, 1) : 0,
+            'sentiment_score' => $total > 0 ? round(($posCount + ($neuCount * 0.5)) / $total, 2) : 0.5,
+            'total_comments' => $total,
+            'common_themes' => $this->extractCommonThemes($comments),
+            'positive_comments' => $allPositiveComments,
+            'negative_comments' => $allNegativeComments,
+            'neutral_comments' => $allNeutralComments,
+            'method_used' => 'XLM-RoBERTa (Batched)'
         ];
     }
     
-    // Split comments into batches of 50 to avoid timeout
-    $batchSize = 50;
-    $batches = array_chunk($comments, $batchSize);
-    $totalBatches = count($batches);
-    
-    Log::info('Starting batch sentiment analysis', [
-        'total_comments' => count($comments),
-        'batch_size' => $batchSize,
-        'total_batches' => $totalBatches
-    ]);
-    
-    $allPositiveComments = [];
-    $allNegativeComments = [];
-    $allNeutralComments = [];
-    
-    foreach ($batches as $batchIndex => $batch) {
-        try {
-            Log::info('Processing batch ' . ($batchIndex + 1) . ' of ' . $totalBatches, [
-                'comments_in_batch' => count($batch)
-            ]);
-            
-            $response = Http::timeout(120)->post("{$this->apiUrl}/analyze", [
-                'positive_comments' => [],
-                'suggestion_comments' => $batch,
-            ]);
-            
-            if ($response->successful()) {
-                $data = $response->json();
-                $allPositiveComments = array_merge($allPositiveComments, $data['positive_comments'] ?? []);
-                $allNegativeComments = array_merge($allNegativeComments, $data['negative_comments'] ?? []);
-                $allNeutralComments = array_merge($allNeutralComments, $data['neutral_comments'] ?? []);
-                
-                Log::info('Batch ' . ($batchIndex + 1) . ' completed', [
-                    'positive' => count($data['positive_comments'] ?? []),
-                    'negative' => count($data['negative_comments'] ?? []),
-                    'neutral' => count($data['neutral_comments'] ?? [])
-                ]);
-            } else {
-                Log::warning('Batch ' . ($batchIndex + 1) . ' failed', [
-                    'status' => $response->status(),
-                    'body' => $response->body()
-                ]);
-            }
-            
-        } catch (\Exception $e) {
-            Log::error('Batch ' . ($batchIndex + 1) . ' error: ' . $e->getMessage());
-        }
+    public function forceGenerateInsights(Evaluation $evaluation, ?string $eventDate = null): ?array
+    {
+        return $this->analyzeEvaluation($evaluation, $eventDate, true);
     }
     
-    $total = count($comments);
-    $posCount = count($allPositiveComments);
-    $negCount = count($allNegativeComments);
-    $neuCount = count($allNeutralComments);
-    
-    Log::info('Sentiment analysis completed', [
-        'total_comments' => $total,
-        'positive' => $posCount,
-        'negative' => $negCount,
-        'neutral' => $neuCount
-    ]);
-    
-    return [
-        'positive_percentage' => $total > 0 ? round(($posCount / $total) * 100, 1) : 0,
-        'negative_percentage' => $total > 0 ? round(($negCount / $total) * 100, 1) : 0,
-        'neutral_percentage' => $total > 0 ? round(($neuCount / $total) * 100, 1) : 0,
-        'sentiment_score' => $total > 0 ? round(($posCount + ($neuCount * 0.5)) / $total, 2) : 0.5,
-        'total_comments' => $total,
-        'common_themes' => $this->extractCommonThemes($comments),
-        'positive_comments' => $allPositiveComments,
-        'negative_comments' => $allNegativeComments,
-        'neutral_comments' => $allNeutralComments,
-        'method_used' => 'XLM-RoBERTa (Batched)'
-    ];
-}
-public function forceGenerateInsights(Evaluation $evaluation, ?string $eventDate = null): ?array
-{
-    return $this->analyzeEvaluation($evaluation, $eventDate, true);
-}
-    
+    /**
+     * Fallback sentiment analysis using keyword matching (used when Python service is unavailable)
+     */
     private function fallbackSentimentAnalysis(array $comments): array
     {
         $positiveKeywords = [
             'good', 'great', 'excellent', 'awesome', 'nice', 'love', 'perfect', 'fantastic',
             'wonderful', 'amazing', 'helpful', 'clear', 'organized', 'satisfied', 'happy',
-            'enjoyed', 'informative', 'well', 'best', 'outstanding', 'impressive'
+            'enjoyed', 'informative', 'well', 'best', 'outstanding', 'impressive', 'nindot',
+            'lingaw', 'maayo', 'lami', 'salamat', 'galing', 'ganda'
         ];
         
         $negativeKeywords = [
             'bad', 'poor', 'terrible', 'awful', 'worst', 'disappointed', 'waste', 'horrible',
             'slow', 'boring', 'confusing', 'unclear', 'disorganized', 'unhelpful', 'rude',
-            'unsatisfied', 'lacking', 'insufficient', 'delay', 'problem', 'issue'
+            'unsatisfied', 'lacking', 'insufficient', 'delay', 'problem', 'issue', 'bati',
+            'gubot', 'init', 'saba', 'hinay', 'sayang'
         ];
         
         $positiveComments = [];
@@ -398,8 +452,15 @@ public function forceGenerateInsights(Evaluation $evaluation, ?string $eventDate
         
         foreach ($comments as $comment) {
             $commentLower = strtolower($comment);
-            $posCount = count(array_filter($positiveKeywords, fn($kw) => str_contains($commentLower, $kw)));
-            $negCount = count(array_filter($negativeKeywords, fn($kw) => str_contains($commentLower, $kw)));
+            $posCount = 0;
+            $negCount = 0;
+            
+            foreach ($positiveKeywords as $keyword) {
+                if (str_contains($commentLower, $keyword)) $posCount++;
+            }
+            foreach ($negativeKeywords as $keyword) {
+                if (str_contains($commentLower, $keyword)) $negCount++;
+            }
             
             if ($posCount > $negCount) {
                 $positiveComments[] = $comment;
@@ -650,6 +711,12 @@ public function forceGenerateInsights(Evaluation $evaluation, ?string $eventDate
         if (str_contains($lowerText, 'time')) {
             return 'Improve time management and start on time';
         }
+        if (str_contains($lowerText, 'venue')) {
+            return 'Improve venue facilities and comfort';
+        }
+        if (str_contains($lowerText, 'speaker')) {
+            return 'Enhance speaker engagement and content delivery';
+        }
         return 'Review and address this area for improvement';
     }
     
@@ -721,29 +788,27 @@ public function forceGenerateInsights(Evaluation $evaluation, ?string $eventDate
             $featureImportance = $this->calculateFeatureImportance($satisfaction['category_scores']);
             $criticalFactors = $this->getCriticalFactors($satisfaction['category_scores']);
             
-            // Convert comments to JSON - THIS IS THE CRITICAL PART
+            // Convert comments to JSON
             $positiveCommentsJson = json_encode(array_values($positiveComments), JSON_UNESCAPED_UNICODE);
             $negativeCommentsJson = json_encode(array_values($negativeComments), JSON_UNESCAPED_UNICODE);
             $neutralCommentsJson = json_encode(array_values($neutralComments), JSON_UNESCAPED_UNICODE);
             
-            // Check if columns exist
-            $hasCommentColumns = Schema::hasColumn('ai_analyses', 'positive_comments');
+            // Format recommendations
+            $formattedRecommendations = $this->formatRecommendations($recommendations);
             
             Log::info('Storing analysis results', [
                 'evaluation_id' => $evaluation->id,
                 'event_date' => $eventDate ?? 'overall',
-                'has_comment_columns' => $hasCommentColumns,
                 'positive_comments_count' => count($positiveComments),
                 'negative_comments_count' => count($negativeComments),
                 'neutral_comments_count' => count($neutralComments),
-                'positive_json_preview' => substr($positiveCommentsJson, 0, 200),
             ]);
             
             $data = [
                 'summary' => $summary,
-                'strengths' => json_encode($strengths, JSON_UNESCAPED_UNICODE),
-                'weaknesses' => json_encode($weaknesses, JSON_UNESCAPED_UNICODE),
-                'recommendations' => json_encode($recommendations, JSON_UNESCAPED_UNICODE),
+                'strengths' => json_encode(array_values($strengths), JSON_UNESCAPED_UNICODE),
+                'weaknesses' => json_encode(array_values($weaknesses), JSON_UNESCAPED_UNICODE),
+                'recommendations' => json_encode($formattedRecommendations, JSON_UNESCAPED_UNICODE),
                 'feature_importance' => json_encode($featureImportance, JSON_UNESCAPED_UNICODE),
                 'sentiment_analysis' => json_encode($sentiment, JSON_UNESCAPED_UNICODE),
                 'what_if_analysis' => json_encode($whatIfAnalysis, JSON_UNESCAPED_UNICODE),
@@ -756,16 +821,10 @@ public function forceGenerateInsights(Evaluation $evaluation, ?string $eventDate
                 'response_rate' => $responseRate,
                 'total_respondents' => $satisfaction['total_respondents'],
                 'analyzed_at' => now(),
+                'positive_comments' => $positiveCommentsJson,
+                'negative_comments' => $negativeCommentsJson,
+                'neutral_comments' => $neutralCommentsJson,
             ];
-            
-            // Only add comment columns if they exist
-            if ($hasCommentColumns) {
-                $data['positive_comments'] = $positiveCommentsJson;
-                $data['negative_comments'] = $negativeCommentsJson;
-                $data['neutral_comments'] = $neutralCommentsJson;
-            } else {
-                Log::warning('Comment columns do not exist in ai_analyses table. Run migration to add them.');
-            }
             
             $result = AIAnalysis::updateOrCreate(
                 [
@@ -775,21 +834,39 @@ public function forceGenerateInsights(Evaluation $evaluation, ?string $eventDate
                 $data
             );
             
-            // Verify the data was saved
-            if ($hasCommentColumns) {
-                $savedRecord = AIAnalysis::find($result->id);
-                Log::info('Storage verification', [
-                    'id' => $savedRecord->id,
-                    'positive_comments_saved' => !is_null($savedRecord->positive_comments),
-                    'positive_comments_length' => strlen($savedRecord->positive_comments ?? ''),
-                    'positive_comments_sample' => substr($savedRecord->positive_comments ?? '', 0, 100),
-                ]);
-            }
+            Log::info('Analysis results stored successfully', [
+                'id' => $result->id,
+                'has_positive_comments' => !empty($positiveComments),
+                'has_negative_comments' => !empty($negativeComments),
+                'has_neutral_comments' => !empty($neutralComments)
+            ]);
             
         } catch (\Exception $e) {
             Log::error('Failed to store analysis results: ' . $e->getMessage());
             Log::error('Stack trace: ' . $e->getTraceAsString());
         }
+    }
+    
+    /**
+     * Format recommendations for storage
+     */
+    private function formatRecommendations(array $recommendations): array
+    {
+        $formatted = [];
+        foreach ($recommendations as $rec) {
+            if (is_string($rec)) {
+                $formatted[] = [
+                    'priority' => 'medium',
+                    'title' => $rec,
+                    'problem_statement' => $rec,
+                    'action_items' => ['Review and address this area for improvement'],
+                    'expected_outcome' => 'Improvement in satisfaction scores'
+                ];
+            } else {
+                $formatted[] = $rec;
+            }
+        }
+        return $formatted;
     }
     
     public function getResponseRateForDate(Evaluation $evaluation, ?string $eventDate = null): float
@@ -827,16 +904,20 @@ public function forceGenerateInsights(Evaluation $evaluation, ?string $eventDate
         
         if (!$analysis) return null;
         
+        // Decode sentiment analysis
+        $sentimentAnalysis = json_decode($analysis->sentiment_analysis, true) ?: [];
+        
         return [
             'summary' => $analysis->summary,
             'strengths' => json_decode($analysis->strengths, true) ?: [],
             'weaknesses' => json_decode($analysis->weaknesses, true) ?: [],
             'recommendations' => json_decode($analysis->recommendations, true) ?: [],
             'feature_importance' => json_decode($analysis->feature_importance, true) ?: [],
-            'sentiment_analysis' => json_decode($analysis->sentiment_analysis, true) ?: [],
-            'positive_comments' => json_decode($analysis->positive_comments, true) ?: [],
-            'negative_comments' => json_decode($analysis->negative_comments, true) ?: [],
-            'neutral_comments' => json_decode($analysis->neutral_comments, true) ?: [],
+            'sentiment_analysis' => $sentimentAnalysis,
+            // Return comments at root level for Vue component
+            'positive_comments' => json_decode($analysis->positive_comments, true) ?: ($sentimentAnalysis['positive_comments'] ?? []),
+            'negative_comments' => json_decode($analysis->negative_comments, true) ?: ($sentimentAnalysis['negative_comments'] ?? []),
+            'neutral_comments' => json_decode($analysis->neutral_comments, true) ?: ($sentimentAnalysis['neutral_comments'] ?? []),
             'what_if_analysis' => json_decode($analysis->what_if_analysis, true) ?: [],
             'predicted_satisfaction' => $analysis->predicted_satisfaction,
             'success_probability' => $analysis->success_probability,
@@ -875,4 +956,4 @@ public function forceGenerateInsights(Evaluation $evaluation, ?string $eventDate
     {
         return $this->meetsThreshold($evaluation, $eventDate);
     }
-}
+}   
