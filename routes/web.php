@@ -675,3 +675,57 @@ Route::get('/test-controller-load', function() {
         return response()->json(['error' => $e->getMessage()], 500);
     }
 });
+
+Route::get('/test-generate-direct/{eventId}', function($eventId) {
+    try {
+        $event = App\Models\Event::find($eventId);
+        
+        // Test 1: Check if event exists
+        if (!$event) {
+            return response()->json(['error' => 'Event not found'], 404);
+        }
+        
+        // Test 2: Try a simple DB query
+        $students = DB::table('students')
+            ->where('user_id', $event->user_id)
+            ->count();
+        
+        // Test 3: Try to get payments
+        $payments = DB::table('event_student')
+            ->where('event_id', $event->id)
+            ->count();
+        
+        // Test 4: Try to generate a simple PDF
+        $data = [
+            'event' => $event,
+            'test' => 'Working',
+            'student_count' => $students,
+            'payment_count' => $payments
+        ];
+        
+        $pdf = Barryvdh\DomPDF\Facade\Pdf::loadView('pdfs.test-simple', $data);
+        $pdf->setPaper('A4', 'portrait');
+        
+        $path = storage_path('app/public/collection-reports');
+        if (!file_exists($path)) {
+            mkdir($path, 0755, true);
+        }
+        
+        $filePath = $path . '/test_direct_' . $eventId . '.pdf';
+        $pdf->save($filePath);
+        
+        return response()->json([
+            'success' => true,
+            'student_count' => $students,
+            'payment_count' => $payments,
+            'message' => 'Test PDF generated successfully'
+        ]);
+        
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => $e->getMessage(),
+            'line' => $e->getLine(),
+            'file' => $e->getFile()
+        ], 500);
+    }
+});
