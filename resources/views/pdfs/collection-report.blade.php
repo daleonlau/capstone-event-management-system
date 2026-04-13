@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Collection Report - {{ $event->event_name }}</title>
+    <title>Collection Report - {{ $event->event_name ?? 'N/A' }}</title>
     <style>
         @page {
             size: A4;
@@ -345,7 +345,7 @@
 <div class="fixed-header">
     <div class="header-content">
         @if(isset($header_image) && $header_image)
-            <img src="data:image/png;base64,{{ $header_image }}" class="header-image" alt="CSUCC Logo">
+            <img src="data:image/png;base64,{{ $header_image }}" class="header-image" alt="Logo">
         @endif
     </div>
 </div>
@@ -356,8 +356,8 @@
         <!-- Report Header -->
         <div style="text-align: center; margin-bottom: 20px;">
             <div class="report-title">COLLECTION REPORT</div>
-            <h2 style="font-size: 14px; font-weight: bold; color: #1a472a; margin-bottom: 6px;">{{ $event->event_name }}</h2>
-            <p style="font-size: 9px; color: #6b7280;">Generated on: {{ $report_date }} | By: {{ $generated_by }} | Organization: {{ $org_name }}</p>
+            <h2 style="font-size: 14px; font-weight: bold; color: #1a472a; margin-bottom: 6px;">{{ $event->event_name ?? 'N/A' }}</h2>
+            <p style="font-size: 9px; color: #6b7280;">Generated on: {{ $report_date ?? date('F d, Y') }} | By: {{ $generated_by ?? 'System' }} | Organization: {{ $org_name ?? 'N/A' }}</p>
         </div>
 
         <!-- Event Information Row -->
@@ -365,22 +365,31 @@
             <div class="info-group">
                 <div class="info-item">
                     <div class="info-label">Event Date</div>
-                    <div class="info-value">{{ \Carbon\Carbon::parse($event->event_date_start)->format('F d, Y') }}</div>
+                    <div class="info-value">
+                        @php
+                            $date = $event->event_date_start ?? null;
+                            if ($date) {
+                                echo date('F d, Y', strtotime($date));
+                            } else {
+                                echo 'N/A';
+                            }
+                        @endphp
+                    </div>
                 </div>
                 <div class="info-item">
                     <div class="info-label">Event Fee</div>
-                    <div class="info-value info-value-highlight">₱{{ number_format($event->event_fee, 2) }}</div>
+                    <div class="info-value info-value-highlight">₱{{ number_format($event->event_fee ?? 0, 2) }}</div>
                 </div>
                 <div class="info-item">
                     <div class="info-label">Total Students</div>
-                    <div class="info-value">{{ number_format($summary['total_students']) }}</div>
+                    <div class="info-value">{{ number_format($summary['total_students'] ?? 0) }}</div>
                 </div>
             </div>
             <div class="info-item">
                 <div class="info-label">Collection Rate</div>
-                <div class="info-value info-value-highlight">{{ $summary['collection_rate'] }}%</div>
+                <div class="info-value info-value-highlight">{{ $summary['collection_rate'] ?? 0 }}%</div>
                 <div class="progress-container">
-                    <div class="progress-bar" style="width: {{ $summary['collection_rate'] }}%;"></div>
+                    <div class="progress-bar" style="width: {{ $summary['collection_rate'] ?? 0 }}%;"></div>
                 </div>
             </div>
         </div>
@@ -388,27 +397,27 @@
         <!-- Compact Stats Row -->
         <div class="stats-row">
             <div class="stat-compact">
-                <div class="stat-number stat-number-paid">{{ $summary['paid_students'] }}</div>
+                <div class="stat-number stat-number-paid">{{ $summary['paid_students'] ?? 0 }}</div>
                 <div class="stat-label-compact">Fully Paid</div>
-                <div class="stat-label-compact" style="font-size: 7px;">{{ number_format(($summary['paid_students'] / max($summary['total_students'], 1)) * 100, 1) }}%</div>
+                <div class="stat-label-compact" style="font-size: 7px;">{{ number_format((($summary['paid_students'] ?? 0) / max(($summary['total_students'] ?? 1), 1)) * 100, 1) }}%</div>
             </div>
             <div class="divider"></div>
             <div class="stat-compact">
-                <div class="stat-number stat-number-pending">{{ $summary['pending_students'] }}</div>
+                <div class="stat-number stat-number-pending">{{ $summary['pending_students'] ?? 0 }}</div>
                 <div class="stat-label-compact">Partial Payment</div>
-                <div class="stat-label-compact" style="font-size: 7px;">{{ number_format(($summary['pending_students'] / max($summary['total_students'], 1)) * 100, 1) }}%</div>
+                <div class="stat-label-compact" style="font-size: 7px;">{{ number_format((($summary['pending_students'] ?? 0) / max(($summary['total_students'] ?? 1), 1)) * 100, 1) }}%</div>
             </div>
             <div class="divider"></div>
             <div class="stat-compact">
-                <div class="stat-number stat-number-unpaid">{{ $summary['not_paid_students'] }}</div>
+                <div class="stat-number stat-number-unpaid">{{ $summary['not_paid_students'] ?? 0 }}</div>
                 <div class="stat-label-compact">Not Paid</div>
-                <div class="stat-label-compact" style="font-size: 7px;">{{ number_format(($summary['not_paid_students'] / max($summary['total_students'], 1)) * 100, 1) }}%</div>
+                <div class="stat-label-compact" style="font-size: 7px;">{{ number_format((($summary['not_paid_students'] ?? 0) / max(($summary['total_students'] ?? 1), 1)) * 100, 1) }}%</div>
             </div>
             <div class="divider"></div>
             <div class="stat-compact">
-                <div class="stat-number stat-number-rate">₱{{ number_format($summary['total_collected'], 2) }}</div>
+                <div class="stat-number stat-number-rate">₱{{ number_format($summary['total_collected'] ?? 0, 2) }}</div>
                 <div class="stat-label-compact">Total Collected</div>
-                <div class="stat-label-compact" style="font-size: 7px;">of ₱{{ number_format($summary['expected_total'], 2) }}</div>
+                <div class="stat-label-compact" style="font-size: 7px;">of ₱{{ number_format($summary['expected_total'] ?? 0, 2) }}</div>
             </div>
         </div>
 
@@ -426,57 +435,57 @@
             <tbody>
                 <tr>
                     <td class="font-bold">Total Students Assigned</td>
-                    <td class="text-center font-bold">{{ $summary['total_students'] }}</td>
+                    <td class="text-center font-bold">{{ $summary['total_students'] ?? 0 }}</td>
                     <td class="text-right">—</td>
                     <td class="text-center">100%</td>
                 </tr>
                 <tr>
                     <td>✓ Fully Paid Students</td>
-                    <td class="text-center">{{ $summary['paid_students'] }}</td>
-                    <td class="text-right" style="color: #27ae60; font-weight: bold;">₱{{ number_format($summary['total_collected'], 2) }}</td>
-                    <td class="text-center">{{ $summary['collection_rate'] }}%</td>
+                    <td class="text-center">{{ $summary['paid_students'] ?? 0 }}</td>
+                    <td class="text-right" style="color: #27ae60; font-weight: bold;">₱{{ number_format($summary['total_collected'] ?? 0, 2) }}</td>
+                    <td class="text-center">{{ $summary['collection_rate'] ?? 0 }}%</td>
                 </tr>
                 <tr>
                     <td>⏳ Pending Students (Partial Payment)</td>
-                    <td class="text-center">{{ $summary['pending_students'] }}</td>
+                    <td class="text-center">{{ $summary['pending_students'] ?? 0 }}</td>
                     <td class="text-right">—</td>
-                    <td class="text-center">{{ $summary['total_students'] > 0 ? number_format(($summary['pending_students'] / $summary['total_students']) * 100, 1) : 0 }}%</td>
+                    <td class="text-center">{{ ($summary['total_students'] ?? 0) > 0 ? number_format((($summary['pending_students'] ?? 0) / ($summary['total_students'] ?? 1)) * 100, 1) : 0 }}%</td>
                 </tr>
                 <tr>
                     <td>❌ Unpaid Students (No Payment)</td>
-                    <td class="text-center">{{ $summary['not_paid_students'] }}</td>
+                    <td class="text-center">{{ $summary['not_paid_students'] ?? 0 }}</td>
                     <td class="text-right">—</td>
-                    <td class="text-center">{{ $summary['total_students'] > 0 ? number_format(($summary['not_paid_students'] / $summary['total_students']) * 100, 1) : 0 }}%</td>
+                    <td class="text-center">{{ ($summary['total_students'] ?? 0) > 0 ? number_format((($summary['not_paid_students'] ?? 0) / ($summary['total_students'] ?? 1)) * 100, 1) : 0 }}%</td>
                 </tr>
                 <tr style="background-color: #f0fdf4;">
                     <td class="font-bold">Expected Total Collection</td>
                     <td class="text-center">—</td>
-                    <td class="text-right font-bold">₱{{ number_format($summary['expected_total'], 2) }}</td>
+                    <td class="text-right font-bold">₱{{ number_format($summary['expected_total'] ?? 0, 2) }}</td>
                     <td class="text-center">100%</td>
                 </tr>
                 <tr style="background-color: #e8f5e9;">
                     <td class="font-bold">Actual Total Collected</td>
                     <td class="text-center">—</td>
-                    <td class="text-right font-bold" style="color: #27ae60;">₱{{ number_format($summary['total_collected'], 2) }}</td>
-                    <td class="text-center font-bold">{{ $summary['collection_rate'] }}%</td>
+                    <td class="text-right font-bold" style="color: #27ae60;">₱{{ number_format($summary['total_collected'] ?? 0, 2) }}</td>
+                    <td class="text-center font-bold">{{ $summary['collection_rate'] ?? 0 }}%</td>
                 </tr>
                 <tr style="background-color: #fff3e0;">
                     <td class="font-bold">Outstanding Balance (To be Collected)</td>
-                    <td class="text-center">{{ $summary['pending_students'] + $summary['not_paid_students'] }}</td>
-                    <td class="text-right font-bold" style="color: #f39c12;">₱{{ number_format($summary['expected_total'] - $summary['total_collected'], 2) }}</td>
-                    <td class="text-center">{{ $summary['expected_total'] > 0 ? number_format((($summary['expected_total'] - $summary['total_collected']) / $summary['expected_total']) * 100, 1) : 0 }}%</td>
+                    <td class="text-center">{{ ($summary['pending_students'] ?? 0) + ($summary['not_paid_students'] ?? 0) }}</td>
+                    <td class="text-right font-bold" style="color: #f39c12;">₱{{ number_format((($summary['expected_total'] ?? 0) - ($summary['total_collected'] ?? 0)), 2) }}</td>
+                    <td class="text-center">{{ ($summary['expected_total'] ?? 0) > 0 ? number_format((((($summary['expected_total'] ?? 0) - ($summary['total_collected'] ?? 0)) / ($summary['expected_total'] ?? 1)) * 100), 1) : 0 }}%</td>
                 </tr>
             </tbody>
         </table>
 
         <!-- Note Box -->
-        @if(($summary['pending_students'] + $summary['not_paid_students']) > 0)
+        @if((($summary['pending_students'] ?? 0) + ($summary['not_paid_students'] ?? 0)) > 0)
         <div class="note-box">
-            <p class="note-text"><strong>📌 Note:</strong> {{ $summary['pending_students'] + $summary['not_paid_students'] }} student(s) have outstanding balances totaling <strong>₱{{ number_format($summary['expected_total'] - $summary['total_collected'], 2) }}</strong>. Please see detailed student list on the next page.</p>
+            <p class="note-text"><strong>📌 Note:</strong> {{ ($summary['pending_students'] ?? 0) + ($summary['not_paid_students'] ?? 0) }} student(s) have outstanding balances totaling <strong>₱{{ number_format(($summary['expected_total'] ?? 0) - ($summary['total_collected'] ?? 0), 2) }}</strong>. Please see detailed student list on the next page.</p>
         </div>
         @else
         <div class="success-box">
-            <p class="success-text"><strong>✅ Fully Collected!</strong> All {{ $summary['total_students'] }} assigned students have successfully paid their event fees. Total collected: <strong>₱{{ number_format($summary['total_collected'], 2) }}</strong></p>
+            <p class="success-text"><strong>✅ Fully Collected!</strong> All {{ $summary['total_students'] ?? 0 }} assigned students have successfully paid their event fees. Total collected: <strong>₱{{ number_format($summary['total_collected'] ?? 0, 2) }}</strong></p>
         </div>
         @endif
     </div>
@@ -502,15 +511,15 @@
                 <tbody>
                     @forelse($students as $index => $student)
                     <tr style="{{ $index % 2 == 0 ? 'background-color: #f9fafb;' : '' }}">
-                        <td class="text-center" style="font-family: monospace;">{{ $student['student_id'] }}</td>
-                        <td class="text-left">{{ $student['name'] }}</td>
-                        <td class="text-center">{{ $student['course'] }}</td>
-                        <td class="text-center">{{ $student['year_level'] }}</td>
-                        <td class="text-right">₱{{ number_format($student['amount'], 2) }}</td>
+                        <td class="text-center" style="font-family: monospace;">{{ $student['student_id'] ?? 'N/A' }}</td>
+                        <td class="text-left">{{ $student['name'] ?? 'N/A' }}</td>
+                        <td class="text-center">{{ $student['course'] ?? 'N/A' }}</td>
+                        <td class="text-center">{{ $student['year_level'] ?? 'N/A' }}</td>
+                        <td class="text-right">₱{{ number_format($student['amount'] ?? 0, 2) }}</td>
                         <td class="text-center">
-                            @if($student['status'] == 'Paid')
+                            @if(($student['status'] ?? '') == 'Paid')
                                 <span class="badge badge-paid">Paid</span>
-                            @elseif($student['status'] == 'Pending')
+                            @elseif(($student['status'] ?? '') == 'Pending')
                                 <span class="badge badge-pending">Pending</span>
                             @else
                                 <span class="badge badge-unpaid">Not Paid</span>
@@ -518,11 +527,7 @@
                         </td>
                         <td class="text-center">{{ $student['paid_at'] ?? '—' }}</td>
                         <td class="text-center" style="font-family: monospace; font-size: 8px;">
-                            @if(isset($student['receipt_number']) && !empty($student['receipt_number']))
-                                {{ $student['receipt_number'] }}
-                            @else
-                                —
-                            @endif
+                            {{ ($student['receipt_number'] ?? '—') ?: '—' }}
                         </td>
                       </tr>
                     @empty
@@ -539,17 +544,17 @@
         <!-- Table Footer Summary -->
         <div class="table-footer">
             <div class="footer-stats">
-                <div>👥 Total Students: <strong>{{ $summary['total_students'] }}</strong></div>
-                <div>✅ Fully Paid: <strong>{{ $summary['paid_students'] }}</strong></div>
-                <div>⏳ Pending: <strong>{{ $summary['pending_students'] }}</strong></div>
-                <div>❌ Unpaid: <strong>{{ $summary['not_paid_students'] }}</strong></div>
-                <div>💰 Total Collected: <strong style="color: #27ae60;">₱{{ number_format($summary['total_collected'], 2) }}</strong></div>
+                <div>👥 Total Students: <strong>{{ $summary['total_students'] ?? 0 }}</strong></div>
+                <div>✅ Fully Paid: <strong>{{ $summary['paid_students'] ?? 0 }}</strong></div>
+                <div>⏳ Pending: <strong>{{ $summary['pending_students'] ?? 0 }}</strong></div>
+                <div>❌ Unpaid: <strong>{{ $summary['not_paid_students'] ?? 0 }}</strong></div>
+                <div>💰 Total Collected: <strong style="color: #27ae60;">₱{{ number_format($summary['total_collected'] ?? 0, 2) }}</strong></div>
             </div>
         </div>
 
-        @if(($summary['pending_students'] + $summary['not_paid_students']) > 0)
+        @if((($summary['pending_students'] ?? 0) + ($summary['not_paid_students'] ?? 0)) > 0)
         <div class="note-box" style="margin-top: 20px;">
-            <p class="note-text"><strong>⚠️ Collection Reminder:</strong> {{ $summary['pending_students'] + $summary['not_paid_students'] }} student(s) have outstanding balances totaling <strong>₱{{ number_format($summary['expected_total'] - $summary['total_collected'], 2) }}</strong>. Please follow up with the students listed above.</p>
+            <p class="note-text"><strong>⚠️ Collection Reminder:</strong> {{ ($summary['pending_students'] ?? 0) + ($summary['not_paid_students'] ?? 0) }} student(s) have outstanding balances totaling <strong>₱{{ number_format(($summary['expected_total'] ?? 0) - ($summary['total_collected'] ?? 0), 2) }}</strong>. Please follow up with the students listed above.</p>
         </div>
         @endif
     </div>
@@ -558,7 +563,7 @@
     <div class="signature-section">
         <div class="signature-box">
             <div class="signature-line"></div>
-            <div class="signature-name">{{ $generated_by }}</div>
+            <div class="signature-name">{{ $generated_by ?? '_____________________' }}</div>
             <div class="signature-title">Treasurer / Finance Officer</div>
         </div>
         <div class="signature-box">
@@ -576,7 +581,7 @@
     <!-- FOOTER -->
     <div class="footer">
         This is a system-generated report from CSUCC EMS. For official use only.<br>
-        Generated on {{ $report_date }} | Report ID: COL-{{ date('Ymd') }}-{{ $event->id ?? '000' }}
+        Generated on {{ $report_date ?? date('F d, Y') }} | Report ID: COL-{{ date('Ymd') }}-{{ $event->id ?? '000' }}
     </div>
 </div>
 

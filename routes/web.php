@@ -382,22 +382,37 @@ Route::get('/debug-comments/{evaluationId}', function($evaluationId) {
 });
 
 
-Route::get('/test-pdf', function() {
+Route::get('/test-simple-pdf/{eventId}', function($eventId) {
     try {
+        $event = App\Models\Event::find($eventId);
+        
+        // Simple test data
+        $data = [
+            'event' => $event,
+            'test_message' => 'This is a test PDF',
+            'students' => [],
+            'summary' => ['total_students' => 0]
+        ];
+        
+        $pdf = Barryvdh\DomPDF\Facade\Pdf::loadView('pdfs.test-simple', $data);
+        $pdf->setPaper('A4', 'portrait');
+        
+        // Save to file
         $path = storage_path('app/public/collection-reports');
+        $filePath = $path . '/test-' . $eventId . '.pdf';
+        $pdf->save($filePath);
+        
         return response()->json([
-            'path' => $path,
-            'exists' => file_exists($path),
-            'writable' => is_writable($path),
-            'storage_link' => file_exists(public_path('storage')),
-            'php_version' => phpversion(),
-            'extensions' => [
-                'gd' => extension_loaded('gd'),
-                'dom' => extension_loaded('dom'),
-                'mbstring' => extension_loaded('mbstring'),
-            ]
+            'success' => true,
+            'message' => 'Test PDF generated',
+            'path' => '/storage/collection-reports/test-' . $eventId . '.pdf'
         ]);
+        
     } catch (\Exception $e) {
-        return response()->json(['error' => $e->getMessage()], 500);
+        return response()->json([
+            'error' => $e->getMessage(),
+            'line' => $e->getLine(),
+            'file' => $e->getFile()
+        ], 500);
     }
 });
