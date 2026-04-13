@@ -380,3 +380,24 @@ Route::get('/debug-comments/{evaluationId}', function($evaluationId) {
         })
     ]);
 });
+
+
+Route::get('/test-pdf', function() {
+    try {
+        $path = storage_path('app/public/collection-reports');
+        return response()->json([
+            'path' => $path,
+            'exists' => file_exists($path),
+            'writable' => is_writable($path),
+            'storage_link' => file_exists(public_path('storage')),
+            'php_version' => phpversion(),
+            'extensions' => [
+                'gd' => extension_loaded('gd'),
+                'dom' => extension_loaded('dom'),
+                'mbstring' => extension_loaded('mbstring'),
+            ]
+        ]);
+    } catch (\Exception $e) {
+        return response()->json(['error' => $e->getMessage()], 500);
+    }
+});
