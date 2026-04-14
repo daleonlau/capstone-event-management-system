@@ -147,6 +147,10 @@ class DSSService
     {
         $finalScore = $rawAverage;
         
+        /* 
+        // RULE-BASED LOGIC (Commented out to follow strict arithmetic mean)
+        
+        // 1. Critical Failure Rule
         foreach ($categoryScores as $score) {
             if ($score < 2.50) {
                 $finalScore = min($finalScore, 3.49);
@@ -154,6 +158,7 @@ class DSSService
             }
         }
         
+        // 2. High-Impact Factor Penalties (Food)
         foreach ($categoryScores as $category => $score) {
             if (stripos($category, 'food') !== false && $score < 2.50) {
                 $finalScore -= 0.5;
@@ -162,12 +167,14 @@ class DSSService
             }
         }
         
+        // 3. Excellence Bonuses (Speaker)
         foreach ($categoryScores as $category => $score) {
             if (stripos($category, 'speaker') !== false && $score >= 4.50) {
                 $finalScore += 0.2;
             }
         }
         
+        // 4. Consistency Reward
         $allGood = true;
         foreach ($categoryScores as $score) {
             if ($score < 3.50) {
@@ -178,6 +185,7 @@ class DSSService
         if ($allGood && !empty($categoryScores)) {
             $finalScore += 0.1;
         }
+        */
         
         return max(1.00, min(5.00, $finalScore));
     }
