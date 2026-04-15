@@ -55,151 +55,28 @@
         </div>
       </div>
 
-      <!-- Search and Filter Bar -->
+      <!-- Simple Search Bar Only -->
       <div class="bg-white rounded-2xl shadow-lg p-4">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <!-- Search Input -->
-          <div class="md:col-span-2">
-            <div class="relative">
-              <input 
-                type="text" 
-                v-model="searchQuery" 
-                placeholder="Search by name, ID, email, comments..."
-                class="w-full px-3 py-1.5 text-sm border rounded-lg focus:ring-emerald-500 focus:border-emerald-500 pl-8"
-              >
-              <svg class="absolute left-2.5 top-2 w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <button 
-                v-if="searchQuery" 
-                @click="searchQuery = ''" 
-                class="absolute right-2.5 top-2 text-gray-400 hover:text-gray-600"
-              >
-                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          <!-- Respondent Type Filter -->
-          <div>
-            <select 
-              v-model="selectedRespondentType" 
-              class="w-full px-3 py-1.5 text-sm border rounded-lg focus:ring-emerald-500 focus:border-emerald-500"
-            >
-              <option value="">All Types</option>
-              <option value="Student">Student</option>
-              <option value="Faculty">Faculty</option>
-              <option value="Admin Personnel">Admin Personnel</option>
-              <option value="Guest">Guest</option>
-            </select>
-          </div>
-
-          <!-- Sex Filter -->
-          <div>
-            <select 
-              v-model="selectedSex" 
-              class="w-full px-3 py-1.5 text-sm border rounded-lg focus:ring-emerald-500 focus:border-emerald-500"
-            >
-              <option value="">All Genders</option>
-              <option value="Male">Male</option>
-              <option value="Female">Female</option>
-              <option value="Prefer not to say">Prefer not to say</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Second Row - Additional Filters -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-          <!-- Date Filter -->
-          <div>
-            <select 
-              v-model="selectedEventDate" 
-              class="w-full px-3 py-1.5 text-sm border rounded-lg focus:ring-emerald-500 focus:border-emerald-500"
-            >
-              <option value="">All Dates</option>
-              <option v-for="date in eventDateOptions" :key="date" :value="date">
-                {{ formatDateShort(date) }}
-              </option>
-            </select>
-          </div>
-
-          <!-- Rating Filter -->
-          <div>
-            <select v-model="ratingFilter" class="w-full px-3 py-1.5 text-sm border rounded-lg focus:ring-emerald-500 focus:border-emerald-500">
-              <option value="">All Ratings</option>
-              <option value="5">5 Stars Only</option>
-              <option value="4">4 Stars Only</option>
-              <option value="3">3 Stars Only</option>
-              <option value="2">2 Stars Only</option>
-              <option value="1">1 Star Only</option>
-            </select>
-          </div>
-
-          <!-- Has Comments Filter -->
-          <div>
-            <select v-model="hasCommentsFilter" class="w-full px-3 py-1.5 text-sm border rounded-lg focus:ring-emerald-500 focus:border-emerald-500">
-              <option value="">All Responses</option>
-              <option value="with">With Comments Only</option>
-              <option value="without">Without Comments</option>
-            </select>
-          </div>
-
-          <!-- Date Range Filter -->
-          <div>
-            <select v-model="dateRange" class="w-full px-3 py-1.5 text-sm border rounded-lg focus:ring-emerald-500 focus:border-emerald-500">
-              <option value="">All Time</option>
-              <option value="today">Today</option>
-              <option value="week">This Week</option>
-              <option value="month">This Month</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Active Filters Display -->
-        <div v-if="hasActiveFilters" class="mt-3 flex flex-wrap gap-1.5 items-center">
-          <span class="text-xs text-gray-500">Filters:</span>
-          <span v-if="searchQuery" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700">
-            Search: {{ searchQuery }}
-            <button @click="searchQuery = ''" class="ml-1 hover:text-emerald-800">&times;</button>
-          </span>
-          <span v-if="selectedRespondentType" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700">
-            Type: {{ selectedRespondentType }}
-            <button @click="selectedRespondentType = ''" class="ml-1 hover:text-emerald-800">&times;</button>
-          </span>
-          <span v-if="selectedSex" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700">
-            Gender: {{ selectedSex }}
-            <button @click="selectedSex = ''" class="ml-1 hover:text-emerald-800">&times;</button>
-          </span>
-          <span v-if="selectedEventDate" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700">
-            Date: {{ formatDateShort(selectedEventDate) }}
-            <button @click="selectedEventDate = ''" class="ml-1 hover:text-emerald-800">&times;</button>
-          </span>
-          <span v-if="ratingFilter" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700">
-            Rating: {{ ratingFilter }}★
-            <button @click="ratingFilter = ''" class="ml-1 hover:text-emerald-800">&times;</button>
-          </span>
-          <span v-if="hasCommentsFilter" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700">
-            {{ hasCommentsFilter === 'with' ? 'With Comments' : 'Without Comments' }}
-            <button @click="hasCommentsFilter = ''" class="ml-1 hover:text-emerald-800">&times;</button>
-          </span>
-          <span v-if="dateRange" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700">
-            {{ getDateRangeLabel() }}
-            <button @click="dateRange = ''" class="ml-1 hover:text-emerald-800">&times;</button>
-          </span>
-          <button 
-            @click="clearAllFilters" 
-            class="text-xs text-red-500 hover:text-red-700 flex items-center gap-0.5"
+        <div class="relative">
+          <input 
+            type="text" 
+            v-model="searchQuery" 
+            placeholder="Search responses..."
+            class="w-full px-10 py-2 text-sm border rounded-lg focus:ring-emerald-500 focus:border-emerald-500"
           >
-            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg class="absolute left-3 top-2.5 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <button 
+            v-if="searchQuery" 
+            @click="searchQuery = ''" 
+            class="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
-            Clear all
           </button>
         </div>
-
-        <!-- Filter Stats -->
         <div class="mt-2 text-xs text-gray-500">
           Showing {{ filteredResponses.length }} of {{ responses.length }} responses
         </div>
@@ -210,7 +87,7 @@
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead class="bg-gray-50">
-               <tr>
+              <tr>
                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky left-0 bg-gray-50 z-10">#</th>
                 <th v-for="header in visibleHeaders" :key="header" 
                     class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
@@ -221,7 +98,7 @@
                     {{ sortDirection === 'asc' ? '↑' : '↓' }}
                   </span>
                 </th>
-               </tr>
+              </tr>
             </thead>
             <tbody class="divide-y divide-gray-200">
               <tr v-for="(response, idx) in paginatedFilteredResponses" :key="idx" class="hover:bg-gray-50 transition">
@@ -248,15 +125,15 @@
                   <div v-else>
                     {{ formatCellValue(response[header]) }}
                   </div>
-                 </td>
-               </tr>
+                </td>
+              </tr>
               <tr v-if="filteredResponses.length === 0">
                 <td :colspan="visibleHeaders.length + 1" class="px-3 py-8 text-center text-xs text-gray-500">
-                  No responses match your filters
-                 </td>
-               </tr>
+                  No responses match your search
+                </td>
+              </tr>
             </tbody>
-           </table>
+          </table>
         </div>
 
         <!-- Pagination Controls -->
@@ -353,7 +230,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
 
 const props = defineProps({
@@ -367,37 +244,22 @@ const props = defineProps({
   }
 });
 
-const loading = ref(true);
+const loading = ref(false);
 const error = ref(null);
 const responses = ref([]);
 const currentPage = ref(1);
 const itemsPerPage = ref(25);
 const copied = ref(false);
-
-// Filter states
 const searchQuery = ref('');
-const selectedRespondentType = ref('');
-const selectedSex = ref('');
-const selectedEventDate = ref('');
-const dateRange = ref('');
-const ratingFilter = ref('');
-const hasCommentsFilter = ref('');
 
 // Sort states
 const sortColumn = ref('');
 const sortDirection = ref('asc');
 
-// Get event date options from responses
-const eventDateOptions = computed(() => {
-  const dates = new Set(responses.value.map(r => r['Event Date']).filter(d => d && d !== 'N/A'));
-  return Array.from(dates).sort();
-});
-
 // Visible headers - includes all columns from the response
 const visibleHeaders = computed(() => {
   if (!responses.value.length) return [];
   const firstResponse = responses.value[0];
-  // Order headers: profile fields first, then ratings, then comments
   const profileHeaders = ['Student ID', 'Student Name', 'Email', 'Event Date', 'Agency/Office', 'Position', 'Respondent Type', 'Sex', 'Age', 'Title', 'Submitted At'];
   const otherHeaders = Object.keys(firstResponse).filter(h => !profileHeaders.includes(h));
   return [...profileHeaders.filter(h => firstResponse[h] !== undefined), ...otherHeaders];
@@ -418,78 +280,24 @@ const averageRating = computed(() => {
   return count > 0 ? total / count : 0;
 });
 
-// Check if a response has any comments
-const hasComments = (response) => {
-  return Object.keys(response).some(key => {
-    if ((key.includes('Comment') || key === 'Positive Comments' || key === 'Suggestions/Recommendations for Improvement') && 
-        response[key] && response[key] !== '—' && response[key] !== '') {
-      return true;
-    }
-    return false;
-  });
-};
-
-// Filtered responses
+// Filtered responses based on search only
 const filteredResponses = computed(() => {
-  let filtered = [...responses.value];
+  if (!searchQuery.value) return responses.value;
   
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase();
-    filtered = filtered.filter(r => {
-      return Object.values(r).some(value => 
-        value && String(value).toLowerCase().includes(query)
-      );
-    });
-  }
-  
-  if (selectedRespondentType.value) {
-    filtered = filtered.filter(r => r['Respondent Type'] === selectedRespondentType.value);
-  }
-  
-  if (selectedSex.value) {
-    filtered = filtered.filter(r => r['Sex'] === selectedSex.value);
-  }
-  
-  if (selectedEventDate.value) {
-    filtered = filtered.filter(r => r['Event Date'] === selectedEventDate.value);
-  }
-  
-  if (dateRange.value) {
-    const now = new Date();
-    filtered = filtered.filter(r => {
-      const submittedDate = new Date(r['Submitted At']);
-      if (dateRange.value === 'today') {
-        return submittedDate.toDateString() === now.toDateString();
-      } else if (dateRange.value === 'week') {
-        const weekAgo = new Date(now.setDate(now.getDate() - 7));
-        return submittedDate >= weekAgo;
-      } else if (dateRange.value === 'month') {
-        const monthAgo = new Date(now.setMonth(now.getMonth() - 1));
-        return submittedDate >= monthAgo;
-      }
-      return true;
-    });
-  }
-  
-  // Rating filter
-  if (ratingFilter.value) {
-    const targetRating = parseInt(ratingFilter.value);
-    filtered = filtered.filter(r => {
-      return Object.keys(r).some(key => {
-        if (key.includes('Rating') && r[key] === targetRating) {
-          return true;
-        }
-        return false;
-      });
-    });
-  }
-  
-  // Has comments filter
-  if (hasCommentsFilter.value === 'with') {
-    filtered = filtered.filter(r => hasComments(r));
-  } else if (hasCommentsFilter.value === 'without') {
-    filtered = filtered.filter(r => !hasComments(r));
-  }
+  const query = searchQuery.value.toLowerCase();
+  return responses.value.filter(response => {
+    return Object.values(response).some(value => 
+      value && String(value).toLowerCase().includes(query)
+    );
+  });
+});
+
+const totalPages = computed(() => Math.ceil(filteredResponses.value.length / itemsPerPage.value));
+
+const paginatedFilteredResponses = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage.value;
+  const end = start + itemsPerPage.value;
+  let filtered = [...filteredResponses.value];
   
   if (sortColumn.value) {
     filtered.sort((a, b) => {
@@ -511,15 +319,7 @@ const filteredResponses = computed(() => {
     });
   }
   
-  return filtered;
-});
-
-const totalPages = computed(() => Math.ceil(filteredResponses.value.length / itemsPerPage.value));
-
-const paginatedFilteredResponses = computed(() => {
-  const start = (currentPage.value - 1) * itemsPerPage.value;
-  const end = start + itemsPerPage.value;
-  return filteredResponses.value.slice(start, end);
+  return filtered.slice(start, end);
 });
 
 const visiblePages = computed(() => {
@@ -536,11 +336,6 @@ const visiblePages = computed(() => {
     pages.push(i);
   }
   return pages;
-});
-
-const hasActiveFilters = computed(() => {
-  return searchQuery.value || selectedRespondentType.value || selectedSex.value || 
-         selectedEventDate.value || dateRange.value || ratingFilter.value || hasCommentsFilter.value;
 });
 
 const uniqueStudentCount = computed(() => {
@@ -560,44 +355,11 @@ const maleCount = computed(() => {
   return filteredResponses.value.filter(r => r['Sex'] === 'Male').length;
 });
 
-function formatDate(date) {
-  if (!date) return 'N/A';
-  return new Date(date).toLocaleDateString('en-US', {
-    year: 'numeric', month: 'long', day: 'numeric'
-  });
-}
-
-function formatDateShort(date) {
-  if (!date) return 'N/A';
-  return new Date(date).toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric'
-  });
-}
-
 function formatCellValue(value) {
   if (value === null || value === undefined) return '—';
   if (typeof value === 'object') return JSON.stringify(value);
   if (String(value).length > 100) return String(value).substring(0, 97) + '...';
   return String(value);
-}
-
-function getDateRangeLabel() {
-  const labels = {
-    today: 'Today',
-    week: 'This Week',
-    month: 'This Month'
-  };
-  return labels[dateRange.value] || dateRange.value;
-}
-
-function clearAllFilters() {
-  searchQuery.value = '';
-  selectedRespondentType.value = '';
-  selectedSex.value = '';
-  selectedEventDate.value = '';
-  dateRange.value = '';
-  ratingFilter.value = '';
-  hasCommentsFilter.value = '';
 }
 
 function sortBy(column) {
@@ -607,6 +369,7 @@ function sortBy(column) {
     sortColumn.value = column;
     sortDirection.value = 'asc';
   }
+  currentPage.value = 1;
 }
 
 async function fetchRawResponses() {
@@ -614,12 +377,8 @@ async function fetchRawResponses() {
   error.value = null;
   
   try {
-    const params = {};
-    if (selectedEventDate.value) {
-      params.event_date = selectedEventDate.value;
-    }
-    const response = await axios.get(`/admin/evaluations/${props.evaluationId}/raw-responses`, { params });
-    responses.value = response.data;
+    const response = await axios.get(`/admin/evaluations/${props.evaluationId}/raw-responses`);
+    responses.value = response.data.data || response.data;
     currentPage.value = 1;
   } catch (err) {
     console.error('Failed to fetch raw responses:', err);
@@ -675,13 +434,15 @@ async function copyToClipboard() {
   }
 }
 
+// Reset page when search changes
 const resetPage = () => {
   currentPage.value = 1;
 };
 
-watch([searchQuery, selectedRespondentType, selectedSex, selectedEventDate, dateRange, ratingFilter, hasCommentsFilter], () => {
+// Watch search query to reset page
+import { watch } from 'vue';
+watch(searchQuery, () => {
   resetPage();
-  fetchRawResponses();
 });
 
 onMounted(() => {
@@ -704,13 +465,5 @@ defineExpose({ refresh: fetchRawResponses });
   position: sticky;
   background-color: white;
   z-index: 10;
-}
-
-.sticky-left-0 {
-  left: 0;
-}
-
-.sticky-left-12 {
-  left: 48px;
 }
 </style>

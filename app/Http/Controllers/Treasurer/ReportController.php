@@ -89,61 +89,60 @@ class ReportController extends Controller
     public function generate(Request $request, $eventId)
     {
         try {
+            // CRITICAL: Increase memory for Railway
+            ini_set('memory_limit', '512M');
+            ini_set('max_execution_time', 300);
+            ini_set('pcre.backtrack_limit', 10000000);
+            ini_set('pcre.recursion_limit', 10000000);
+            
             $event = Event::findOrFail($eventId);
             
             if ($event->user_id !== $this->organizationId) {
                 return response()->json(['error' => 'Unauthorized'], 403);
             }
 
-            // SIMPLE APPROACH - Get data directly from database with joins
-            $students = \DB::table('students')
-                ->leftJoin('event_student', function($join) use ($event) {
-                    $join->on('students.student_id', '=', 'event_student.student_id')
-                         ->where('event_student.event_id', '=', $event->id);
-                })
-                ->where('students.user_id', $this->organizationId)
-                ->select(
-                    'students.student_id',
-                    'students.firstname',
-                    'students.lastname',
-                    'students.course',
-                    'students.yearlevel',
-                    'event_student.status',
-                    'event_student.amount_paid',
-                    'event_student.updated_at as paid_at',
-                    'event_student.receipt_number'
-                )
-                ->get();
-            
+            // OPTIMIZATION: Use chunking to reduce memory usage
             $studentData = [];
             $paidCount = 0;
             $pendingCount = 0;
             $totalCollected = 0;
             
-            foreach ($students as $student) {
-                $status = $student->status ?? 'Not Paid';
-                $amount = floatval($student->amount_paid ?? 0);
-                
-                if ($status === 'Paid') {
-                    $paidCount++;
-                    $totalCollected += $amount;
-                } elseif ($status === 'Pending') {
-                    $pendingCount++;
-                }
-                
-                $studentData[] = [
-                    'student_id' => $student->student_id,
-                    'name' => $student->firstname . ' ' . $student->lastname,
-                    'course' => $student->course ?? 'N/A',
-                    'year_level' => $student->yearlevel ?? 'N/A',
-                    'status' => $status,
-                    'amount' => $amount,
-                    'paid_at' => ($status === 'Paid' && $student->paid_at) 
-                        ? date('M d, Y', strtotime($student->paid_at)) 
-                        : null,
-                    'receipt_number' => $student->receipt_number ?? '—',
-                ];
-            }
+            // Get all paid/pending records in one query
+            $payments = EventStudent::where('event_id', $event->id)
+                ->get()
+                ->keyBy('student_id');
+            
+            // Process students in chunks
+            Student::where('user_id', $this->organizationId)
+                ->chunk(100, function($students) use ($event, $payments, &$studentData, &$paidCount, &$pendingCount, &$totalCollected) {
+                    foreach ($students as $student) {
+                        $payment = $payments->get($student->student_id);
+                        $status = $payment ? $payment->status : 'Not Paid';
+                        $amount = $payment && $payment->status === 'Paid' ? floatval($payment->amount_paid) : 0;
+                        
+                        if ($status === 'Paid') {
+                            $paidCount++;
+                            $totalCollected += $amount;
+                        } elseif ($status === 'Pending') {
+                            $pendingCount++;
+                        }
+                        
+                        $studentData[] = [
+                            'student_id' => $student->student_id,
+                            'name' => $student->firstname . ' ' . $student->lastname,
+                            'course' => $student->course ?? 'N/A',
+                            'year_level' => $student->yearlevel ?? 'N/A',
+                            'status' => $status,
+                            'amount' => $amount,
+                            'paid_at' => ($status === 'Paid' && $payment && $payment->updated_at) 
+                                ? date('M d, Y', strtotime($payment->updated_at)) 
+                                : null,
+                            'receipt_number' => ($status === 'Paid' && $payment && $payment->receipt_number) 
+                                ? $payment->receipt_number 
+                                : '—',
+                        ];
+                    }
+                });
             
             $totalStudents = count($studentData);
             $expectedTotal = $totalStudents * floatval($event->event_fee);
@@ -166,18 +165,52 @@ class ReportController extends Controller
                 'header_image' => null,
             ];
             
-            // Create directory
+            // Create directory with proper permissions
             $path = storage_path('app/public/collection-reports');
             if (!file_exists($path)) {
                 mkdir($path, 0755, true);
             }
             
-            // Generate PDF
+            // Create temp directory for dompdf
+            $tempPath = storage_path('app/temp');
+            if (!file_exists($tempPath)) {
+                mkdir($tempPath, 0755, true);
+            }
+            
+            $fontsPath = storage_path('app/fonts');
+            if (!file_exists($fontsPath)) {
+                mkdir($fontsPath, 0755, true);
+            }
+            
+            // Generate PDF with Railway-compatible options
             $pdf = Pdf::loadView('pdfs.collection-report', $data);
             $pdf->setPaper('A4', 'portrait');
             
+            // CRITICAL: Set dompdf options for Railway
+            $pdf->setOptions([
+                'defaultFont' => 'sans-serif',
+                'isHtml5ParserEnabled' => false,  // Disable to save memory
+                'isRemoteEnabled' => false,       // Disable remote files
+                'isPhpEnabled' => false,          // Disable PHP in templates
+                'tempDir' => $tempPath,
+                'fontDir' => $fontsPath,
+                'fontCache' => $fontsPath,
+                'logOutputFile' => storage_path('logs/dompdf.log'),
+                'enable_font_subsetting' => false,
+                'dpi' => 96,                      // Lower DPI for smaller file
+            ]);
+            
             $filePath = $path . '/event_' . $event->id . '.pdf';
             $pdf->save($filePath);
+            
+            // Clear memory
+            unset($studentData);
+            unset($data);
+            
+            // Verify file was created
+            if (!file_exists($filePath)) {
+                throw new \Exception('PDF file was not created');
+            }
             
             return response()->json([
                 'success' => true,
@@ -186,9 +219,12 @@ class ReportController extends Controller
             ]);
             
         } catch (\Exception $e) {
-            Log::error('Generate error: ' . $e->getMessage() . ' on line ' . $e->getLine());
+            Log::error('Generate error: ' . $e->getMessage());
+            Log::error('Line: ' . $e->getLine());
+            Log::error('Trace: ' . $e->getTraceAsString());
+            
             return response()->json([
-                'error' => $e->getMessage() . ' on line ' . $e->getLine()
+                'error' => 'PDF generation failed: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -204,7 +240,7 @@ class ReportController extends Controller
         $filePath = storage_path('app/public/collection-reports/event_' . $eventId . '.pdf');
         
         if (!file_exists($filePath)) {
-            abort(404, 'Report not found');
+            abort(404, 'Report not found. Please generate the report first.');
         }
         
         return response()->file($filePath, [
