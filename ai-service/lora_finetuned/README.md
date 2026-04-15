@@ -9,7 +9,7 @@ library_name: peft
 
 
 
-## Model Details Ged
+## Model Details
 
 ### Model Description
 

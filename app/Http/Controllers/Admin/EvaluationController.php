@@ -38,13 +38,13 @@ class EvaluationController extends Controller
     {
         $search = $request->get('search');
         
-        $evaluations = Evaluation::with(['event', 'event.creator'])
+        $evaluations = Evaluation::with(['event', 'organization'])
             ->when($search, function ($query, $search) {
                 $query->where('title', 'like', "%{$search}%")
                     ->orWhereHas('event', function ($q) use ($search) {
                         $q->where('event_name', 'like', "%{$search}%");
                     })
-                    ->orWhereHas('event.creator', function ($q) use ($search) {
+                    ->orWhereHas('organization', function ($q) use ($search) {
                         $q->where('name', 'like', "%{$search}%");
                     });
             })
@@ -52,11 +52,12 @@ class EvaluationController extends Controller
             ->get()
             ->map(function ($evaluation) {
                 $event = $evaluation->event;
+                $organization = $evaluation->organization;
                 $eventDates = $evaluation->event_dates ?: [];
                 $numberOfDates = count($eventDates);
                 
-                $totalStudents = EventStudent::where('event_id', $event->id)->count();
-                $totalGuests = EventGuest::where('event_id', $event->id)->count();
+                $totalStudents = $event ? EventStudent::where('event_id', $event->id)->count() : 0;
+                $totalGuests = $event ? EventGuest::where('event_id', $event->id)->count() : 0;
                 $totalExpected = ($totalStudents * max($numberOfDates, 1)) + $totalGuests;
                 
                 $responseRate = $totalExpected > 0 
@@ -68,8 +69,8 @@ class EvaluationController extends Controller
                     'title' => $evaluation->title,
                     'form_type' => $evaluation->form_type,
                     'status' => $evaluation->status,
-                    'event_name' => $evaluation->event->event_name,
-                    'organization_name' => $evaluation->event->creator->name,
+                    'event_name' => $event ? $event->event_name : 'No Event',
+                    'organization_name' => $organization ? $organization->name : 'No Organization',
                     'responses_count' => $evaluation->total_responses,
                     'expected_count' => $totalExpected,
                     'response_rate' => $responseRate,
@@ -483,6 +484,7 @@ class EvaluationController extends Controller
                 'event' => [
                     'id' => $evaluation->event->id,
                     'event_name' => $evaluation->event->event_name,
+                    'organization_name' => $evaluation->organization ? $evaluation->organization->name : 'No Organization',
                     'event_date_start' => $evaluation->event->event_date_start,
                     'event_date_end' => $evaluation->event->event_date_end,
                 ],

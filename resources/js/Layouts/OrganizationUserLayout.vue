@@ -403,10 +403,6 @@ function logout() {
   showLogoutModal.value = false;
 }
 
-function toggleSidebar() {
-  isSidebarCollapsed.value = !isSidebarCollapsed.value;
-}
-
 function toggleFullScreen() {
   if (!document.fullscreenElement) {
     document.documentElement.requestFullscreen();

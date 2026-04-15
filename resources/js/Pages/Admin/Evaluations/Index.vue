@@ -139,17 +139,19 @@
                         <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 shadow-md flex items-center justify-center">
                           <span class="text-white font-bold text-lg">{{ request.organization_name?.charAt(0) || 'O' }}</span>
                         </div>
-                        <div>
-                          <h3 class="text-xl font-bold text-gray-800 group-hover:text-purple-700 transition-colors">
-                            {{ request.title }}
-                          </h3>
-                          <div class="flex flex-wrap items-center gap-2 mt-1">
-                            <span class="px-2.5 py-1 bg-purple-100 text-purple-700 rounded-lg text-xs font-medium flex items-center gap-1">
-                              <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <div class="flex-1">
+                          <div class="flex items-center justify-between gap-4">
+                            <h3 class="text-xl font-bold text-gray-800 group-hover:text-purple-700 transition-colors">
+                              {{ request.title }}
+                            </h3>
+                            <span class="px-2.5 py-1 bg-purple-100 text-purple-700 rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm">
+                              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                               </svg>
                               {{ request.organization_name }}
                             </span>
+                          </div>
+                          <div class="flex flex-wrap items-center gap-2 mt-1">
                             <span class="px-2.5 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs flex items-center gap-1">
                               <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7H3v12a2 2 0 002 2z" />
@@ -349,19 +351,24 @@
               <div class="p-6">
                 <div class="flex justify-between items-start mb-4">
                   <div class="flex-1">
-                    <div class="flex items-center gap-2 mb-2">
-                      <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-md flex items-center justify-center">
-                        <span class="text-white font-bold text-lg">{{ evaluation.title?.charAt(0) || 'E' }}</span>
+                    <div class="flex items-center gap-3 mb-2">
+                      <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-md flex items-center justify-center flex-shrink-0">
+                        <span class="text-white font-bold text-lg">{{ evaluation.organization_name?.charAt(0) || 'O' }}</span>
                       </div>
-                      <div>
-                        <h3 class="font-bold text-gray-800 line-clamp-1 group-hover:text-emerald-600 transition-colors">
+                      <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-1">
+                          <span class="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-[10px] font-bold uppercase tracking-wider">
+                            {{ evaluation.organization_name }}
+                          </span>
+                        </div>
+                        <h3 class="font-bold text-gray-800 line-clamp-1 group-hover:text-emerald-600 transition-colors text-lg leading-tight">
                           {{ evaluation.title }}
                         </h3>
-                        <p class="text-xs text-gray-500 line-clamp-1">
+                        <p class="text-xs text-gray-500 line-clamp-1 flex items-center gap-1">
+                          <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7H3v12a2 2 0 002 2z" />
+                          </svg>
                           {{ evaluation.event_name }}
-                        </p>
-                        <p class="text-[10px] text-emerald-600 font-medium mt-0.5">
-                          {{ formatDates(evaluation.event_dates) }}
                         </p>
                       </div>
                     </div>
@@ -376,11 +383,14 @@
                 </div>
 
                 <div class="flex flex-wrap gap-2 mb-4">
-                  <span class="text-xs px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full">
+                  <span class="text-xs px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full flex items-center gap-1">
+                    <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
                     {{ getFormTypeName(evaluation.form_type) }}
                   </span>
-                  <span class="text-xs px-2.5 py-1 bg-purple-50 text-purple-600 rounded-full">
-                    {{ evaluation.organization_name }}
+                  <span class="text-[10px] px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-full font-medium">
+                    {{ formatDates(evaluation.event_dates) }}
                   </span>
                 </div>
 
