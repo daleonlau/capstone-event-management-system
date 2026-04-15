@@ -163,11 +163,9 @@
       const canvas = document.getElementById('qr-canvas-main');
       
       if (!canvas) {
-        console.error('Canvas element not found');
         return;
       }
       
-      console.log('Generating QR code for URL:', evaluationUrl.value);
       
       // Clear canvas
       const ctx = canvas.getContext('2d');
@@ -183,10 +181,8 @@
         }
       });
       
-      console.log('QR Code generated successfully');
       
     } catch (err) {
-      console.error('Failed to generate QR code:', err);
     }
   }
   
@@ -198,7 +194,6 @@
         copied.value = false;
       }, 2000);
     } catch (err) {
-      console.error('Failed to copy:', err);
     }
   }
   

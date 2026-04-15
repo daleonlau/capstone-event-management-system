@@ -317,26 +317,26 @@
       </div>
 
       <!-- Summary Cards -->
-      <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <div class="bg-white rounded-xl shadow-lg p-3">
-          <p class="text-xs text-gray-500">Total</p>
-          <p class="text-xl font-bold text-gray-800">{{ filteredResponses.length }}</p>
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div class="rounded-xl shadow-lg p-4 bg-gradient-to-br from-blue-600 to-indigo-700 border border-white/10 hover:-translate-y-1 transition-all duration-300">
+          <p class="text-xs font-bold text-white/70 uppercase tracking-wider">Total</p>
+          <p class="text-2xl font-black text-white">{{ filteredResponses.length }}</p>
         </div>
-        <div class="bg-white rounded-xl shadow-lg p-3">
-          <p class="text-xs text-gray-500">Students</p>
-          <p class="text-xl font-bold text-gray-800">{{ uniqueStudentCount }}</p>
+        <div class="rounded-xl shadow-lg p-4 bg-gradient-to-br from-purple-600 to-fuchsia-700 border border-white/10 hover:-translate-y-1 transition-all duration-300">
+          <p class="text-xs font-bold text-white/70 uppercase tracking-wider">Students</p>
+          <p class="text-2xl font-black text-white">{{ uniqueStudentCount }}</p>
         </div>
-        <div class="bg-white rounded-xl shadow-lg p-3">
-          <p class="text-xs text-gray-500">Guests</p>
-          <p class="text-xl font-bold text-gray-800">{{ guestCount }}</p>
+        <div class="rounded-xl shadow-lg p-4 bg-gradient-to-br from-orange-500 to-amber-600 border border-white/10 hover:-translate-y-1 transition-all duration-300">
+          <p class="text-xs font-bold text-white/70 uppercase tracking-wider">Guests</p>
+          <p class="text-2xl font-black text-white">{{ guestCount }}</p>
         </div>
-        <div class="bg-white rounded-xl shadow-lg p-3">
-          <p class="text-xs text-gray-500">F/M</p>
-          <p class="text-base font-bold text-gray-800">{{ femaleCount }} / {{ maleCount }}</p>
+        <div class="rounded-xl shadow-lg p-4 bg-gradient-to-br from-pink-600 to-rose-700 border border-white/10 hover:-translate-y-1 transition-all duration-300">
+          <p class="text-xs font-bold text-white/70 uppercase tracking-wider">F/M</p>
+          <p class="text-xl font-black text-white">{{ femaleCount }} / {{ maleCount }}</p>
         </div>
-        <div class="bg-white rounded-xl shadow-lg p-3">
-          <p class="text-xs text-gray-500">Avg Rating</p>
-          <p class="text-xl font-bold text-emerald-600">{{ averageRating.toFixed(1) }}</p>
+        <div class="rounded-xl shadow-lg p-4 bg-gradient-to-br from-emerald-600 to-teal-700 border border-white/10 hover:-translate-y-1 transition-all duration-300">
+          <p class="text-xs font-bold text-white/70 uppercase tracking-wider">Avg Rating</p>
+          <p class="text-2xl font-black text-white">{{ averageRating.toFixed(1) }}</p>
         </div>
       </div>
     </div>

@@ -196,7 +196,6 @@ const submit = () => {
   form.post('/login', {
     onError: (errors) => {
       if (errors.password === 'The password is incorrect.' || errors.email === 'These credentials do not match our records.') {
-        console.log('Invalid credentials');
       }
     }
   });

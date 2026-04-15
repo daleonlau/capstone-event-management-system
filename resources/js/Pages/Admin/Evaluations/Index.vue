@@ -166,8 +166,8 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7H3v12a2 2 0 002 2z" />
                           </svg>
                           <div>
-                            <p class="text-xs text-gray-500">Date</p>
-                            <p class="text-sm font-medium text-gray-700">{{ request.activity_date }}</p>
+                            <p class="text-xs text-gray-500">Inclusive Dates</p>
+                            <p class="text-sm font-medium text-gray-700">{{ formatDates(request.event_dates && request.event_dates.length > 0 ? request.event_dates : [request.activity_date]) }}</p>
                           </div>
                         </div>
                         <div class="flex items-center gap-2 p-2 bg-gray-50 rounded-xl">
@@ -357,7 +357,12 @@
                         <h3 class="font-bold text-gray-800 line-clamp-1 group-hover:text-emerald-600 transition-colors">
                           {{ evaluation.title }}
                         </h3>
-                        <p class="text-xs text-gray-500 line-clamp-1">{{ evaluation.event_name }}</p>
+                        <p class="text-xs text-gray-500 line-clamp-1">
+                          {{ evaluation.event_name }}
+                        </p>
+                        <p class="text-[10px] text-emerald-600 font-medium mt-0.5">
+                          {{ formatDates(evaluation.event_dates) }}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -597,6 +602,29 @@ function getRateTextClass(rate) {
   return 'text-red-600';
 }
 
+function formatDate(date) {
+  if (!date) return '';
+  return new Date(date).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+}
+
+function formatDates(dates) {
+  if (!dates || dates.length === 0) return '';
+  if (dates.length === 1) return formatDate(dates[0]);
+  
+  // Sort dates
+  const sortedDates = [...dates].sort((a, b) => new Date(a) - new Date(b));
+  
+  if (sortedDates.length <= 2) {
+    return sortedDates.map(d => formatDate(d)).join(' & ');
+  }
+  
+  return `${formatDate(sortedDates[0])} - ${formatDate(sortedDates[sortedDates.length - 1])} (${sortedDates.length} days)`;
+}
+
 function performSearch() {
   if (activeTab.value !== 'requests') {
     router.get('/admin/evaluations', { search: searchQuery.value }, {
@@ -642,7 +670,6 @@ async function fetchPendingRequests() {
     const response = await axios.get('/admin/evaluations/pending-requests');
     pendingRequestsData.value = response.data;
   } catch (error) {
-    console.error('Failed to fetch pending requests:', error);
     pendingRequestsData.value = [];
   }
 }
@@ -706,6 +733,7 @@ watch(activeTab, (newTab) => {
   display: -webkit-box;
   -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
+  line-clamp: 1;
   overflow: hidden;
 }
 

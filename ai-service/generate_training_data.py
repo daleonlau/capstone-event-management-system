@@ -1,16 +1,21 @@
+# ============================================
+# CELL 2: Generate NOISY Training Data
+# FOCUS: Fixing Code-Switching (40% → 85%+)
+# ============================================
+
 import csv
 import random
 import re
 
 print("=" * 70)
-print("  GENERATING NOISY, REALISTIC TRAINING DATA")
-print("  COMPLETE FIXED VERSION - ALL WEAKNESSES ADDRESSED")
+print("  GENERATING TRAINING DATA")
+print("  FOCUS: FIXING CODE-SWITCHING (40% to 85%+)")
 print("=" * 70)
 
 data_set = set()
 
 # ============================================================
-# WORD BANKS (EXPANDED)
+# WORD BANKS
 # ============================================================
 
 pos_words = [
@@ -18,7 +23,7 @@ pos_words = [
     "smooth", "engaging", "informative", "fun", "amazing", "galing", "ganda",
     "solid", "excellent", "wonderful", "fantastic", "superb", "perfect",
     "great", "awesome", "incredible", "fabulous", "brilliant", "outstanding",
-    "top-notch", "world-class", "exceptional", "remarkable", "perfect"
+    "top-notch", "world-class", "exceptional", "remarkable"
 ]
 
 neg_words = [
@@ -57,130 +62,49 @@ neg_reasons = [
     "masikip ang venue", "walang tubig", "pangit ang sound system"
 ]
 
-# Ambiguous/Neutral phrases (for 20% accuracy fix)
-ambiguous_phrases = [
-    "Pwede na.",
-    "It is what it is.",
-    "Ganoon talaga.",
-    "Wala namang magagawa.",
-    "Sana all na lang.",
-    "Bahala na.",
-    "Okay na rin kesa wala.",
-    "At least may natutunan kahit papaano.",
-    "Hindi ko alam kung ano mararamdaman ko.",
-    "Sakto lang, hindi masaya hindi malungkot.",
-    "Ewan ko ba.",
-    "Bahala na si Batman.",
-    "Que sera sera.",
-    "Whatever floats your boat.",
-    "Kanya-kanyang trip lang.",
-    "Ganon daw talaga.",
-    "Expected ko na rin.",
-    "Wala naman bago.",
-    "Parang ganun pa rin.",
-    "Same old, same old.",
-    "Medyo meh.",
-    "E di wow.",
-    "Ikaw na.",
-    "Sige na nga.",
-    "Oo na, ikaw na magaling.",
-]
-
-# Negation patterns (FIX for "Wala koy reklamo" issues)
-negation_patterns = [
-    "Wala koy ika-suggest nga usbon {adj} na.",
-    "Wala koy reklamo, {adj} ang tanan.",
-    "Walay problema, {adj} kaayo.",
-    "Wala koy ma negative nga masulti, {adj} ang event.",
-    "Hindi ako maka-reklamo kasi {adj} naman.",
-    "Wala namang masamang masabi, {adj} ang lahat.",
-    "Walang problema sa {n}, {adj} na siya.",
-    "Wala koy ma comment nga negative kay {adj} na.",
-    "Walay mali, {adj} ang execution.",
-    "Wala koy ika reklamo, {adj} ang program.",
-]
-
-positive_adj = ["perfect", "nindot", "maayo", "smooth", "organized", "lingaw", "lami", "excellent", "great", "wonderful"]
-
-# Double negative patterns
-double_negative_patterns = [
-    "Hindi naman pangit ang {n}.",
-    "Wala namang masama sa {n}.",
-    "Hindi ako disappointed sa {n}.",
-    "Walang boring sa event.",
-    "Hindi masama ang experience.",
-    "Hindi pangit ang pagkaka-organize.",
-    "Wala namang problema sa venue.",
-    "Hindi nakakainis ang speaker.",
-    "Walang reklamo sa pagkain.",
-]
-
-emojis = [" 👍", " 😊", " ❤️", " 🔥", " 👏", " ✨", " 💯", " 😅", " 🙌", " 🎉", " 🤔", " 😕", " 💪", " 🎯", " 😒", " 😐", " 🤷"]
+emojis = [" 👍", " 😊", " ❤️", " 🔥", " 👏", " ✨", " 💯", " 😅", " 🙌", " 🎉", " 🤔", " 😕", " 💪", " 🎯"]
 
 def random_emoji():
     return random.choice(emojis) if random.random() < 0.3 else ""
 
 # ============================================================
-# IMPROVED NOISE FUNCTIONS
+# NOISE FUNCTIONS
 # ============================================================
 
-def add_realistic_typos(text):
-    """Enhanced typo generation for 25% accuracy fix"""
-    
-    # Common Filipino typing errors
+def add_typos(text):
+    """Add realistic typos"""
     typo_map = {
-        'nindot': ['nidot', 'nindut', 'nndot', 'nidot', 'nindotz'],
-        'lingaw': ['lingao', 'lingw', 'lingaww', 'lingao', 'lingaw'],
-        'maayo': ['maau', 'mayo', 'maayo', 'maau', 'maayu', 'mau'],
-        'lami': ['lmi', 'lami', 'lamii', 'lami', 'lame'],
-        'bati': ['bati', 'bte', 'bati', 'bati', 'bt'],
-        'gubot': ['gubot', 'gbut', 'gubot', 'gubot', 'goboot'],
-        'saba': ['sabaa', 'sba', 'saba', 'saba', 'sab'],
-        'init': ['init', 'init', 'nit', 'init', 'inet'],
-        'hinay': ['hinay', 'hnay', 'hinay', 'hinay', 'hinayy'],
-        'smooth': ['smoth', 'smoothh', 'smooth', 'smoot'],
-        'great': ['gret', 'greatt', 'great', 'grate'],
-        'perfect': ['perpekt', 'perfect', 'perfect', 'perpek'],
-        'salamat': ['slmat', 'salamat', 'salamt', 'salamat', 'slamat'],
-        'sobrang': ['subrang', 'sobra', 'subra', 'sobrng'],
-        'maganda': ['magnda', 'maganda', 'mganda', 'magand'],
-        'kasi': ['kse', 'ksi', 'kase', 'kasi'],
-        'meron': ['merun', 'meron', 'mern', 'meronh'],
-        'wala': ['wlang', 'wala', 'wal', 'wla'],
-        'reklamo': ['reklamo', 'reklamu', 'reklm', 'reklamo'],
-        'problema': ['problema', 'prob', 'probs', 'blema'],
+        'nindot': ['nidot', 'nindut', 'nndot'],
+        'lingaw': ['lingao', 'lingw', 'lingaww'],
+        'maayo': ['maau', 'mayo', 'maayu'],
+        'lami': ['lmi', 'lamii'],
+        'bati': ['bte', 'bt'],
+        'gubot': ['gbut', 'goboot'],
+        'saba': ['sabaa', 'sba'],
+        'init': ['nit', 'inet'],
+        'hinay': ['hnay', 'hinayy'],
+        'smooth': ['smoth', 'smoot'],
+        'great': ['gret', 'grate'],
+        'perfect': ['perpekt', 'perpek'],
+        'salamat': ['slmat', 'slamat'],
+        'sobrang': ['subrang', 'sobrng'],
+        'maganda': ['magnda', 'mganda'],
+        'kasi': ['kse', 'kase'],
+        'wala': ['wlang', 'wla'],
     }
-    
+
     for word, typo_list in typo_map.items():
         if word in text.lower() and random.random() < 0.35:
             text = re.sub(re.escape(word), random.choice(typo_list), text, flags=re.IGNORECASE)
-    
-    # Missing spaces
-    if random.random() < 0.1:
-        text = re.sub(r'(\w+)\s+(\w+)', r'\1\2', text, count=1)
-    
-    # Repeated letters (excitement/frustration)
-    if random.random() < 0.12:
-        vowels = 'aeiou'
-        words = text.split()
-        if words:
-            idx = random.randint(0, len(words)-1)
-            for i, char in enumerate(words[idx]):
-                if char.lower() in vowels and random.random() < 0.5:
-                    words[idx] = words[idx][:i] + char*2 + words[idx][i+1:]
-                    break
-            text = ' '.join(words)
-    
-    # Random character deletions
-    if random.random() < 0.08:
+
+    if random.random() < 0.15:
         words = text.split()
         if words:
             idx = random.randint(0, len(words)-1)
             if len(words[idx]) > 3:
-                del_pos = random.randint(0, len(words[idx])-1)
-                words[idx] = words[idx][:del_pos] + words[idx][del_pos+1:]
+                words[idx] = words[idx][:-1]
             text = ' '.join(words)
-    
+
     return text
 
 def add_spacing_issues(text):
@@ -188,8 +112,6 @@ def add_spacing_issues(text):
         text = text.replace(' ', '  ')
     if random.random() < 0.08:
         text = text.replace(' ', '')
-    if random.random() < 0.1:
-        text = re.sub(r'([.!?])', r' \1', text)
     return text
 
 def add_case_variation(text):
@@ -201,8 +123,6 @@ def add_case_variation(text):
             elif random.random() < 0.2:
                 words[i] = words[i].lower()
         text = ' '.join(words)
-    if random.random() < 0.05:
-        text = text.upper()
     return text
 
 def add_extra_punctuation(text):
@@ -211,20 +131,115 @@ def add_extra_punctuation(text):
         text = text.replace('?', '??')
     if random.random() < 0.15:
         text = text + '...'
-    if random.random() < 0.08:
-        text = '❗ ' + text
     return text
 
 def add_noise(comment):
-    """Apply noise to regular comments (NOT sarcasm or code-switching)"""
-    comment = add_realistic_typos(comment)
+    """Apply noise to regular comments"""
+    comment = add_typos(comment)
     comment = add_spacing_issues(comment)
     comment = add_case_variation(comment)
     comment = add_extra_punctuation(comment)
     return comment
 
 # ============================================================
-# GENERATION FUNCTIONS
+# CODE-SWITCHING GENERATION (FIXED - ALL LABELS)
+# ============================================================
+
+def generate_code_switching_positive():
+    """Code-switching that should be POSITIVE"""
+    templates = [
+        "Sobrang {pw} ng {n} kahit may {nr} man, worth it pa rin!",
+        "Ang galing ng {n}! Kahit may {nr}, {pw} pa rin ang experience.",
+        "{pw} naman ang {n} overall kahit hindi perfect.",
+        "Naenjoy ko pa rin yung {n} kahit {nr}. Babalik ako!",
+        "The {n} was {pw} despite the {nr}. Thank you!",
+        "Maayo ang {n} bisan pa sa {nr}. Will recommend!",
+        "Sulit na sulit ang {n} kahit may {nr}. {pw} ang mga speakers!",
+        "Ang saya ng {n} kahit na {nr}. Next year ulit!",
+        "Great event! Medyo {nr} lang pero sobrang {pw} pa rin.",
+        "Worth it yung {n} kahit {nr}. Galing ng organizers!",
+    ]
+    template = random.choice(templates)
+    try:
+        comment = template.format(
+            pw=random.choice(pos_words),
+            nr=random.choice(neg_reasons),
+            n=random.choice(nouns)
+        )
+    except:
+        comment = "Sobrang galing ng event kahit may konting issues, worth it pa rin!"
+
+    if random.random() < 0.2:
+        comment = add_noise(comment)
+    return comment + random_emoji(), "Positive"
+
+def generate_code_switching_negative():
+    """Code-switching that should be NEGATIVE"""
+    templates = [
+        "Ang ganda ng venue kaso ang layo.",
+        "Maayo ang speakers pero yung sound system hindi maganda.",
+        "Salamat sa free food pero kulang ang serving.",
+        "The topic was informative pero ang haba.",
+        "Lingaw ang games but the prizes were mejo disappointing.",
+        "Ang babait ng staff pero yung registration sobrang bagal.",
+        "Okay naman ang event pero I expected more from the organizers.",
+        "The host was funny kaso ang daming technical difficulties.",
+        "Maganda ang giveaways pero walang laman.",
+        "Maayos ang food pero konti ang serving.",
+        "Ang galing ng speaker, kung nakinig lang ako.",
+        "Wonderful aircon, kung gumagana lang talaga.",
+        "The best event ever! Kung may naenjoy lang ako kahit konti.",
+        "Sobrang organized ng event, naligaw lahat ng participants.",
+        "Ang efficient ng registration, pumila kami ng 2 oras.",
+        "Perfect ang sound system, walang narinig ang nasa likod.",
+        "Great job sa organizers, sobrang late ng start.",
+        "{pw} unta ang {n} pero {nr}.",
+        "Maayo ang {n} kaso {nr}.",
+        "The {n} was nice but {nr}.",
+    ]
+    template = random.choice(templates)
+    try:
+        comment = template.format(
+            pw=random.choice(pos_words),
+            nr=random.choice(neg_reasons),
+            n=random.choice(nouns)
+        )
+    except:
+        comment = "Ang ganda ng venue kaso ang layo masyado."
+
+    if random.random() < 0.2:
+        comment = add_noise(comment)
+    return comment + random_emoji(), "Negative"
+
+def generate_code_switching_neutral():
+    """Code-switching that should be NEUTRAL"""
+    templates = [
+        "Okay naman yung {n}, may maganda pero may pangit din.",
+        "Pwede na yung {n}, hindi ganun kaganda pero hindi rin pangit.",
+        "Sakto lang yung {n}. Hindi sobrang saya, hindi sobrang lungkot.",
+        "Average lang yung experience. May natutunan pero may kulang.",
+        "The {n} was decent. Could be better, could be worse.",
+        "Wala lang. Di ko alam kung masaya ba ko o hindi.",
+        "Ewan ko ba sa {n} na yan. Keri naman.",
+        "Bahala na. Okay na rin yung {n}.",
+        "Medyo okay naman ang {n} pero may room for improvement.",
+        "The {n} met expectations. Nothing more, nothing less.",
+        "Hindi siya yung best pero hindi rin yung worst.",
+        "Sige na, pwede na yung {n}.",
+        "Keri lang yung {n}. Di ko alam kung irerecommend ko.",
+    ]
+    template = random.choice(templates)
+    try:
+        comment = template.format(n=random.choice(nouns))
+    except:
+        comment = "Okay naman yung event, may maganda pero may pangit din."
+
+    if random.random() < 0.2:
+        comment = add_noise(comment)
+    return comment + random_emoji(), "Neutral"
+
+# ============================================================
+# REGULAR GENERATION FUNCTIONS
 # ============================================================
 
 def generate_pos():
@@ -240,8 +255,6 @@ def generate_pos():
         "Great {n}! {r}",
         "Nalingaw jud ko sa {n}. {r}",
         "Balik ko puhon kay {w} ang {n}.",
-        "10/10 ang {n}!",
-        "Highly recommended ang {n}!",
     ]
     t = random.choice(templates)
     try:
@@ -266,8 +279,6 @@ def generate_neg():
         "Complete waste of time. The {n} was {w}.",
         "Sayang ang oras ko sa {n}. {r}",
         "Maypag wala nalang ko niadto kay {r}.",
-        "0/10 hindi na uulit.",
-        "Never again sa {n}!",
     ]
     t = random.choice(templates)
     try:
@@ -290,8 +301,6 @@ def generate_neu():
         "Average {n}. Met basic expectations.",
         "Could be better but acceptable.",
         "It was fine. Not great, not terrible.",
-        "Pwede na yung {n}.",
-        "Hindi pangit, hindi rin maganda.",
     ]
     t = random.choice(templates)
     try:
@@ -302,31 +311,13 @@ def generate_neu():
         comment = add_noise(comment)
     return comment + random_emoji(), "Neutral"
 
-def generate_ambiguous():
-    """Generate truly ambiguous comments (fix for 20% accuracy)"""
-    comment = random.choice(ambiguous_phrases)
-    
-    roll = random.random()
-    if roll < 0.35:
-        label = "Negative"
-    elif roll < 0.65:
-        label = "Neutral"
-    else:
-        label = "Positive"
-    
-    if random.random() < 0.25:
-        comment = add_noise(comment)
-    return comment + random_emoji(), label
-
 def generate_mixed():
-    """Mixed sentiment = NEGATIVE (negative outweighs positive)"""
+    """Mixed sentiment = NEGATIVE"""
     templates = [
         "{pw} unta ang {n} pero {nr}.",
         "Maayo ang {n} kaso {nr}.",
         "Salamat sa {n} pero {nr}.",
         "The {n} was nice but {nr}.",
-        "Maganda sana kaso {nr}.",
-        "Okay naman pero {nr}.",
     ]
     t = random.choice(templates)
     try:
@@ -338,7 +329,7 @@ def generate_mixed():
     return comment + random_emoji(), "Negative"
 
 def generate_sarcastic():
-    """Sarcastic = ALWAYS Negative - NO NOISE"""
+    """Sarcastic = NEGATIVE - NO NOISE"""
     templates = [
         "Wow galing ng {n}, {nr}!",
         "Perfect ang {n}, {nr}!",
@@ -346,17 +337,6 @@ def generate_sarcastic():
         "Great job sa {n}, {nr}!",
         "Ang galing ng {n}, {nr}!",
         "The best ang {n}, {nr}!",
-        "Sobrang saya ng {n}, {nr}!",
-        "Ang efficient ng {n}, {nr}!",
-        "Ang linaw ng {n}, {nr}!",
-        "Sobrang organized ng {n}, {nr}!",
-        "World-class ang {n}, {nr}!",
-        "Top-notch ang {n}, {nr}!",
-        "Amazing ang {n}, {nr}!",
-        "Incredible ang {n}, {nr}!",
-        "Fantastic ang {n}, {nr}!",
-        "⭐️⭐️⭐️⭐️⭐️ ang {n}, {nr}!",
-        "Perfect 10/10! {nr}",
     ]
     t = random.choice(templates)
     try:
@@ -377,8 +357,6 @@ def generate_subtle_positive():
         "Maaga natapos ang event.",
         "May nakausap akong bago.",
         "Nakatulong yung topic.",
-        "Mababait ang staff kahit papano.",
-        "Masarap yung snacks kahit konti.",
     ]
     comment = random.choice(phrases)
     if random.random() < 0.3:
@@ -397,8 +375,6 @@ def generate_subtle_negative():
         "Medyo maingay ang background music.",
         "Ang haba ng programa.",
         "Sana may water station.",
-        "Sana mas malamig ang aircon.",
-        "Sana mas organized next time.",
     ]
     comment = random.choice(phrases)
     if random.random() < 0.3:
@@ -406,10 +382,10 @@ def generate_subtle_negative():
     return comment + random_emoji(), "Negative"
 
 def generate_short():
-    pos_shorts = ["Nindot!", "Lingaw!", "Salamat!", "Maayo!", "Perfect!", "Great!", "Awesome!", "Superb!", "Galing!", "Solid!"]
-    neg_shorts = ["Bati!", "Gubot!", "Sayang!", "Init!", "Terrible!", "Worst!", "Horrible!", "Awful!", "Pangit!", "Never again!"]
-    neu_shorts = ["Okay.", "Sakto.", "Pwede na.", "Wala lang.", "Meh.", "Fine.", "So-so.", "Ewan.", "Bahala na."]
-    
+    pos_shorts = ["Nindot!", "Lingaw!", "Salamat!", "Maayo!", "Perfect!", "Great!", "Awesome!", "Superb!"]
+    neg_shorts = ["Bati!", "Gubot!", "Sayang!", "Init!", "Terrible!", "Worst!", "Horrible!", "Awful!"]
+    neu_shorts = ["Okay.", "Sakto.", "Pwede na.", "Wala lang.", "Meh.", "Fine.", "So-so."]
+
     choice = random.random()
     if choice < 0.34:
         comment = random.choice(pos_shorts)
@@ -420,101 +396,9 @@ def generate_short():
     else:
         comment = random.choice(neu_shorts)
         label = "Neutral"
-    
+
     if random.random() < 0.2:
         comment = add_noise(comment)
-    return comment + random_emoji(), label
-
-def generate_negation_pattern():
-    """FIX: Generate comments with negation that should be POSITIVE"""
-    template = random.choice(negation_patterns)
-    try:
-        comment = template.format(
-            adj=random.choice(positive_adj),
-            n=random.choice(nouns)
-        )
-    except:
-        comment = "Wala koy reklamo, perfect ang event."
-    # Light noise only
-    if random.random() < 0.2:
-        comment = add_noise(comment)
-    return comment + random_emoji(), "Positive"
-
-def generate_double_negative():
-    """FIX: Generate double negative comments = POSITIVE"""
-    template = random.choice(double_negative_patterns)
-    try:
-        comment = template.format(n=random.choice(nouns))
-    except:
-        comment = "Hindi naman pangit ang event."
-    if random.random() < 0.2:
-        comment = add_noise(comment)
-    return comment + random_emoji(), "Positive"
-
-def generate_code_switch_improved():
-    """IMPROVED: Code-switching with ALL labels"""
-    
-    positive_templates = [
-        "Sobrang {pw} ng {n} kahit may {nr} pa! Worth it!",
-        "Ang galing ng {n}! Kahit {nr}, okay lang kasi {pw} talaga.",
-        "{pw} naman ang {n} overall kahit may {nr}.",
-        "Naenjoy ko pa rin yung {n} kahit {nr}. {pw} pa rin!",
-    ]
-    
-    negative_templates = [
-        "Ang ganda ng venue kaso ang layo.",
-        "Maayo ang speakers pero yung sound system hindi maganda.",
-        "Salamat sa free food pero kulang ang serving.",
-        "The topic was informative pero ang haba.",
-        "Lingaw ang games but the prizes were mejo disappointing.",
-        "Ang babait ng staff pero yung registration sobrang bagal.",
-        "Okay naman ang event pero I expected more.",
-        "The host was funny kaso ang haba ng program.",
-        "Maganda ang giveaways pero walang laman.",
-        "Maayos ang food pero konti ang serving.",
-        "Ang galing ng speaker, kung nakinig lang ako.",
-        "Wonderful aircon, kung gumagana lang talaga.",
-        "The best event ever! Kung may naenjoy lang ako kahit konti.",
-        "Sobrang organized ng event, naligaw lahat ng participants.",
-        "Ang efficient ng registration, pumila kami ng 2 oras.",
-        "Perfect ang sound system, walang narinig ang nasa likod.",
-        "Great job sa organizers, sobrang late ng start.",
-    ]
-    
-    neutral_templates = [
-        "Okay naman yung {n}, may {pw} pero may {nr} din.",
-        "Pwede na yung {n}, kahit {nr} at least may {pw}.",
-        "Sakto lang yung {n}. Hindi {pw}, hindi rin {w}.",
-        "Average lang yung experience. May maganda pero may pangit.",
-        "The {n} was decent. Could be better, could be worse.",
-        "Wala lang. Di ko alam kung masaya ba ko o hindi.",
-        "Ewan ko ba sa {n} na yan. Keri naman.",
-        "Bahala na. Okay na rin yung {n}.",
-    ]
-    
-    roll = random.random()
-    if roll < 0.50:
-        templates = negative_templates
-        label = "Negative"
-    elif roll < 0.85:
-        templates = neutral_templates
-        label = "Neutral"
-    else:
-        templates = positive_templates
-        label = "Positive"
-    
-    template = random.choice(templates)
-    
-    try:
-        comment = template.format(
-            n=random.choice(nouns),
-            pw=random.choice(pos_words),
-            w=random.choice(neg_words),
-            nr=random.choice(neg_reasons)
-        )
-    except:
-        comment = random.choice(negative_templates)
-    
     return comment + random_emoji(), label
 
 # ============================================================
@@ -522,12 +406,9 @@ def generate_code_switch_improved():
 # ============================================================
 
 print("\n📝 Generating 15,000 comments...")
+print("   ✓ Code-switching: NOW with ALL labels (Pos/Neu/Neg)")
 print("   ✓ Regular comments: WITH noise")
 print("   ✓ Sarcastic: CLEAN (no noise)")
-print("   ✓ Code-switching: CLEAN with ALL labels")
-print("   ✓ Ambiguous: NEW category")
-print("   ✓ Negation patterns: NEW (Wala koy reklamo → Positive)")
-print("   ✓ Double negatives: NEW (Hindi naman pangit → Positive)")
 print("   ✓ Mixed sentiment: Negative\n")
 
 data_list = []
@@ -538,23 +419,17 @@ pos_target = 5000
 pos_generated = 0
 while pos_generated < pos_target:
     choice = random.random()
-    if choice < 0.40:  # Regular positive
+    if choice < 0.50:  # Regular positive
         c, label = generate_pos()
-    elif choice < 0.55:  # Subtle positive
+    elif choice < 0.65:  # Subtle positive
         c, label = generate_subtle_positive()
-    elif choice < 0.65:  # Short positive
+    elif choice < 0.80:  # Short positive
         c, label = generate_short()
         if label != "Positive":
             continue
-    elif choice < 0.80:  # Negation patterns (NEW!)
-        c, label = generate_negation_pattern()
-    elif choice < 0.90:  # Double negatives (NEW!)
-        c, label = generate_double_negative()
-    else:  # Positive code-switching
-        c, label = generate_code_switch_improved()
-        if label != "Positive":
-            continue
-    
+    else:  # POSITIVE CODE-SWITCHING (NEW!)
+        c, label = generate_code_switching_positive()
+
     if c not in data_set:
         data_set.add(c)
         data_list.append((c, label))
@@ -567,23 +442,21 @@ neg_target = 5000
 neg_generated = 0
 while neg_generated < neg_target:
     choice = random.random()
-    if choice < 0.25:  # Regular negative
+    if choice < 0.30:  # Regular negative
         c, label = generate_neg()
-    elif choice < 0.40:  # Mixed sentiment (Negative)
+    elif choice < 0.45:  # Mixed sentiment
         c, label = generate_mixed()
-    elif choice < 0.55:  # Sarcastic
+    elif choice < 0.60:  # Sarcastic
         c, label = generate_sarcastic()
-    elif choice < 0.70:  # Subtle negative
+    elif choice < 0.75:  # Subtle negative
         c, label = generate_subtle_negative()
     elif choice < 0.85:  # Short negative
         c, label = generate_short()
         if label != "Negative":
             continue
-    else:  # Negative code-switching
-        c, label = generate_code_switch_improved()
-        if label != "Negative":
-            continue
-    
+    else:  # NEGATIVE CODE-SWITCHING
+        c, label = generate_code_switching_negative()
+
     if c not in data_set:
         data_set.add(c)
         data_list.append((c, label))
@@ -596,19 +469,15 @@ neu_target = 5000
 neu_generated = 0
 while neu_generated < neu_target:
     choice = random.random()
-    if choice < 0.30:  # Regular neutral
+    if choice < 0.50:  # Regular neutral
         c, label = generate_neu()
-    elif choice < 0.55:  # Ambiguous
-        c, label = generate_ambiguous()
-    elif choice < 0.75:  # Neutral code-switching
-        c, label = generate_code_switch_improved()
-        if label != "Neutral":
-            continue
-    else:  # Short neutral
+    elif choice < 0.70:  # Short neutral
         c, label = generate_short()
         if label != "Neutral":
             continue
-    
+    else:  # NEUTRAL CODE-SWITCHING (NEW!)
+        c, label = generate_code_switching_neutral()
+
     if c not in data_set:
         data_set.add(c)
         data_list.append((c, label))
@@ -632,43 +501,38 @@ print(f"   Positive: {pos_count} ({pos_count/len(data_list)*100:.1f}%)")
 print(f"   Negative: {neg_count} ({neg_count/len(data_list)*100:.1f}%)")
 print(f"   Neutral: {neu_count} ({neu_count/len(data_list)*100:.1f}%)")
 
-print("\n📝 SAMPLE NEGATION PATTERNS (FIXED - should be POSITIVE):")
-negation_samples = []
+print("\n📝 SAMPLE CODE-SWITCHING - POSITIVE (NEW!):")
+pos_cs = []
 for c, l in data_list:
-    if any(word in c.lower() for word in ["wala koy reklamo", "wala koy ika-suggest", "walay problema"]):
-        if len(negation_samples) < 5:
-            negation_samples.append((c, l))
-for c, l in negation_samples[:5]:
-    print(f"   [{l}] {c[:80]}")
+    if l == "Positive" and any(word in c.lower() for word in ["kahit", "pero", "kaso"]):
+        if len(pos_cs) < 3:
+            pos_cs.append(c)
+for c in pos_cs:
+    print(f"   [POSITIVE] {c[:80]}")
 
-print("\n📝 SAMPLE DOUBLE NEGATIVES (FIXED - should be POSITIVE):")
-double_neg_samples = []
+print("\n📝 SAMPLE CODE-SWITCHING - NEGATIVE:")
+neg_cs = []
 for c, l in data_list:
-    if any(word in c.lower() for word in ["hindi naman", "wala namang"]):
-        if len(double_neg_samples) < 5:
-            double_neg_samples.append((c, l))
-for c, l in double_neg_samples[:5]:
-    print(f"   [{l}] {c[:80]}")
+    if l == "Negative" and any(word in c.lower() for word in ["kaso", "pero", "but"]):
+        if len(neg_cs) < 3:
+            neg_cs.append(c)
+for c in neg_cs:
+    print(f"   [NEGATIVE] {c[:80]}")
 
-print("\n📝 SAMPLE CODE-SWITCHING (ALL labels):")
-cs_samples = []
+print("\n📝 SAMPLE CODE-SWITCHING - NEUTRAL (NEW!):")
+neu_cs = []
 for c, l in data_list:
-    if any(word in c.lower() for word in ["kaso", "pero", "kahit", "yung", "kung"]):
-        if len(cs_samples) < 5 and c not in [s[0] for s in cs_samples]:
-            cs_samples.append((c, l))
-for c, l in cs_samples[:5]:
-    print(f"   [{l}] {c[:80]}")
-
-print("\n📝 SAMPLE AMBIGUOUS COMMENTS:")
-amb_samples = [c for c, l in data_list if c in ambiguous_phrases][:5]
-for c in amb_samples[:5]:
-    print(f"   {c[:80]}")
+    if l == "Neutral" and any(word in c.lower() for word in ["pero", "kaso", "eh"]):
+        if len(neu_cs) < 3:
+            neu_cs.append(c)
+for c in neu_cs:
+    print(f"   [NEUTRAL] {c[:80]}")
 
 # ============================================================
 # SAVE
 # ============================================================
 
-csv_file = "event_data_NOISY_IMPROVED.csv"
+csv_file = "event_data_.csv"
 with open(csv_file, "w", newline="", encoding="utf-8") as f:
     writer = csv.writer(f)
     writer.writerow(["vcomment", "Label"])
@@ -676,14 +540,12 @@ with open(csv_file, "w", newline="", encoding="utf-8") as f:
         writer.writerow([comment, label])
 
 print(f"\n✅ Saved to {csv_file}")
-print("\n📌 ALL FIXES INCLUDED IN THIS VERSION:")
-print("   ✓ Negation patterns: 'Wala koy reklamo' → POSITIVE")
-print("   ✓ Double negatives: 'Hindi naman pangit' → POSITIVE")
-print("   ✓ Code-switching: Now has Positive, Negative, AND Neutral labels")
-print("   ✓ Ambiguous: NEW category (25+ phrases)")
-print("   ✓ Typos: Enhanced with missing spaces, repeated letters")
-print("   ✓ Mixed sentiment: Negative (correct)")
-print("   ✓ Sarcastic: Clean (correct)")
-print("\n📌 NEXT: Update CELL 3 to use this improved dataset:")
-print("   Change DATA_FILE = 'event_data_NOISY_IMPROVED.csv'")
+print("\n📌 KEY FIX FOR CODE-SWITCHING:")
+print("   ✓ Now has 3 separate functions for Positive, Negative, AND Neutral")
+print("   ✓ Code-switching appears in ALL sentiment categories")
+print("   ✓ 20% of Positive comments are now code-switched")
+print("   ✓ 15% of Negative comments are now code-switched")
+print("   ✓ 30% of Neutral comments are now code-switched")
+print("\n📌 NEXT: Update CELL 3 to use this file:")
+print("   Change DATA_FILE = 'event_data_latest.csv'")
 print("=" * 70)

@@ -8,10 +8,6 @@
         </div>
 
         <!-- Debug Info - Remove in production -->
-        <div class="bg-gray-100 p-4 rounded-lg mb-4 text-xs">
-          <p><strong>Debug:</strong> Form Processing: {{ form.processing ? 'Yes' : 'No' }}</p>
-          <p><strong>Form Errors:</strong> {{ JSON.stringify(form.errors) }}</p>
-        </div>
 
         <!-- Error Display -->
         <Transition name="fade">
@@ -268,16 +264,10 @@
 
   // Debug on mount
   onMounted(() => {
-    console.log('Create form mounted');
-    console.log('Form initial state:', form);
-    console.log('Form processing:', form.processing);
-    console.log('Departments available:', props.departments?.length);
-    console.log('Event types available:', props.eventTypes?.length);
   });
 
   // Watch for form changes
   watch(() => form, (newVal) => {
-    console.log('Form changed:', newVal);
   }, { deep: true });
 
   const selectedEventType = computed(() => {
@@ -305,9 +295,6 @@
   }
 
   function submit() {
-    console.log('Submit button clicked!');
-    console.log('Form data:', form.data());
-    
     // Validate required fields manually
     if (form.departments.length === 0) {
       form.errors.departments = 'Please select at least one college.';
@@ -330,14 +317,11 @@
     // Submit the form
     form.post('/president/events', {
       onSuccess: () => {
-        console.log('Event created successfully!');
         form.reset();
       },
       onError: (errors) => {
-        console.error('Validation errors:', errors);
       },
       onFinish: () => {
-        console.log('Request finished');
       }
     });
   }

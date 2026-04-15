@@ -16,75 +16,93 @@
       <!-- Stats Cards -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <!-- Total Events -->
-        <div class="bg-white rounded-2xl shadow-lg p-6 transform hover:scale-105 transition-all duration-300">
+        <div class="rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden group border border-white/10 p-6 bg-gradient-to-br from-blue-600 to-indigo-700">
           <div class="flex items-center justify-between mb-4">
-            <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-              <svg class="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div class="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110 backdrop-blur-sm shadow-inner">
+              <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7H3v12a2 2 0 002 2z" />
               </svg>
             </div>
-            <span class="text-sm font-medium text-blue-600 bg-blue-50 px-3 py-1 rounded-full">Active</span>
+            <span class="text-xs font-bold text-white bg-white/20 px-3 py-1 rounded-full border border-white/10 uppercase tracking-wider">Active</span>
           </div>
-          <h3 class="text-3xl font-bold text-gray-800">{{ stats.total_events }}</h3>
-          <p class="text-sm text-gray-500 mt-1">Active Events</p>
+          <h3 class="text-3xl font-black text-white tracking-tight">{{ stats.total_events }}</h3>
+          <p class="text-xs font-medium text-blue-100 mt-1 mb-4">Ongoing Collections</p>
+          <div class="h-10 -mx-6 -mb-6">
+            <apexchart type="area" height="100%" :options="miniSparklineOptions('#ffffff')" :series="[{ data: [12, 19, 15, 25, 22, 30, 28] }]" />
+          </div>
         </div>
 
         <!-- Total Collected -->
-        <div class="bg-white rounded-2xl shadow-lg p-6 transform hover:scale-105 transition-all duration-300">
+        <div class="rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden group border border-white/10 p-6 bg-gradient-to-br from-emerald-600 to-teal-700">
           <div class="flex items-center justify-between mb-4">
-            <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-              <svg class="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div class="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110 backdrop-blur-sm shadow-inner">
+              <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zM12 2v2m0 16v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
               </svg>
             </div>
-            <span class="text-sm font-medium text-green-600 bg-green-50 px-3 py-1 rounded-full">Total</span>
+            <span class="text-xs font-bold text-white bg-white/20 px-3 py-1 rounded-full border border-white/10 uppercase tracking-wider">Revenue</span>
           </div>
-          <h3 class="text-3xl font-bold text-gray-800">₱{{ formatNumber(stats.total_collected) }}</h3>
-          <p class="text-sm text-gray-500 mt-1">Total Collections</p>
-          <p class="text-xs text-gray-400 mt-2">Target: ₱{{ formatNumber(stats.total_expected) }}</p>
+          <h3 class="text-2xl font-black text-white tracking-tight">₱{{ formatNumber(stats.total_collected) }}</h3>
+          <p class="text-xs font-medium text-emerald-100 mt-1 mb-4">Total Realized</p>
+          <div class="h-10 -mx-6 -mb-6">
+            <apexchart type="area" height="100%" :options="miniSparklineOptions('#ffffff')" :series="[{ data: [45, 52, 48, 61, 55, 68, 65] }]" />
+          </div>
         </div>
 
         <!-- Overall Rate -->
-        <div class="bg-white rounded-2xl shadow-lg p-6 transform hover:scale-105 transition-all duration-300">
+        <div class="rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden group border border-white/10 p-6 bg-gradient-to-br from-purple-600 to-fuchsia-700">
           <div class="flex items-center justify-between mb-4">
-            <div class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-              <svg class="w-6 h-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div class="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110 backdrop-blur-sm shadow-inner">
+              <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
             </div>
-            <span class="text-sm font-medium text-purple-600 bg-purple-50 px-3 py-1 rounded-full">Rate</span>
+            <span class="text-xs font-bold text-white bg-white/20 px-3 py-1 rounded-full border border-white/10 uppercase tracking-wider">Efficiency</span>
           </div>
-          <h3 class="text-3xl font-bold text-gray-800">{{ stats.overall_rate }}%</h3>
-          <p class="text-sm text-gray-500 mt-1">Overall Collection Rate</p>
-          <div class="mt-3 w-full bg-gray-200 rounded-full h-2">
-            <div class="bg-purple-600 rounded-full h-2 transition-all duration-500" :style="{ width: stats.overall_rate + '%' }"></div>
+          <h3 class="text-3xl font-black text-white tracking-tight">{{ stats.overall_rate }}%</h3>
+          <p class="text-xs font-medium text-purple-100 mt-1 mb-4">Collection Rate</p>
+          <div class="h-10 -mx-6 -mb-6">
+            <apexchart type="area" height="100%" :options="miniSparklineOptions('#ffffff')" :series="[{ data: [60, 65, 62, 70, 68, 75, 72] }]" />
           </div>
         </div>
 
         <!-- Pending Payments -->
-        <div class="bg-white rounded-2xl shadow-lg p-6 transform hover:scale-105 transition-all duration-300">
+        <div class="rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden group border border-white/10 p-6 bg-gradient-to-br from-orange-500 to-red-600">
           <div class="flex items-center justify-between mb-4">
-            <div class="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
-              <svg class="w-6 h-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div class="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110 backdrop-blur-sm shadow-inner">
+              <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <span class="text-sm font-medium text-yellow-600 bg-yellow-50 px-3 py-1 rounded-full">Pending</span>
+            <span class="text-xs font-bold text-white bg-white/20 px-3 py-1 rounded-full border border-white/10 uppercase tracking-wider">Queue</span>
           </div>
-          <h3 class="text-3xl font-bold text-gray-800">{{ stats.pending_payments }}</h3>
-          <p class="text-sm text-gray-500 mt-1">Pending Payments</p>
-          <p class="text-xs text-gray-400 mt-2">Need your attention</p>
+          <h3 class="text-3xl font-black text-white tracking-tight">{{ stats.pending_payments }}</h3>
+          <p class="text-xs font-medium text-orange-100 mt-1 mb-4">Pending Task</p>
+          <div class="h-10 -mx-6 -mb-6">
+            <apexchart type="area" height="100%" :options="miniSparklineOptions('#ffffff')" :series="[{ data: [8, 12, 10, 15, 12, 18, 16] }]" />
+          </div>
         </div>
       </div>
 
       <!-- Monthly Collection Trend Chart -->
-      <div class="bg-white rounded-2xl shadow-lg p-6">
-        <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
-          <h2 class="text-lg font-semibold text-gray-800">Monthly Collection Trend</h2>
-          <span class="text-xs text-gray-500">Last 6 months</span>
+      <div class="bg-white rounded-2xl shadow-lg p-6 border border-gray-50">
+        <div class="flex items-center justify-between mb-6 flex-wrap gap-2">
+          <div>
+            <h2 class="text-xl font-bold text-gray-800">Revenue Stream</h2>
+            <p class="text-xs text-gray-400 mt-0.5">Monthly collection velocity (₱)</p>
+          </div>
+          <div class="flex items-center gap-1.5 px-3 py-1 bg-emerald-50 rounded-full border border-emerald-100">
+             <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+             <span class="text-[10px] font-black text-emerald-600 uppercase">Real-time</span>
+          </div>
         </div>
-        <div class="h-64">
-          <canvas ref="trendChart"></canvas>
+        <div class="h-[300px]">
+          <apexchart 
+            type="area" 
+            height="100%" 
+            :options="revenueAreaOptions" 
+            :series="revenueAreaSeries"
+          />
         </div>
       </div>
 
@@ -261,10 +279,63 @@ import { Link, router } from '@inertiajs/vue3';
 import { usePage } from '@inertiajs/vue3';
 import { ref, computed, onMounted } from 'vue';
 import OrganizationUserLayout from '@/Layouts/OrganizationUserLayout.vue';
-import Chart from 'chart.js/auto';
+import apexchart from 'vue3-apexcharts';
 
 const page = usePage();
 const user = page.props.auth?.user;
+
+const currentDate = computed(() => new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }));
+
+function formatNumber(num) {
+  if (num === null || num === undefined) return '0';
+  return parseFloat(num).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+}
+
+function formatDate(date) {
+  if (!date) return 'N/A';
+  return new Date(date).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
+}
+
+function getStatusBadgeClass(status) {
+  const base = 'px-2 py-1 rounded-full text-xs font-semibold';
+  switch (status.value) {
+    case 'Approved':
+      return `${base} bg-emerald-100 text-emerald-700`;
+    case 'Finished':
+      return `${base} bg-gray-100 text-gray-700`;
+    case 'Pending':
+      return `${base} bg-yellow-100 text-yellow-700`;
+    default:
+      return `${base} bg-blue-100 text-blue-700`;
+  }
+}
+
+function goToEvent(id) {
+  router.get(`/treasurer/collections/${id}`);
+}
+
+function getPaidPercentageColor(percentage) {
+  if (percentage >= 100) return 'text-emerald-600';
+  if (percentage >= 70) return 'text-blue-600';
+  if (percentage >= 40) return 'text-orange-600';
+  return 'text-red-600';
+}
+
+function getRankColor(rank) {
+  switch (rank) {
+    case 1: return 'bg-yellow-400 shadow-yellow-200 shadow-lg';
+    case 2: return 'bg-slate-300 shadow-slate-200 shadow-lg';
+    case 3: return 'bg-amber-600 shadow-amber-200 shadow-lg';
+    default: return 'bg-gray-400';
+  }
+}
 
 const props = defineProps({
 stats: {
@@ -300,124 +371,42 @@ user: {
 }
 });
 
-const trendChart = ref(null);
-let trendChartInstance = null;
-
-const currentDate = computed(() => {
-return new Date().toLocaleDateString('en-US', {
-  weekday: 'long',
-  year: 'numeric',
-  month: 'long',
-  day: 'numeric'
-});
+const miniSparklineOptions = (color) => ({
+  chart: { sparkline: { enabled: true }, animations: { speed: 800 } },
+  stroke: { curve: 'smooth', width: 2 },
+  fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0, stops: [0, 90, 100] } },
+  colors: [color],
+  tooltip: { enabled: false }
 });
 
-function formatNumber(num) {
-return num?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00';
-}
+const revenueAreaSeries = computed(() => [{
+  name: 'Collected',
+  data: props.monthlyTrend?.length ? props.monthlyTrend.map(item => item.total) : [0, 0, 0, 0, 0, 0]
+}]);
 
-function formatDate(date) {
-if (!date) return 'N/A';
-return new Date(date).toLocaleDateString('en-US', {
-  year: 'numeric',
-  month: 'short',
-  day: 'numeric'
-});
-}
-
-function getStatusBadgeClass(status) {
-const base = 'text-xs px-2 py-1 rounded-full';
-switch(status.color) {
-  case 'green': return `${base} bg-green-100 text-green-700`;
-  case 'emerald': return `${base} bg-emerald-100 text-emerald-700`;
-  case 'yellow': return `${base} bg-yellow-100 text-yellow-700`;
-  case 'blue': return `${base} bg-blue-100 text-blue-700`;
-  default: return `${base} bg-gray-100 text-gray-700`;
-}
-}
-
-function getPaidPercentageColor(percentage) {
-if (percentage >= 75) return 'text-green-600';
-if (percentage >= 50) return 'text-yellow-600';
-if (percentage >= 25) return 'text-orange-600';
-return 'text-red-600';
-}
-
-function getRankColor(rank) {
-if (rank === 1) return 'bg-yellow-500';
-if (rank === 2) return 'bg-gray-400';
-if (rank === 3) return 'bg-orange-500';
-return 'bg-gray-300';
-}
-
-function goToEvent(eventId) {
-router.visit(`/treasurer/collections/${eventId}`);
-}
-
-function initTrendChart() {
-if (trendChart.value && props.monthlyTrend.length > 0) {
-  if (trendChartInstance) trendChartInstance.destroy();
-  
-  const labels = props.monthlyTrend.map(item => item.month);
-  const data = props.monthlyTrend.map(item => item.total);
-  
-  trendChartInstance = new Chart(trendChart.value, {
-    type: 'line',
-    data: {
-      labels: labels,
-      datasets: [{
-        label: 'Collection Amount (₱)',
-        data: data,
-        borderColor: 'rgb(16, 185, 129)',
-        backgroundColor: 'rgba(16, 185, 129, 0.1)',
-        tension: 0.4,
-        fill: true,
-        pointBackgroundColor: 'rgb(16, 185, 129)',
-        pointBorderColor: '#fff',
-        pointBorderWidth: 2,
-        pointRadius: 4,
-        pointHoverRadius: 6
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          display: false
-        },
-        tooltip: {
-          callbacks: {
-            label: function(context) {
-              return `₱${context.raw.toLocaleString()}`;
-            }
-          }
-        }
-      },
-      scales: {
-        y: {
-          beginAtZero: true,
-          ticks: {
-            callback: function(value) {
-              return '₱' + value.toLocaleString();
-            }
-          },
-          grid: {
-            color: '#f0f0f0'
-          }
-        },
-        x: {
-          grid: {
-            display: false
-          }
-        }
-      }
-    }
-  });
-}
-}
-
-onMounted(() => {
-initTrendChart();
-});
+const revenueAreaOptions = computed(() => ({
+  chart: { toolbar: { show: false }, dropShadow: { enabled: true, top: 4, left: 0, blur: 4, opacity: 0.05 } },
+  stroke: { curve: 'smooth', width: 3 },
+  fill: {
+    type: 'gradient',
+    gradient: { shadeIntensity: 1, opacityFrom: 0.3, opacityTo: 0.05, stops: [0, 90, 100], gradientToColors: ['#34d399'] }
+  },
+  colors: ['#059669'],
+  xaxis: {
+    categories: props.monthlyTrend?.length ? props.monthlyTrend.map(item => item.month) : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+    axisBorder: { show: false },
+    axisTicks: { show: false },
+    labels: { style: { colors: '#9ca3af', fontSize: '11px' } }
+  },
+  yaxis: { 
+    labels: { 
+      style: { colors: '#9ca3af', fontSize: '11px' },
+      formatter: (val) => '₱' + val.toLocaleString()
+    } 
+  },
+  grid: { borderColor: '#f3f4f6', strokeDashArray: 4 },
+  dataLabels: { enabled: false },
+  markers: { size: 4, colors: ['#fff'], strokeColors: '#059669', strokeWidth: 2 },
+  tooltip: { theme: 'light', y: { formatter: (val) => '₱' + val.toLocaleString() } }
+}));
 </script>

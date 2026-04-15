@@ -59,12 +59,10 @@ FALLBACK_MODEL = "cardiffnlp/twitter-xlm-roberta-base-sentiment"
 # LOAD MODEL (Fine-tuned if exists, otherwise pre-trained)
 # ============================================================
 
-print("=" * 70)
-print("EventFlow AI Service - Sentiment Analysis")
-print("=" * 70)
+logger.info("Initializing EventFlow AI Service...")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"\n💻 Using device: {device}")
+logger.info(f"Using device: {device}")
 
 using_finetuned = False
 sentiment_analyzer = None
@@ -73,35 +71,16 @@ model = None
 label_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
 
 # Check if fine-tuned model exists
-print(f"\n📁 Checking for fine-tuned model at: {FINETUNED_PATH}")
-
 if os.path.exists(FINETUNED_PATH):
-    print(f"   ✅ Folder exists")
-    
     # Check for adapter file (either .bin or .safetensors)
     adapter_bin = os.path.join(FINETUNED_PATH, "adapter_model.bin")
     adapter_safetensors = os.path.join(FINETUNED_PATH, "adapter_model.safetensors")
     config_file = os.path.join(FINETUNED_PATH, "adapter_config.json")
     
-    has_adapter = False
-    if os.path.exists(adapter_bin):
-        print(f"   ✅ Found adapter_model.bin")
-        has_adapter = True
-    elif os.path.exists(adapter_safetensors):
-        print(f"   ✅ Found adapter_model.safetensors")
-        has_adapter = True
-    else:
-        print(f"   ❌ No adapter file found")
-    
-    if os.path.exists(config_file):
-        print(f"   ✅ Found adapter_config.json")
-    else:
-        print(f"   ❌ adapter_config.json NOT FOUND")
+    has_adapter = os.path.exists(adapter_bin) or os.path.exists(adapter_safetensors)
     
     if has_adapter and os.path.exists(config_file):
-        print(f"\n📚 Loading FINE-TUNED model from {FINETUNED_PATH}")
-        print(f"   Base model: {BASE_MODEL}")
-        print(f"   This model combines pre-trained knowledge + your synthetic data")
+        logger.info(f"Loading fine-tuned model from {FINETUNED_PATH}")
         
         try:
             tokenizer = XLMRobertaTokenizer.from_pretrained(BASE_MODEL)
@@ -115,50 +94,27 @@ if os.path.exists(FINETUNED_PATH):
             model.to(device)
             
             using_finetuned = True
-            print("\n✅ Fine-tuned model loaded successfully!")
-            print("   Model has been trained on event feedback data")
+            logger.info("Fine-tuned model loaded successfully")
             
         except Exception as e:
-            print(f"\n⚠️ Error loading fine-tuned model: {e}")
-            print("   Falling back to pre-trained model...")
+            logger.error(f"Error loading fine-tuned model: {e}")
             using_finetuned = False
     else:
-        print(f"\n⚠️ Fine-tuned model files incomplete")
-        print("   Falling back to pre-trained model...")
+        logger.warning("Fine-tuned model files incomplete, falling back to pre-trained")
+        using_finetuned = False
 else:
-    print(f"   ❌ Folder does NOT exist")
-    print(f"   Falling back to pre-trained model...")
+    logger.info("Fine-tuned model not found, falling back to pre-trained")
+    using_finetuned = False
 
 if not using_finetuned:
-    print(f"\n📚 Loading PRE-TRAINED model from HuggingFace")
-    print(f"   Model: {FALLBACK_MODEL}")
-    print("   This is the base model without fine-tuning")
+    logger.info(f"Loading pre-trained model: {FALLBACK_MODEL}")
     
     sentiment_analyzer = pipeline(
         "sentiment-analysis",
         model=FALLBACK_MODEL,
         device=0 if torch.cuda.is_available() else -1
     )
-    print("\n✅ Pre-trained model loaded successfully!")
-
-print("\n" + "=" * 70)
-print()
-
-# Test the model
-if using_finetuned:
-    test_comment = "Nindot kaayo ang event!"
-    inputs = tokenizer(test_comment, return_tensors="pt", truncation=True, max_length=64)
-    inputs = {k: v.to(device) for k, v in inputs.items()}
-    with torch.no_grad():
-        outputs = model(**inputs)
-        pred = torch.argmax(outputs.logits, dim=1).item()
-    print(f"🔍 Model test: '{test_comment}' -> {label_map[pred]}")
-else:
-    test_result = sentiment_analyzer("Nindot kaayo ang event!")[0]
-    print(f"🔍 Model test: 'Nindot kaayo ang event!' -> {test_result['label']}")
-
-print("=" * 70)
-print()
+    logger.info("Pre-trained model loaded successfully")
 
 # ============================================================
 # REQUEST AND RESPONSE MODELS
@@ -259,10 +215,8 @@ async def root():
         "service": "EventFlow AI Service",
         "version": "2.0.0",
         "status": "running",
-        "model_type": "Fine-tuned XLM-RoBERTa + LoRA" if using_finetuned else "Pre-trained XLM-RoBERTa",
-        "fine_tuned": using_finetuned,
-        "capabilities": ["Positive", "Neutral", "Negative"],
-        "languages_supported": ["Bisaya", "Tagalog", "English", "Code-switching"]
+        "model_type": method_name,
+        "fine_tuned": using_finetuned
     }
 
 @app.get("/health")
@@ -280,21 +234,16 @@ async def analyze_comments(request: AnalyzeRequest):
     """
     Analyze comments and return sentiment classification.
     """
-    
-    # Combine all comments from both input arrays
     all_comments = []
     
-    # Add positive_comments
     for comment in request.positive_comments:
         if comment and comment.strip():
             all_comments.append(comment.strip())
     
-    # Add suggestion_comments
     for comment in request.suggestion_comments:
         if comment and comment.strip():
             all_comments.append(comment.strip())
     
-    # Handle empty request
     if not all_comments:
         return {
             "method_used": method_name,
@@ -314,7 +263,6 @@ async def analyze_comments(request: AnalyzeRequest):
             "analyzed_at": datetime.now().isoformat()
         }
     
-    # Classify each comment
     positive_results = []
     negative_results = []
     neutral_results = []
@@ -329,7 +277,6 @@ async def analyze_comments(request: AnalyzeRequest):
         else:
             neutral_results.append(comment)
     
-    # Calculate percentages
     total = len(all_comments)
     pos_count = len(positive_results)
     neg_count = len(negative_results)
@@ -339,13 +286,11 @@ async def analyze_comments(request: AnalyzeRequest):
     negative_percentage = round((neg_count / total) * 100, 1) if total > 0 else 0
     neutral_percentage = round((neu_count / total) * 100, 1) if total > 0 else 0
     
-    # Calculate sentiment score
     sentiment_score = round((pos_count + (neu_count * 0.5)) / total, 2) if total > 0 else 0.5
     
-    # Extract common themes
     common_themes = extract_common_themes(all_comments)
     
-    logger.info(f"Sentiment analysis complete: {pos_count} positive, {neg_count} negative, {neu_count} neutral")
+    logger.info(f"Sentiment analysis complete: {pos_count} pos, {neg_count} neg")
     
     return {
         "method_used": method_name,
@@ -362,27 +307,6 @@ async def analyze_comments(request: AnalyzeRequest):
         "total_respondents": request.total_respondents,
         "response_rate": request.response_rate,
         "event_date": request.event_date,
-        "analyzed_at": datetime.now().isoformat(),
-        "note": "Satisfaction scores are calculated in Laravel DSS"
-    }
-
-@app.post("/test-sentiment")
-async def test_sentiment(data: dict):
-    """Test endpoint for debugging"""
-    comments = data.get('comments', [])
-    
-    results = []
-    for comment in comments:
-        sentiment = classify_sentiment(comment)
-        results.append({
-            "comment": comment,
-            "sentiment": sentiment
-        })
-    
-    return {
-        "results": results,
-        "method_used": method_name,
-        "fine_tuned": using_finetuned,
         "analyzed_at": datetime.now().isoformat()
     }
 
@@ -392,14 +316,4 @@ async def test_sentiment(data: dict):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8001))
-    print(f"\n🚀 Starting server on port {port}...")
-    print(f"   Local: http://127.0.0.1:{port}")
-    print(f"   Health check: http://127.0.0.1:{port}/health")
-    print("=" * 70)
-    
-    uvicorn.run(
-        app,
-        host="0.0.0.0",
-        port=port,
-        log_level="info"
-    )
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")

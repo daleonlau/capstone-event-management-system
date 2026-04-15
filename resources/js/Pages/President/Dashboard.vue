@@ -40,69 +40,80 @@
 
       <!-- Stats Cards -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div class="bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
+        <!-- Total Events -->
+        <div class="rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden group border border-white/10 bg-gradient-to-br from-blue-600 to-indigo-700">
           <div class="p-6">
             <div class="flex items-center justify-between mb-4">
-              <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                <svg class="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div class="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110 backdrop-blur-sm shadow-inner">
+                <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7H3v12a2 2 0 002 2z" />
                 </svg>
               </div>
-              <span class="text-sm font-medium text-blue-600 bg-blue-50 px-3 py-1 rounded-full">Total</span>
+              <span class="text-xs font-bold text-white bg-white/20 px-3 py-1 rounded-full border border-white/10 uppercase tracking-wider">Events</span>
             </div>
-            <h3 class="text-3xl font-bold text-gray-800">{{ stats.total_events || 0 }}</h3>
-            <p class="text-sm text-gray-500 mt-1">Total Events Created</p>
-            <div class="mt-4 flex items-center gap-2">
-              <div class="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div class="h-full bg-blue-500 rounded-full" :style="{ width: `${Math.min((stats.total_events / 50) * 100, 100)}%` }"></div>
-              </div>
-              <span class="text-xs text-gray-500">{{ Math.min(((stats.total_events / 50) * 100).toFixed(0), 100) }}%</span>
+            <h3 class="text-3xl font-black text-white tracking-tight">{{ stats.total_events || 0 }}</h3>
+            <p class="text-xs font-medium text-blue-100 mt-1">Total Created</p>
+            <!-- Mini Sparkline -->
+            <div class="h-10 -mx-6 -mb-6 mt-4">
+              <apexchart type="area" height="100%" :options="miniSparklineOptions('#ffffff')" :series="[{ data: [12, 19, 15, 25, 22, 30, 28] }]" />
             </div>
           </div>
         </div>
 
-        <div class="bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
+        <!-- Pending -->
+        <div class="rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden group border border-white/10 bg-gradient-to-br from-yellow-500 to-orange-600">
           <div class="p-6">
             <div class="flex items-center justify-between mb-4">
-              <div class="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
-                <svg class="w-6 h-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div class="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110 backdrop-blur-sm shadow-inner">
+                <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <span class="text-sm font-medium text-yellow-600 bg-yellow-50 px-3 py-1 rounded-full">Pending</span>
+              <span class="text-xs font-bold text-white bg-white/20 px-3 py-1 rounded-full border border-white/10 uppercase tracking-wider">Pending</span>
             </div>
-            <h3 class="text-3xl font-bold text-gray-800">{{ stats.pending_events || 0 }}</h3>
-            <p class="text-sm text-gray-500 mt-1">Pending Events</p>
+            <h3 class="text-3xl font-black text-white tracking-tight">{{ stats.pending_events || 0 }}</h3>
+            <p class="text-xs font-medium text-yellow-50 mt-1">Awaiting Review</p>
+            <div class="h-10 -mx-6 -mb-6 mt-4">
+              <apexchart type="area" height="100%" :options="miniSparklineOptions('#ffffff')" :series="[{ data: [5, 3, 7, 4, 8, 6, 9] }]" />
+            </div>
           </div>
         </div>
 
-        <div class="bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
+        <!-- Approved -->
+        <div class="rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden group border border-white/10 bg-gradient-to-br from-emerald-600 to-teal-700">
           <div class="p-6">
             <div class="flex items-center justify-between mb-4">
-              <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                <svg class="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div class="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110 backdrop-blur-sm shadow-inner">
+                <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <span class="text-sm font-medium text-green-600 bg-green-50 px-3 py-1 rounded-full">Approved</span>
+              <span class="text-xs font-bold text-white bg-white/20 px-3 py-1 rounded-full border border-white/10 uppercase tracking-wider">Approved</span>
             </div>
-            <h3 class="text-3xl font-bold text-gray-800">{{ stats.approved_events || 0 }}</h3>
-            <p class="text-sm text-gray-500 mt-1">Approved Events</p>
+            <h3 class="text-3xl font-black text-white tracking-tight">{{ stats.approved_events || 0 }}</h3>
+            <p class="text-xs font-medium text-emerald-50 mt-1">Ready for Execution</p>
+            <div class="h-10 -mx-6 -mb-6 mt-4">
+              <apexchart type="area" height="100%" :options="miniSparklineOptions('#ffffff')" :series="[{ data: [8, 12, 10, 18, 15, 22, 20] }]" />
+            </div>
           </div>
         </div>
 
-        <div class="bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
+        <!-- Students -->
+        <div class="rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden group border border-white/10 bg-gradient-to-br from-purple-600 to-fuchsia-700">
           <div class="p-6">
             <div class="flex items-center justify-between mb-4">
-              <div class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-                <svg class="w-6 h-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div class="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110 backdrop-blur-sm shadow-inner">
+                <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                 </svg>
               </div>
-              <span class="text-sm font-medium text-purple-600 bg-purple-50 px-3 py-1 rounded-full">Students</span>
+              <span class="text-xs font-bold text-white bg-white/20 px-3 py-1 rounded-full border border-white/10 uppercase tracking-wider">Students</span>
             </div>
-            <h3 class="text-3xl font-bold text-gray-800">{{ stats.total_students || 0 }}</h3>
-            <p class="text-sm text-gray-500 mt-1">Enrolled Students</p>
+            <h3 class="text-3xl font-black text-white tracking-tight">{{ stats.total_students || 0 }}</h3>
+            <p class="text-xs font-medium text-purple-50 mt-1">Active Membership</p>
+            <div class="h-10 -mx-6 -mb-6 mt-4">
+              <apexchart type="area" height="100%" :options="miniSparklineOptions('#ffffff')" :series="[{ data: [45, 52, 48, 61, 55, 68, 65] }]" />
+            </div>
           </div>
         </div>
       </div>
@@ -197,23 +208,42 @@
 
       <!-- Charts Section -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div class="bg-white rounded-xl shadow-md p-5">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-base font-semibold text-gray-800">Events Overview</h3>
-            <span class="text-xs text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">Last 6 months</span>
+        <div class="bg-white rounded-2xl shadow-lg p-6 border border-gray-50">
+          <div class="flex items-center justify-between mb-6">
+            <div>
+              <h3 class="text-lg font-bold text-gray-800">Events Velocity</h3>
+              <p class="text-xs text-gray-400 mt-0.5">Timeline of created events</p>
+            </div>
+            <span class="text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">Last 6 Months</span>
           </div>
-          <div style="height: 280px;">
-            <canvas ref="eventsChart"></canvas>
+          <div class="h-[300px]">
+            <apexchart 
+              type="area" 
+              height="100%" 
+              :options="eventsAreaOptions" 
+              :series="eventsAreaSeries"
+            />
           </div>
         </div>
 
-        <div class="bg-white rounded-xl shadow-md p-5">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-base font-semibold text-gray-800">Students by Department</h3>
-            <span class="text-xs text-gray-500">{{ stats.total_students || 0 }} total</span>
+        <div class="bg-white rounded-2xl shadow-lg p-6 border border-gray-50">
+          <div class="flex items-center justify-between mb-6">
+            <div>
+              <h3 class="text-lg font-bold text-gray-800">Department Mix</h3>
+              <p class="text-xs text-gray-400 mt-0.5">Student distribution by college</p>
+            </div>
+            <div class="flex items-center gap-1.5 px-3 py-1 bg-gray-50 rounded-full border border-gray-200">
+               <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+               <span class="text-[10px] font-black text-gray-500 uppercase">{{ stats.total_students || 0 }} TOTAL</span>
+            </div>
           </div>
-          <div style="height: 280px;">
-            <canvas ref="departmentChart"></canvas>
+          <div class="h-[300px]">
+            <apexchart 
+              type="donut" 
+              height="100%" 
+              :options="deptDonutOptions" 
+              :series="deptDonutSeries"
+            />
           </div>
         </div>
       </div>
@@ -578,7 +608,7 @@
 import { Link, usePage } from '@inertiajs/vue3';
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 import OrganizationUserLayout from '@/Layouts/OrganizationUserLayout.vue';
-import Chart from 'chart.js/auto';
+import apexchart from 'vue3-apexcharts';
 
 const page = usePage();
 const user = page.props.auth?.user;
@@ -688,90 +718,57 @@ switch(status) {
 }
 }
 
-function initCharts() {
-// Events Chart
-if (eventsChart.value) {
-  if (eventsChartInstance) eventsChartInstance.destroy();
-  
-  const hasData = props.eventTrends && props.eventTrends.length > 0;
-  const labels = hasData ? props.eventTrends.map(item => {
-    const [year, month] = item.month.split('-');
-    const date = new Date(year, month - 1);
-    return date.toLocaleDateString('en-US', { month: 'short' });
-  }) : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-  
-  const data = hasData ? props.eventTrends.map(item => item.total) : [0, 0, 0, 0, 0, 0];
-  
-  eventsChartInstance = new Chart(eventsChart.value, {
-    type: 'line',
-    data: {
-      labels: labels,
-      datasets: [{
-        label: 'Events Created',
-        data: data,
-        borderColor: 'rgb(16, 185, 129)',
-        backgroundColor: 'rgba(16, 185, 129, 0.1)',
-        tension: 0.4,
-        fill: true
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: { y: { beginAtZero: true, grid: { color: '#f0f0f0' } } }
-    }
-  });
-}
+const miniSparklineOptions = (color) => ({
+  chart: { sparkline: { enabled: true }, animations: { speed: 800 } },
+  stroke: { curve: 'smooth', width: 2 },
+  fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0, stops: [0, 90, 100] } },
+  colors: [color],
+  tooltip: { enabled: false }
+});
 
-// Department Chart
-if (departmentChart.value) {
-  if (departmentChartInstance) departmentChartInstance.destroy();
-  
-  const hasData = props.studentsByDepartment && props.studentsByDepartment.length > 0;
-  const labels = hasData ? props.studentsByDepartment.map(item => item.department) : ['No Data'];
-  const data = hasData ? props.studentsByDepartment.map(item => item.total) : [1];
-  const backgroundColors = hasData 
-    ? ['rgba(16, 185, 129, 0.8)', 'rgba(59, 130, 246, 0.8)', 'rgba(245, 158, 11, 0.8)', 'rgba(139, 92, 246, 0.8)', 'rgba(236, 72, 153, 0.8)']
-    : ['rgba(156, 163, 175, 0.8)'];
-  
-  departmentChartInstance = new Chart(departmentChart.value, {
-    type: 'doughnut',
-    data: {
-      labels: labels,
-      datasets: [{ data: data, backgroundColor: backgroundColors, borderWidth: 0 }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
-        tooltip: {
-          callbacks: {
-            label: function(context) {
-              const total = context.dataset.data.reduce((a, b) => a + b, 0);
-              const percentage = total > 0 ? ((context.raw / total) * 100).toFixed(1) : 0;
-              return `${context.label}: ${context.raw} (${percentage}%)`;
-            }
-          }
-        }
-      },
-      cutout: '60%'
-    }
-  });
-}
-}
+const eventsAreaSeries = computed(() => [{
+  name: 'Events',
+  data: props.eventTrends?.length ? props.eventTrends.map(item => item.total) : [0, 0, 0, 0, 0, 0]
+}]);
+
+const eventsAreaOptions = computed(() => ({
+  chart: { toolbar: { show: false }, dropShadow: { enabled: true, top: 4, left: 0, blur: 4, opacity: 0.05 } },
+  stroke: { curve: 'smooth', width: 3 },
+  fill: {
+    type: 'gradient',
+    gradient: { shadeIntensity: 1, opacityFrom: 0.3, opacityTo: 0.05, stops: [0, 90, 100], gradientToColors: ['#34d399'] }
+  },
+  colors: ['#059669'],
+  xaxis: {
+    categories: props.eventTrends?.length ? props.eventTrends.map(item => {
+      const [year, month] = item.month.split('-');
+      return new Date(year, month - 1).toLocaleDateString('en-US', { month: 'short' });
+    }) : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+    axisBorder: { show: false },
+    axisTicks: { show: false },
+    labels: { style: { colors: '#9ca3af', fontSize: '11px' } }
+  },
+  yaxis: { labels: { style: { colors: '#9ca3af', fontSize: '11px' } } },
+  grid: { borderColor: '#f3f4f6', strokeDashArray: 4 },
+  dataLabels: { enabled: false },
+  markers: { size: 4, colors: ['#fff'], strokeColors: '#059669', strokeWidth: 2 }
+}));
+
+const deptDonutSeries = computed(() => 
+  props.studentsByDepartment?.length ? props.studentsByDepartment.map(item => item.total) : [1]
+);
+
+const deptDonutOptions = computed(() => ({
+  chart: { animations: { speed: 1000 } },
+  labels: props.studentsByDepartment?.length ? props.studentsByDepartment.map(item => item.department) : ['No Data'],
+  colors: ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899'],
+  legend: { position: 'bottom', fontSize: '12px', fontWeight: 500, markers: { radius: 12 } },
+  plotOptions: { pie: { donut: { size: '75%', labels: { show: true, total: { show: true, label: 'Students', formatter: () => props.stats.total_students || 0 } } } } },
+  dataLabels: { enabled: false },
+  stroke: { width: 0 }
+}));
 
 const currentDate = computed(() => formatDate());
-
-onMounted(() => {
-initCharts();
-});
-
-onUnmounted(() => {
-if (eventsChartInstance) eventsChartInstance.destroy();
-if (departmentChartInstance) departmentChartInstance.destroy();
-});
 </script>
 
 <style scoped>

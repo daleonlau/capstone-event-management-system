@@ -77,6 +77,8 @@ class EvaluationController extends Controller
                     'guests_count' => $totalGuests,
                     'number_of_dates' => $numberOfDates,
                     'event_dates' => $eventDates,
+                    'venue' => $evaluation->form_customizations['venue'] ?? null,
+                    'speaker_name' => $evaluation->form_customizations['speaker_name'] ?? null,
                     'created_at' => $evaluation->created_at->format('Y-m-d'),
                 ];
             });

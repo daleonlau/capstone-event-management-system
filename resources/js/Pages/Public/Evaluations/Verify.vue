@@ -198,7 +198,6 @@ async function loadSubmittedDates() {
     });
     submittedDates.value = response.data.submitted_dates || [];
   } catch (err) {
-    console.error('Failed to load submitted dates:', err);
     submittedDates.value = [];
   }
 }
@@ -225,7 +224,6 @@ async function verifyStudent() {
       // The response will redirect to the form page with the selected date
     },
     onError: (errors) => {
-      console.error('Verification failed:', errors);
     }
   });
 }
@@ -240,7 +238,6 @@ watch(() => form.student_id, async (newId) => {
 onMounted(() => {
   // Get event dates from props
   eventDates.value = props.evaluation.event_dates || [];
-  console.log('Event dates loaded:', eventDates.value);
 });
 </script>
 

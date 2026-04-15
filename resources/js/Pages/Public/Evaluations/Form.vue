@@ -422,7 +422,6 @@ function goToThankYou() {
 
 async function loadAvailableDates() {
   allDates.value = props.evaluation.event_dates || [];
-  console.log('Dates loaded:', allDates.value);
 }
 
 async function loadSubmittedDates() {
@@ -435,9 +434,7 @@ async function loadSubmittedDates() {
     });
     const submittedArray = response.data.submitted_dates || [];
     submittedDatesSet.value = new Set(submittedArray);
-    console.log('Submitted dates loaded:', submittedArray);
   } catch (err) {
-    console.error('Failed to load submitted dates:', err);
   }
 }
 
@@ -516,15 +513,10 @@ async function verifyStudentId() {
     
     // Only log non-422 errors
     if (error.response?.data?.errors) {
-      const errors = error.response.data.errors;
-      const firstError = Object.values(errors)[0];
-      verificationMessage.value = Array.isArray(firstError) ? firstError[0] : firstError;
       verificationMessageType.value = 'error';
-      console.error('Validation error:', errors);
     } else {
       verificationMessage.value = 'Verification failed. Please try again.';
       verificationMessageType.value = 'error';
-      console.error('Verification error:', error);
     }
   } finally {
     verifying.value = false;
@@ -609,7 +601,6 @@ async function submitForm() {
       }
     }
   } catch (error) {
-    console.error('Submission error:', error);
     alert(error.response?.data?.error || 'Submission failed. Please try again.');
     submitting.value = false;
   }

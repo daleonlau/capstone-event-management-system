@@ -68,8 +68,7 @@
         alert('Success!');
       },
       onError: (errors) => {
-        console.log('Errors:', errors);
-        alert('Error: ' + JSON.stringify(errors));
+        alert('Registration failed. Please check the form.');
       }
     });
   };

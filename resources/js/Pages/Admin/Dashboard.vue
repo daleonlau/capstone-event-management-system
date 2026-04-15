@@ -41,26 +41,37 @@
       <!-- Stats Cards -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         <div v-for="(stat, index) in statCards" :key="index" 
-             class="bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
-          <div class="p-6">
-            <div class="flex items-center justify-between mb-4">
-              <div class="w-12 h-12 rounded-xl flex items-center justify-center" :class="stat.bgColor">
-                <svg class="w-6 h-6" :class="stat.iconColor" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+             class="rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden group border border-white/10"
+             :class="stat.gradientClass">
+          <div class="p-6 relative">
+            <div class="flex items-center justify-between mb-2">
+              <div class="w-12 h-12 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110 bg-white/20 backdrop-blur-sm shadow-inner">
+                <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="stat.icon" />
                 </svg>
               </div>
               <div class="text-right">
-                <span class="text-3xl font-bold text-gray-800">{{ stat.value }}</span>
-                <div class="flex items-center gap-1 mt-1">
-                  <svg v-if="stat.trend === 'up'" class="w-3 h-3 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div class="flex items-center justify-end gap-1 mb-1">
+                  <svg v-if="stat.trend === 'up'" class="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
                   </svg>
-                  <span class="text-xs text-green-500">{{ stat.trendValue }}</span>
+                  <span class="text-xs font-bold text-white/90">{{ stat.trendValue }}</span>
                 </div>
+                <span class="text-3xl font-black text-white tracking-tight">{{ stat.value }}</span>
               </div>
             </div>
-            <h3 class="text-gray-600 font-semibold">{{ stat.title }}</h3>
-            <p class="text-xs text-gray-400 mt-1">{{ stat.subtitle }}</p>
+            <h3 class="text-white/80 font-bold text-sm uppercase tracking-wider">{{ stat.title }}</h3>
+            <p class="text-white/60 text-xs mt-1 mb-4">{{ stat.subtitle }}</p>
+            
+            <!-- Mini Sparkline -->
+            <div class="h-10 -mx-6 -mb-6">
+              <apexchart 
+                type="area" 
+                height="100%" 
+                :options="sparklineOptions('#ffffff')" 
+                :series="[{ data: stat.sparklineData || [31, 40, 28, 51, 42, 109, 100] }]"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -156,23 +167,39 @@
 
       <!-- Charts Section -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div class="bg-white rounded-xl shadow-md p-5">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-base font-semibold text-gray-800">Evaluations Trend</h3>
-            <span class="text-xs text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">+12% vs last month</span>
+        <div class="bg-white rounded-2xl shadow-lg p-6 border border-gray-50">
+          <div class="flex items-center justify-between mb-6">
+            <div>
+              <h3 class="text-lg font-bold text-gray-800">Evaluations Activity</h3>
+              <p class="text-xs text-gray-400 mt-0.5">Monthly volume trend</p>
+            </div>
+            <span class="text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">+12% vs last month</span>
           </div>
-          <div style="height: 280px;">
-            <canvas ref="evaluationsChart"></canvas>
+          <div class="h-[300px]">
+            <apexchart 
+              type="area" 
+              height="100%" 
+              :options="mainAreaOptions" 
+              :series="mainAreaSeries"
+            />
           </div>
         </div>
 
-        <div class="bg-white rounded-xl shadow-md p-5">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-base font-semibold text-gray-800">Responses Trend</h3>
-            <span class="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full">+8% vs last month</span>
+        <div class="bg-white rounded-2xl shadow-lg p-6 border border-gray-50">
+          <div class="flex items-center justify-between mb-6">
+            <div>
+              <h3 class="text-lg font-bold text-gray-800">Engagement Pulse</h3>
+              <p class="text-xs text-gray-400 mt-0.5">Total responses per month</p>
+            </div>
+            <span class="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">+8% vs last month</span>
           </div>
-          <div style="height: 280px;">
-            <canvas ref="responsesChart"></canvas>
+          <div class="h-[300px]">
+            <apexchart 
+              type="bar" 
+              height="100%" 
+              :options="mainBarOptions" 
+              :series="mainBarSeries"
+            />
           </div>
         </div>
       </div>
@@ -548,7 +575,7 @@
 import { ref, onMounted, computed } from 'vue';
 import { Link } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
-import Chart from 'chart.js/auto';
+import apexchart from 'vue3-apexcharts';
 
 const props = defineProps({
   stats: { type: Object, default: () => ({}) },
@@ -611,104 +638,92 @@ const statCards = computed(() => [
     value: props.stats?.total_evaluations || 0,
     subtitle: `${props.stats?.active_evaluations || 0} active, ${props.stats?.closed_evaluations || 0} closed`,
     icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
-    bgColor: 'bg-blue-100',
-    iconColor: 'text-blue-600',
+    gradientClass: 'bg-gradient-to-br from-blue-600 to-indigo-800',
     trend: 'up',
-    trendValue: '+12%'
+    trendValue: '+12%',
+    color: '#ffffff',
+    sparklineData: Object.values(props.monthlyEvaluations || {}).slice(-7)
   },
   {
     title: 'Organizations',
     value: props.stats?.total_organizations || 0,
     subtitle: 'Registered organizations',
     icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4',
-    bgColor: 'bg-purple-100',
-    iconColor: 'text-purple-600',
+    gradientClass: 'bg-gradient-to-br from-purple-600 to-fuchsia-800',
     trend: 'up',
-    trendValue: '+5%'
+    trendValue: '+5%',
+    color: '#ffffff',
+    sparklineData: [2, 4, 3, 5, 8, 12, 10]
   },
   {
     title: 'Total Responses',
     value: props.stats?.total_responses || 0,
     subtitle: 'Collected from students',
     icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z',
-    bgColor: 'bg-green-100',
-    iconColor: 'text-green-600',
+    gradientClass: 'bg-gradient-to-br from-emerald-600 to-teal-800',
     trend: 'up',
-    trendValue: '+8%'
+    trendValue: '+8%',
+    color: '#ffffff',
+    sparklineData: Object.values(props.monthlyResponses || {}).slice(-7)
   }
 ]);
 
-const currentDate = computed(() => {
-  return new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+const sparklineOptions = (color) => ({
+  chart: { sparkline: { enabled: true }, animations: { speed: 800 } },
+  stroke: { curve: 'smooth', width: 2 },
+  fill: {
+    type: 'gradient',
+    gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0, stops: [0, 90, 100] }
+  },
+  colors: [color],
+  tooltip: { enabled: false }
 });
 
-const currentDay = computed(() => {
-  return new Date().toLocaleDateString('en-US', { weekday: 'long' });
-});
+const mainAreaSeries = computed(() => [{
+  name: 'Evaluations',
+  data: Object.values(props.monthlyEvaluations || {})
+}]);
 
-const evaluationsChart = ref(null);
-const responsesChart = ref(null);
-let evaluationsChartInstance = null;
-let responsesChartInstance = null;
+const mainAreaOptions = computed(() => ({
+  chart: { toolbar: { show: false }, dropShadow: { enabled: true, top: 4, left: 0, blur: 4, opacity: 0.05 } },
+  stroke: { curve: 'smooth', width: 3 },
+  fill: {
+    type: 'gradient',
+    gradient: { shadeIntensity: 1, opacityFrom: 0.3, opacityTo: 0.05, stops: [0, 90, 100], gradientToColors: ['#34d399'] }
+  },
+  colors: ['#059669'],
+  xaxis: {
+    categories: Object.keys(props.monthlyEvaluations || {}),
+    axisBorder: { show: false },
+    axisTicks: { show: false },
+    labels: { style: { colors: '#9ca3af', fontSize: '12px' } }
+  },
+  yaxis: { labels: { style: { colors: '#9ca3af', fontSize: '12px' } } },
+  grid: { borderColor: '#f3f4f6', strokeDashArray: 4 },
+  dataLabels: { enabled: false },
+  markers: { size: 4, colors: ['#fff'], strokeColors: '#059669', strokeWidth: 2, hover: { size: 7 } },
+  tooltip: { theme: 'light' }
+}));
 
-onMounted(() => {
-  if (evaluationsChart.value && props.monthlyEvaluations && Object.keys(props.monthlyEvaluations).length > 0) {
-    const labels = Object.keys(props.monthlyEvaluations);
-    const data = Object.values(props.monthlyEvaluations);
-    
-    evaluationsChartInstance = new Chart(evaluationsChart.value, {
-      type: 'line',
-      data: {
-        labels: labels,
-        datasets: [{
-          label: 'Evaluations',
-          data: data,
-          borderColor: 'rgb(16, 185, 129)',
-          backgroundColor: 'rgba(16, 185, 129, 0.05)',
-          tension: 0.4,
-          fill: true,
-          pointBackgroundColor: 'rgb(16, 185, 129)',
-          pointBorderColor: '#fff',
-          pointBorderWidth: 2,
-          pointRadius: 3,
-          pointHoverRadius: 5
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: { y: { beginAtZero: true, grid: { color: '#f0f0f0' } } }
-      }
-    });
-  }
+const mainBarSeries = computed(() => [{
+  name: 'Responses',
+  data: Object.values(props.monthlyResponses || {})
+}]);
 
-  if (responsesChart.value && props.monthlyResponses && Object.keys(props.monthlyResponses).length > 0) {
-    const labels = Object.keys(props.monthlyResponses);
-    const data = Object.values(props.monthlyResponses);
-    
-    responsesChartInstance = new Chart(responsesChart.value, {
-      type: 'bar',
-      data: {
-        labels: labels,
-        datasets: [{
-          label: 'Responses',
-          data: data,
-          backgroundColor: 'rgba(59, 130, 246, 0.6)',
-          borderRadius: 6,
-          barPercentage: 0.6,
-          categoryPercentage: 0.8
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: { y: { beginAtZero: true, grid: { color: '#f0f0f0' } } }
-      }
-    });
-  }
-});
+const mainBarOptions = computed(() => ({
+  chart: { toolbar: { show: false } },
+  plotOptions: { bar: { borderRadius: 8, columnWidth: '50%', distributed: false } },
+  colors: ['#3b82f6'],
+  xaxis: {
+    categories: Object.keys(props.monthlyResponses || {}),
+    axisBorder: { show: false },
+    axisTicks: { show: false },
+    labels: { style: { colors: '#9ca3af', fontSize: '12px' } }
+  },
+  yaxis: { labels: { style: { colors: '#9ca3af', fontSize: '12px' } } },
+  grid: { borderColor: '#f3f4f6', strokeDashArray: 4 },
+  dataLabels: { enabled: false }
+}));
 </script>
 
 <style scoped>

@@ -77,8 +77,8 @@
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7H3v12a2 2 0 002 2z" />
                         </svg>
                         <div>
-                          <p class="text-xs text-gray-500">Date</p>
-                          <p class="text-sm font-medium text-gray-700">{{ selectedRequest.activity_date }}</p>
+                          <p class="text-xs text-gray-500">Inclusive Dates</p>
+                          <p class="text-sm font-medium text-gray-700">{{ formatDates(selectedRequest.event_dates && selectedRequest.event_dates.length > 0 ? selectedRequest.event_dates : [selectedRequest.activity_date]) }}</p>
                         </div>
                       </div>
                       <div class="flex items-center gap-2 p-2 bg-white rounded-xl shadow-sm">
@@ -325,14 +325,6 @@
         </div>
       </div>
       <!-- Debug Info (remove after testing) -->
-<div class="bg-gray-100 p-4 rounded-lg mb-4 text-xs font-mono">
-  <p><strong>Debug:</strong></p>
-  <p>Selected Request ID from props: {{ selectedRequestId }}</p>
-  <p>Selected Request ID from URL: {{ getUrlParameter('request_id') }}</p>
-  <p>Pending Requests Count: {{ pendingRequests.length }}</p>
-  <p>Found Selected Request: {{ selectedRequest ? 'Yes' : 'No' }}</p>
-  <p v-if="selectedRequest">Request ID: {{ selectedRequest.id }}</p>
-</div>
     </AdminLayout>
   </template>
   
@@ -374,22 +366,16 @@ onMounted(() => {
     requestId = getUrlParameter('request_id');
   }
   
-  console.log('Request ID from URL/props:', requestId);
-  console.log('All pending requests:', props.pendingRequests);
   
   if (requestId && props.pendingRequests.length > 0) {
     selectedRequest.value = props.pendingRequests.find(r => r.id == requestId);
-    console.log('Found selected request:', selectedRequest.value);
     
     if (selectedRequest.value) {
       // Set default title based on request
       form.title = `EVENT EVALUATION FORM - ${selectedRequest.value.event_name}`;
       form.evaluation_request_id = selectedRequest.value.id;
-    } else {
-      console.log('Request not found with ID:', requestId);
     }
   } else {
-    console.log('No request ID found or no pending requests');
   }
   
   loading.value = false;
@@ -405,6 +391,29 @@ const form = useForm({
   available_from: '',
   available_until: ''
 });
+
+function formatDate(date) {
+  if (!date) return '';
+  return new Date(date).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+}
+
+function formatDates(dates) {
+  if (!dates || dates.length === 0) return '';
+  if (dates.length === 1) return formatDate(dates[0]);
+  
+  // Sort dates
+  const sortedDates = [...dates].sort((a, b) => new Date(a) - new Date(b));
+  
+  if (sortedDates.length <= 2) {
+    return sortedDates.map(d => formatDate(d)).join(' & ');
+  }
+  
+  return `${formatDate(sortedDates[0])} - ${formatDate(sortedDates[sortedDates.length - 1])} (${sortedDates.length} days)`;
+}
 
 function selectFormType(type) {
   form.form_type = type;
@@ -662,8 +671,6 @@ const templateComments = computed(() => {
 });
 
 function submit() {
-  console.log('Submitting form:', form.data());
-  
   if (!form.form_type) {
     alert('Please select a form type.');
     return;
@@ -676,10 +683,8 @@ function submit() {
   
   form.post('/admin/evaluations', {
     onSuccess: () => {
-      console.log('Form submitted successfully');
     },
     onError: (errors) => {
-      console.error('Form errors:', errors);
     }
   });
 }

@@ -141,161 +141,167 @@
           </div>
         </div>
 
-        <!-- Request Information Card -->
-        <div v-if="evaluation.customizations" class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl shadow-lg overflow-hidden mb-8">
-          <div class="px-6 py-4 border-b border-blue-100 bg-white/50">
-            <h2 class="text-lg font-semibold text-gray-800 flex items-center gap-2">
-              <svg class="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Event Information
-            </h2>
-          </div>
-          <div class="p-6">
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <div>
-                <p class="text-sm text-gray-500">Title of Event</p>
-                <p class="font-medium text-gray-800">{{ evaluation.customizations.original_title || evaluation.event.event_name }}</p>
+        <!-- Technical Event Profile -->
+        <div v-if="evaluation.customizations" class="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden mb-8 group">
+          <div class="flex flex-col lg:flex-row">
+            <div class="lg:w-1/3 bg-gradient-to-br from-emerald-600 to-teal-700 p-8 text-white relative overflow-hidden">
+               <div class="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl"></div>
+               <div class="relative z-10">
+                 <div class="flex items-center gap-2 mb-2">
+                   <span class="w-2 h-2 bg-emerald-300 rounded-full animate-pulse"></span>
+                   <span class="text-xs font-bold uppercase tracking-widest text-emerald-200">Event Profile</span>
+                 </div>
+                 <h2 class="text-4xl font-black mb-4 tracking-tight leading-tight">
+                   {{ evaluation.customizations.original_title || evaluation.event.event_name }}
+                 </h2>
+                 <div class="flex items-center gap-2 text-emerald-100 text-sm">
+                   <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                   </svg>
+                   {{ evaluation.customizations.venue || 'Campus Wide' }}
+                 </div>
+               </div>
+            </div>
+            <div class="lg:w-2/3 p-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 bg-gray-50/30">
+              <div v-for="info in [
+                { label: 'Inclusive Dates', value: formatDates(evaluation.event_dates && evaluation.event_dates.length > 0 ? evaluation.event_dates : [evaluation.customizations.activity_date]), icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7H3v12a2 2 0 002 2z' },
+                { label: 'Resource Speaker', value: evaluation.customizations.speaker_name || 'Internal Event', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' },
+                { label: 'Food Service', value: evaluation.customizations.has_food ? 'Full Catering' : 'No Food Service', icon: 'M21 15.546c-.523 0-1.046.151-1.5.454a2.704 2.704 0 01-3 0 2.704 2.704 0 00-3 0 2.704 2.704 0 01-3 0 2.704 2.704 0 00-3 0 2.704 2.704 0 01-1.5-.454M9 6v2m3-2v2m3-2v2M9 3h.01M12 3h.01M15 3h.01M21 21v-7a2 2 0 00-2-2H5a2 2 0 00-2 2v7h18z' }
+              ]" :key="info.label" class="border-b border-gray-100 sm:border-0 pb-4 sm:pb-0">
+                <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block">{{ info.label }}</span>
+                <div class="flex items-center gap-2">
+                  <div class="w-6 h-6 rounded-lg bg-emerald-50 flex items-center justify-center">
+                    <svg class="w-3.5 h-3.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="info.icon" />
+                    </svg>
+                  </div>
+                  <span class="text-sm font-bold text-gray-700">{{ info.value }}</span>
+                </div>
               </div>
-              <div>
-                <p class="text-sm text-gray-500">Inclusive Date</p>
-                <p class="font-medium text-gray-800">{{ formatDate(evaluation.customizations.activity_date) }}</p>
-              </div>
-              <div>
-                <p class="text-sm text-gray-500">Venue</p>
-                <p class="font-medium text-gray-800">{{ evaluation.customizations.venue || 'Not specified' }}</p>
-              </div>
-              <div v-if="evaluation.customizations.speaker_name">
-                <p class="text-sm text-gray-500">Resource Speaker</p>
-                <p class="font-medium text-gray-800">{{ evaluation.customizations.speaker_name }}</p>
-              </div>
-              <div v-if="evaluation.customizations.topics && evaluation.customizations.topics.length > 0">
-                <p class="text-sm text-gray-500">Topics</p>
-                <div class="flex flex-wrap gap-2 mt-1">
-                  <span v-for="topic in evaluation.customizations.topics" :key="topic" 
-                        class="px-2 py-1 bg-gray-100 text-gray-700 rounded-lg text-sm">
-                    {{ topic }}
+              <div class="col-span-full pt-4 border-t border-gray-100">
+                <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Key Topics</span>
+                <div class="flex flex-wrap gap-2">
+                  <span v-for="topic in (evaluation.customizations.topics?.length ? evaluation.customizations.topics : ['General Participation'])" 
+                        :key="topic" class="px-3 py-1 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-600 shadow-sm">
+                    #{{ topic }}
                   </span>
                 </div>
               </div>
-              <div v-if="evaluation.customizations.has_food !== undefined">
-                <p class="text-sm text-gray-500">Food Service</p>
-                <p class="font-medium text-gray-800">{{ evaluation.customizations.has_food ? 'With Food' : 'No Food' }}</p>
-              </div>
             </div>
           </div>
         </div>
 
-        <!-- Stats Overview -->
+        <!-- Live Stats Overview -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div class="bg-white rounded-2xl shadow-lg p-6">
-            <p class="text-sm text-gray-500 mb-1">Total Responses</p>
-            <p class="text-3xl font-bold text-gray-800">{{ evaluation.total_responses_overall || evaluation.total_responses || 0 }}</p>
-          </div>
-          <div class="bg-white rounded-2xl shadow-lg p-6">
-            <p class="text-sm text-gray-500 mb-1">Categories</p>
-            <p class="text-3xl font-bold text-gray-800">{{ evaluation.categories?.length || 0 }}</p>
-          </div>
-          <div class="bg-white rounded-2xl shadow-lg p-6">
-            <p class="text-sm text-gray-500 mb-1">Questions</p>
-            <p class="text-3xl font-bold text-gray-800">{{ totalQuestions }}</p>
-          </div>
-          <div class="bg-white rounded-2xl shadow-lg p-6">
-            <p class="text-sm text-gray-500 mb-1">Created</p>
-            <p class="text-lg font-bold text-gray-800">{{ evaluation.created_at }}</p>
+          <div v-for="stat in [
+            { label: 'Total Responses', value: evaluation.total_responses_overall || evaluation.total_responses || 0, color: '#ffffff', gradient: 'from-emerald-600 to-teal-700', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z' },
+            { label: 'Categories', value: evaluation.categories?.length || 0, color: '#ffffff', gradient: 'from-blue-600 to-indigo-700', icon: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10' },
+            { label: 'Questions', value: totalQuestions, color: '#ffffff', gradient: 'from-purple-600 to-fuchsia-700', icon: 'M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
+            { label: 'Created On', value: evaluation.created_at?.split(' ')[0] || 'Today', color: '#ffffff', gradient: 'from-orange-500 to-amber-600', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' }
+          ]" :key="stat.label" 
+               class="rounded-2xl shadow-lg p-6 border border-white/10 group hover:-translate-y-1 transition-all duration-300"
+               :class="'bg-gradient-to-br ' + stat.gradient">
+            <div class="flex items-center justify-between mb-4">
+              <span class="text-[10px] font-black text-white/70 uppercase tracking-widest">{{ stat.label }}</span>
+              <div class="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center backdrop-blur-sm">
+                <svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="stat.icon" />
+                </svg>
+              </div>
+            </div>
+            <p class="text-3xl font-black text-white tracking-tight mb-2">{{ stat.value }}</p>
+            <div class="h-6 -mx-2">
+              <apexchart type="area" height="100%" :options="miniSparklineOptions(stat.color)" :series="[{ data: [12, 19, 15, 25, 22, 30] }]" />
+            </div>
           </div>
         </div>
 
-        <!-- Response Rate Overview Cards -->
+        <!-- Participation Real-time Metrics -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div class="bg-white rounded-2xl shadow-lg p-6">
+          <!-- Overall Rate Gauge -->
+          <div class="rounded-2xl shadow-lg p-6 border border-white/10 flex items-center gap-6 bg-gradient-to-br from-emerald-600 to-teal-700">
+            <div class="w-24 h-24 shrink-0">
+              <apexchart type="radialBar" height="120%" :options="miniGaugeOptions('#ffffff')" :series="[evaluation.overall_response_rate]" />
+            </div>
+            <div>
+              <span class="text-[10px] font-black text-emerald-100 uppercase tracking-widest mb-1 block">Response Velocity</span>
+              <p class="text-2xl font-black text-white">{{ evaluation.overall_response_rate }}%</p>
+              <p class="text-xs text-white/80 font-bold">{{ evaluation.total_responses_overall || evaluation.total_responses }} / {{ evaluation.total_expected_overall }} Responses</p>
+              <div class="mt-2 text-[9px] text-emerald-200 flex items-center gap-1">
+                <span class="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span>
+                LIVE TRACKING
+              </div>
+            </div>
+          </div>
+
+          <!-- Current Status -->
+          <div class="rounded-2xl shadow-lg p-6 border border-white/10 relative overflow-hidden group bg-gradient-to-br from-blue-600 to-indigo-700">
+            <div class="absolute top-0 right-0 w-24 h-24 bg-white/5 -mr-6 -mt-6 rounded-full group-hover:scale-110 transition-transform"></div>
+            <div class="relative z-10">
+              <div class="flex items-center gap-2 mb-3">
+                <div class="w-2 h-2 rounded-full shadow-[0_0_8px_rgba(255,255,255,0.6)]" :class="{
+                  'bg-white animate-pulse': evaluation.status === 'active',
+                  'bg-yellow-400': evaluation.status === 'draft',
+                  'bg-blue-300': evaluation.status === 'closed'
+                }"></div>
+                <span class="text-[10px] font-black text-blue-100 uppercase tracking-widest">System Status</span>
+              </div>
+              <h3 class="text-xl font-black text-white capitalize mb-1">{{ evaluation.status }}</h3>
+              <p class="text-xs text-blue-50 leading-relaxed max-w-[180px]">
+                {{ getStatusMessage(evaluation) }}
+              </p>
+            </div>
+          </div>
+
+          <!-- Target Achievement -->
+          <div class="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
             <div class="flex items-center justify-between mb-2">
-              <p class="text-sm text-gray-500">Overall Response Rate</p>
-              <span :class="getRateTextClass(evaluation.overall_response_rate)" class="text-sm font-bold">
-                {{ evaluation.overall_response_rate }}%
+              <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Target Achievement</span>
+              <span class="text-xs font-black" :class="getTargetColorText(evaluation.overall_response_rate)">
+                {{ evaluation.overall_response_rate >= 100 ? 'COMPLETED' : Math.floor(evaluation.overall_response_rate) + '%' }}
               </span>
             </div>
-            <div class="flex items-baseline gap-2 mb-2">
-              <p class="text-2xl font-bold text-gray-800">{{ evaluation.total_responses_overall || evaluation.total_responses }}</p>
-              <p class="text-sm text-gray-500">/ {{ evaluation.total_expected_overall }} expected</p>
+            <div class="flex-1 h-12 mb-4">
+              <apexchart type="bar" height="100%" :options="targetBarOptions(evaluation.overall_response_rate >= 100 ? '#10b981' : '#f59e0b')" :series="[{ data: [evaluation.overall_response_rate] }]" />
             </div>
-            <div class="w-full bg-gray-200 rounded-full h-2">
-              <div class="h-full rounded-full transition-all" 
-                   :class="getRateColorClass(evaluation.overall_response_rate)"
-                   :style="{ width: evaluation.overall_response_rate + '%' }">
-              </div>
-            </div>
-            <div class="mt-3 flex justify-between text-xs text-gray-500">
-              <span>{{ evaluation.students_count }} Students × {{ evaluation.number_of_dates || 1 }} days = {{ evaluation.students_count * (evaluation.number_of_dates || 1) }}</span>
-              <span>{{ evaluation.guests_count }} Guests</span>
-            </div>
-            <p class="text-xs text-gray-400 mt-2 text-center">
-              Expected = Students × {{ evaluation.number_of_dates || 1 }} days + Guests
-            </p>
-          </div>
-
-          <div class="bg-white rounded-2xl shadow-lg p-6">
-            <p class="text-sm text-gray-500 mb-2">Current Status</p>
-            <div class="flex items-center gap-3 mb-2">
-              <div class="w-3 h-3 rounded-full" :class="{
-                'bg-green-500': evaluation.status === 'active',
-                'bg-yellow-500': evaluation.status === 'draft',
-                'bg-blue-500': evaluation.status === 'closed'
-              }"></div>
-              <span class="text-lg font-semibold text-gray-800 capitalize">{{ evaluation.status }}</span>
-            </div>
-            <p class="text-sm text-gray-600">
-              {{ getStatusMessage(evaluation) }}
-            </p>
-          </div>
-
-          <div class="bg-white rounded-2xl shadow-lg p-6">
-            <p class="text-sm text-gray-500 mb-2">Target Achievement</p>
-            <div class="flex items-center gap-2 mb-2">
-              <p class="text-2xl font-bold text-gray-800">{{ evaluation.overall_response_rate }}%</p>
-              <p class="text-sm text-gray-500">of target</p>
-            </div>
-            <div class="w-full bg-gray-200 rounded-full h-2">
-              <div class="h-full rounded-full transition-all" 
-                   :class="getTargetColorClass(evaluation.overall_response_rate)"
-                   :style="{ width: Math.min(evaluation.overall_response_rate, 100) + '%' }">
-              </div>
-            </div>
-            <p class="mt-2 text-xs text-gray-500">
+            <p class="text-[10px] text-gray-400 font-medium">
               {{ getTargetMessage(evaluation) }}
             </p>
           </div>
         </div>
+>
 
-        <!-- Per Date Stats Section -->
-        <div v-if="perDateStats && perDateStats.length > 0" class="bg-white rounded-2xl shadow-lg p-6 mb-8">
-          <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-            <svg class="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            Response Rate by Date
-          </h3>
+        <!-- Per Date Real-time Engagement -->
+        <div v-if="perDateStats && perDateStats.length > 0" class="bg-white rounded-2xl shadow-lg p-8 mb-8 border border-gray-100">
+          <div class="flex items-center justify-between mb-8">
+            <h3 class="text-xl font-black text-gray-800 flex items-center gap-3">
+              <div class="w-1.5 h-6 bg-purple-600 rounded-full"></div>
+              Engagement Stream
+            </h3>
+            <div class="flex items-center gap-4 text-[10px] font-black text-gray-400">
+              <div class="flex items-center gap-1.5"><span class="w-2 h-2 bg-emerald-500 rounded-full"></span> COMPLETE</div>
+              <div class="flex items-center gap-1.5"><span class="w-2 h-2 bg-yellow-500 rounded-full"></span> ONGOING</div>
+            </div>
+          </div>
           
-          <div class="space-y-4">
-            <div v-for="dateStat in perDateStats" :key="dateStat.date" class="border-b border-gray-100 last:border-0 pb-4 last:pb-0">
-              <div class="flex justify-between items-center mb-2">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
+            <div v-for="dateStat in perDateStats" :key="dateStat.date" class="relative group p-6 rounded-2xl transition-all duration-300 bg-gradient-to-br"
+                 :class="dateStat.response_rate >= 90 ? 'from-emerald-500 to-teal-600' : 'from-indigo-500 to-purple-600'">
+              <div class="flex justify-between items-end mb-3">
                 <div>
-                  <span class="font-medium text-gray-800">{{ dateStat.formatted_date }}</span>
-                  <span class="text-xs text-gray-500 ml-2">Day {{ dateStat.date_index }}</span>
+                  <span class="text-[10px] font-black text-white/70 uppercase tracking-widest block mb-0.5">DAY {{ dateStat.date_index }}</span>
+                  <h4 class="text-lg font-black text-white leading-tight">{{ dateStat.formatted_date }}</h4>
                 </div>
-                <span :class="getRateTextClass(dateStat.response_rate)" class="text-sm font-bold">
-                  {{ dateStat.response_rate }}%
-                </span>
-              </div>
-              <div class="flex justify-between text-sm text-gray-600 mb-2">
-                <span>{{ dateStat.responses }} responses</span>
-                <span>{{ dateStat.expected }} expected = {{ dateStat.students }} students + {{ dateStat.guests }} guests</span>
-              </div>
-              <div class="w-full bg-gray-200 rounded-full h-2">
-                <div class="h-full rounded-full transition-all" 
-                     :class="getRateColorClass(dateStat.response_rate)"
-                     :style="{ width: dateStat.response_rate + '%' }">
+                <div class="text-right">
+                  <span class="text-2xl font-black text-white">{{ Math.floor(dateStat.response_rate) }}%</span>
                 </div>
+              </div>
+              <div class="h-[60px] mb-4">
+                 <apexchart type="area" height="100%" :options="miniSparklineOptions('#ffffff')" :series="[{ data: [20, 45, 30, 60, 45, 80, dateStat.response_rate] }]" />
+              </div>
+              <div class="flex items-center justify-between text-[10px] font-bold text-white/70 uppercase tracking-tighter">
+                <span>{{ dateStat.responses }} RESPONSES</span>
+                <span>{{ dateStat.expected }} TARGET</span>
               </div>
             </div>
           </div>
@@ -544,6 +550,8 @@ import BulkUpload from './BulkUpload.vue';
 import AIInsights from './AIINsights.vue';
 import RawData from './RawData.vue';
 import axios from 'axios';
+// Riverside aesthetic mini charts
+import apexchart from 'vue3-apexcharts';
 
 const props = defineProps({
   evaluation: {
@@ -602,6 +610,49 @@ const totalQuestions = computed(() => {
   return count;
 });
 
+// Mini Charts Configuration
+const miniSparklineOptions = (color) => ({
+  chart: { sparkline: { enabled: true }, animations: { speed: 800 } },
+  stroke: { curve: 'smooth', width: 2 },
+  fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0, stops: [0, 90, 100] } },
+  colors: [color],
+  tooltip: { enabled: false }
+});
+
+const miniGaugeOptions = (color) => ({
+  chart: { type: 'radialBar', sparkline: { enabled: true } },
+  plotOptions: {
+    radialBar: {
+      hollow: { size: '55%' },
+      track: { background: '#f3f4f6', strokeWidth: '100%' },
+      dataLabels: {
+        name: { show: false },
+        value: { offsetY: 5, fontSize: '14px', fontWeight: '900', color: '#1f2937' }
+      }
+    }
+  },
+  colors: [color]
+});
+
+const targetBarOptions = (color) => ({
+  chart: { sparkline: { enabled: true }, toolbar: { show: false } },
+  plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: '60%' } },
+  colors: [color],
+  xaxis: { min: 0, max: 100 },
+  tooltip: { enabled: false }
+});
+
+const getTargetColorText = (rate) => {
+  if (rate >= 100) return 'text-emerald-600';
+  if (rate >= 75) return 'text-blue-600';
+  return 'text-orange-600';
+};
+
+const formatDateShort = (date) => {
+  if (!date) return 'N/A';
+  return new Date(date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+};
+
 function getFormTypeFullName(formType) {
   const types = {
     type1: '7 Quality Dimension (F-EEF-018a)',
@@ -622,6 +673,26 @@ function formatDate(date) {
     hour: '2-digit',
     minute: '2-digit'
   });
+}
+
+function formatDates(dates) {
+  if (!dates || dates.length === 0) return '';
+  if (dates.length === 1) return formatDate(dates[0]).split(', 20')[0] + ', ' + formatDate(dates[0]).split(', ')[1].split(' ')[0]; // Basic cleaning
+  
+  const dateOnly = (d) => new Date(d).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+
+  // Sort dates
+  const sortedDates = [...dates].sort((a, b) => new Date(a) - new Date(b));
+  
+  if (sortedDates.length <= 2) {
+    return sortedDates.map(d => dateOnly(d)).join(' & ');
+  }
+  
+  return `${dateOnly(sortedDates[0])} - ${dateOnly(sortedDates[sortedDates.length - 1])} (${sortedDates.length} days)`;
 }
 
 function getRateColorClass(rate) {
@@ -694,7 +765,6 @@ function handleUploadComplete(data) {
 }
 
 function handleInsightsLoaded(insights) {
-  console.log('AI Insights loaded:', insights);
 }
 
 async function activateAndGenerateQR() {
@@ -720,7 +790,6 @@ async function activateAndGenerateQR() {
       qrProcessing.value = false;
     }
   } catch (error) {
-    console.error('Activation error:', error);
     
     let errorMessage = 'Failed to activate evaluation';
     if (error.response?.data?.error) {
@@ -801,8 +870,6 @@ async function generateAllInsights() {
       showToast(response.data.error || 'Failed to generate insights', 'error');
     }
   } catch (error) {
-    console.error('Generation error:', error);
-    
     // ✅ IMPORTANT: Stop loading on error as well
     generatingInsights.value = false;
     

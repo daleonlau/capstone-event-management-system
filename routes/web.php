@@ -728,4 +728,4 @@ Route::get('/test-generate-direct/{eventId}', function($eventId) {
             'file' => $e->getFile()
         ], 500);
     }
-});
+}); 

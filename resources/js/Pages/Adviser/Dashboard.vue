@@ -37,68 +37,68 @@
 
       <!-- Stats Cards -->
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div class="bg-white rounded-2xl shadow-lg p-6 transform hover:scale-105 transition-all duration-300">
+        <div class="rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden group border border-white/10 p-6 bg-gradient-to-br from-yellow-500 to-orange-600">
           <div class="flex items-center justify-between mb-4">
-            <div class="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
-              <svg class="w-6 h-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div class="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110 backdrop-blur-sm shadow-inner">
+              <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <span class="text-sm font-medium text-yellow-600 bg-yellow-50 px-3 py-1 rounded-full">Action Needed</span>
+            <span class="text-xs font-bold text-white bg-white/20 px-3 py-1 rounded-full border border-white/10 uppercase tracking-wider">Action Needed</span>
           </div>
-          <h3 class="text-3xl font-bold text-gray-800">{{ stats.pending_approval || 0 }}</h3>
-          <p class="text-sm text-gray-500 mt-1">Pending Approval</p>
-          <div class="mt-4 flex items-center gap-2">
-            <div class="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-              <div class="h-full bg-yellow-500 rounded-full" :style="{ width: `${Math.min((stats.pending_approval / 20) * 100, 100)}%` }"></div>
-            </div>
-            <span class="text-xs text-gray-500">{{ stats.pending_approval || 0 }} pending</span>
+          <h3 class="text-3xl font-black text-white tracking-tight">{{ stats.pending_approval || 0 }}</h3>
+          <p class="text-xs font-medium text-yellow-50 mt-1 mb-4">Pending Approval</p>
+          <div class="h-10 -mx-6 -mb-6">
+            <apexchart type="area" height="100%" :options="miniSparklineOptions('#ffffff')" :series="[{ data: [5, 3, 7, 4, 8, 6, 9] }]" />
           </div>
         </div>
 
-        <div class="bg-white rounded-2xl shadow-lg p-6 transform hover:scale-105 transition-all duration-300">
+        <div class="rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden group border border-white/10 p-6 bg-gradient-to-br from-orange-500 to-red-600">
           <div class="flex items-center justify-between mb-4">
-            <div class="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
-              <svg class="w-6 h-6 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div class="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110 backdrop-blur-sm shadow-inner">
+              <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
-            <span class="text-sm font-medium text-orange-600 bg-orange-50 px-3 py-1 rounded-full">Documents</span>
+            <span class="text-xs font-bold text-white bg-white/20 px-3 py-1 rounded-full border border-white/10 uppercase tracking-wider">Documents</span>
           </div>
-          <h3 class="text-3xl font-bold text-gray-800">{{ stats.pending_document || 0 }}</h3>
-          <p class="text-sm text-gray-500 mt-1">Pending Documents</p>
+          <h3 class="text-3xl font-black text-white tracking-tight">{{ stats.pending_document || 0 }}</h3>
+          <p class="text-xs font-medium text-orange-50 mt-1 mb-4">Pending Files</p>
+          <div class="h-10 -mx-6 -mb-6">
+            <apexchart type="area" height="100%" :options="miniSparklineOptions('#ffffff')" :series="[{ data: [2, 4, 3, 5, 8, 4, 6] }]" />
+          </div>
         </div>
 
-        <div class="bg-white rounded-2xl shadow-lg p-6 transform hover:scale-105 transition-all duration-300">
+        <div class="rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden group border border-white/10 p-6 bg-gradient-to-br from-emerald-600 to-teal-700">
           <div class="flex items-center justify-between mb-4">
-            <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-              <svg class="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div class="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110 backdrop-blur-sm shadow-inner">
+              <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <span class="text-sm font-medium text-green-600 bg-green-50 px-3 py-1 rounded-full">Approved</span>
+            <span class="text-xs font-bold text-white bg-white/20 px-3 py-1 rounded-full border border-white/10 uppercase tracking-wider">Approved</span>
           </div>
-          <h3 class="text-3xl font-bold text-gray-800">{{ stats.approved || 0 }}</h3>
-          <p class="text-sm text-gray-500 mt-1">Approved Events</p>
-          <div class="mt-4 flex items-center gap-2">
-            <div class="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-              <div class="h-full bg-green-500 rounded-full" :style="{ width: `${stats.approval_rate || 0}%` }"></div>
-            </div>
-            <span class="text-xs text-gray-500">{{ stats.approval_rate || 0 }}% rate</span>
+          <h3 class="text-3xl font-black text-white tracking-tight">{{ stats.approved || 0 }}</h3>
+          <p class="text-xs font-medium text-emerald-100 mt-1 mb-4">Approval Rate: {{ stats.approval_rate || 0 }}%</p>
+          <div class="h-10 -mx-6 -mb-6">
+            <apexchart type="area" height="100%" :options="miniSparklineOptions('#ffffff')" :series="[{ data: [12, 19, 15, 25, 22, 30, 28] }]" />
           </div>
         </div>
 
-        <div class="bg-white rounded-2xl shadow-lg p-6 transform hover:scale-105 transition-all duration-300">
+        <div class="rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 overflow-hidden group border border-white/10 p-6 bg-gradient-to-br from-blue-600 to-indigo-700">
           <div class="flex items-center justify-between mb-4">
-            <div class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-              <svg class="w-6 h-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div class="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110 backdrop-blur-sm shadow-inner">
+              <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
               </svg>
             </div>
-            <span class="text-sm font-medium text-purple-600 bg-purple-50 px-3 py-1 rounded-full">Finished</span>
+            <span class="text-xs font-bold text-white bg-white/20 px-3 py-1 rounded-full border border-white/10 uppercase tracking-wider">Finished</span>
           </div>
-          <h3 class="text-3xl font-bold text-gray-800">{{ stats.finished_events || 0 }}</h3>
-          <p class="text-sm text-gray-500 mt-1">Finished Events</p>
+          <h3 class="text-3xl font-black text-white tracking-tight">{{ stats.finished_events || 0 }}</h3>
+          <p class="text-xs font-medium text-blue-100 mt-1 mb-4">Completed Cycles</p>
+          <div class="h-10 -mx-6 -mb-6">
+            <apexchart type="area" height="100%" :options="miniSparklineOptions('#ffffff')" :series="[{ data: [8, 12, 10, 15, 12, 18, 16] }]" />
+          </div>
         </div>
       </div>
 
@@ -267,13 +267,23 @@
       </div>
 
       <!-- Approval Trends Chart -->
-      <div class="bg-white rounded-2xl shadow-lg p-6">
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="text-lg font-semibold text-gray-800">Approval Trends (Last 6 Months)</h2>
-          <span class="text-sm text-gray-500">Avg. approval time: {{ stats.avg_approval_time_hours || 0 }} hours</span>
+      <div class="bg-white rounded-2xl shadow-lg p-6 border border-gray-50">
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <h2 class="text-lg font-bold text-gray-800">Review Velocity</h2>
+            <p class="text-xs text-gray-400 mt-0.5">Approval vs Rejection trends</p>
+          </div>
+          <div class="flex items-center gap-1.5 px-3 py-1 bg-blue-50 rounded-full border border-blue-100">
+             <span class="text-[10px] font-black text-blue-600 uppercase">AVG: {{ stats.avg_approval_time_hours || 0 }}H</span>
+          </div>
         </div>
-        <div style="height: 280px;">
-          <canvas ref="approvalTrendsChart"></canvas>
+        <div class="h-[300px]">
+          <apexchart 
+            type="bar" 
+            height="100%" 
+            :options="approvalAreaOptions" 
+            :series="approvalAreaSeries"
+          />
         </div>
       </div>
 
@@ -550,7 +560,7 @@
 import { Link, usePage } from '@inertiajs/vue3';
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 import OrganizationUserLayout from '@/Layouts/OrganizationUserLayout.vue';
-import Chart from 'chart.js/auto';
+import apexchart from 'vue3-apexcharts';
 
 const page = usePage();
 const user = page.props.auth?.user;
@@ -576,8 +586,7 @@ let approvalTrendsChartInstance = null;
 
 // Modal functions
 function openInsightModal(insight) {
-console.log('Opening modal for:', insight);
-selectedInsight.value = insight;
+  selectedInsight.value = insight;
 modalTab.value = 'overview';
 showInsightModal.value = true;
 }
@@ -618,68 +627,51 @@ return new Date(date).toLocaleDateString('en-US', {
 });
 }
 
-function initCharts() {
-if (approvalTrendsChart.value && props.approvalTrends && props.approvalTrends.length > 0) {
-  if (approvalTrendsChartInstance) approvalTrendsChartInstance.destroy();
-  
-  const labels = props.approvalTrends.map(item => {
-    const [year, month] = item.month.split('-');
-    const date = new Date(year, month - 1);
-    return date.toLocaleDateString('en-US', { month: 'short' });
-  });
-  
-  const approvedData = props.approvalTrends.map(item => item.approved);
-  const rejectedData = props.approvalTrends.map(item => item.rejected);
-  
-  approvalTrendsChartInstance = new Chart(approvalTrendsChart.value, {
-    type: 'bar',
-    data: {
-      labels: labels,
-      datasets: [
-        {
-          label: 'Approved',
-          data: approvedData,
-          backgroundColor: 'rgba(16, 185, 129, 0.7)',
-          borderRadius: 6
-        },
-        {
-          label: 'Rejected',
-          data: rejectedData,
-          backgroundColor: 'rgba(239, 68, 68, 0.7)',
-          borderRadius: 6
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { position: 'top' }
-      },
-      scales: {
-        y: { beginAtZero: true, grid: { color: '#f0f0f0' } },
-        x: { grid: { display: false } }
-      }
-    }
-  });
-}
-}
+const miniSparklineOptions = (color) => ({
+  chart: { sparkline: { enabled: true }, animations: { speed: 800 } },
+  stroke: { curve: 'smooth', width: 2 },
+  fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0, stops: [0, 90, 100] } },
+  colors: [color],
+  tooltip: { enabled: false }
+});
+
+const approvalAreaSeries = computed(() => [
+  {
+    name: 'Approved',
+    data: props.approvalTrends?.length ? props.approvalTrends.map(item => item.approved) : [0, 0, 0, 0, 0, 0]
+  },
+  {
+    name: 'Rejected',
+    data: props.approvalTrends?.length ? props.approvalTrends.map(item => item.rejected) : [0, 0, 0, 0, 0, 0]
+  }
+]);
+
+const approvalAreaOptions = computed(() => ({
+  chart: { toolbar: { show: false }, stacked: true },
+  plotOptions: { bar: { borderRadius: 8, columnWidth: '40%' } },
+  colors: ['#10b981', '#ef4444'],
+  xaxis: {
+    categories: props.approvalTrends?.length ? props.approvalTrends.map(item => {
+      const [year, month] = item.month.split('-');
+      return new Date(year, month - 1).toLocaleDateString('en-US', { month: 'short' });
+    }) : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+    axisBorder: { show: false },
+    axisTicks: { show: false },
+    labels: { style: { colors: '#9ca3af', fontSize: '11px' } }
+  },
+  yaxis: { labels: { style: { colors: '#9ca3af', fontSize: '11px' } } },
+  grid: { borderColor: '#f3f4f6', strokeDashArray: 4 },
+  dataLabels: { enabled: false },
+  legend: { position: 'top', fontSize: '12px', markers: { radius: 12 } }
+}));
 
 const currentDate = computed(() => {
-return new Date().toLocaleDateString('en-US', {
-  weekday: 'long',
-  year: 'numeric',
-  month: 'long',
-  day: 'numeric'
-});
-});
-
-onMounted(() => {
-initCharts();
-});
-
-onUnmounted(() => {
-if (approvalTrendsChartInstance) approvalTrendsChartInstance.destroy();
+  return new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
 });
 </script>
 

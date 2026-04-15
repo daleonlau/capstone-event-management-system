@@ -179,9 +179,8 @@ onMounted(async () => {
   try {
     const response = await axios.get(`/admin/evaluations/${props.evaluationId}/eligibility-info`);
     eventDates.value = response.data.event_dates || [];
-    console.log('Event dates loaded:', eventDates.value);
+    eventDates.value = response.data.event_dates || [];
   } catch (err) {
-    console.error('Failed to fetch event dates:', err);
   }
 });
 
