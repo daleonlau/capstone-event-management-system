@@ -375,15 +375,10 @@ const showLogoutModal = ref(false);
 const isSidebarCollapsed = ref(false);
 const isFullScreen = ref(false);
 
-// Debug logs - check browser console
-onMounted(() => {
-  console.log('=== OrganizationUserLayout Debug ===');
-  console.log('Page props:', page.props);
-  console.log('Auth object:', page.props.auth);
-  console.log('User from props:', user.value);
-  console.log('User role:', user.value?.role);
-  console.log('Current path:', window.location.pathname);
-});
+// Sidebar collapse state
+const toggleSidebar = () => {
+  isSidebarCollapsed.value = !isSidebarCollapsed.value;
+};
 
 const userRole = computed(() => {
   const role = user.value?.role || 'user';
